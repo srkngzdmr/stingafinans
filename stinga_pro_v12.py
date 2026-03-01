@@ -736,74 +736,81 @@ def img_to_b64(img_path):
     return ""
 
 def export_pdf_advanced(df_export, title="Mali Rapor", ay_bilgisi="Tüm Zamanlar"):
-    pdf = FPDF()
-    pdf.add_page()
-    
-    # Header
-    pdf.set_fill_color(5, 8, 16)
-    pdf.rect(0, 0, 210, 40, 'F')
-    pdf.set_font("Arial", "B", 20)
-    pdf.set_text_color(255, 255, 255)
-    pdf.cell(190, 15, "", ln=True)
-    pdf.cell(190, 10, tr_fix(f"STINGA ENERJI - {title.upper()} ({ay_bilgisi})"), align='C', ln=True)
-    pdf.set_font("Arial", "", 9)
-    pdf.set_text_color(120, 160, 200)
-    pdf.cell(190, 8, tr_fix(f"Uretim Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')} | Stinga Pro v12.0"), align='C', ln=True)
-    pdf.ln(12)
-    
-    if df_export.empty:
-        pdf.set_text_color(100, 100, 100)
-        pdf.set_font("Arial", "", 11)
-        pdf.cell(190, 10, tr_fix("Bu doneme ait veri bulunmamaktadir."), ln=True)
-        return pdf.output()
-    
-    # Summary
-    total = df_export['Tutar'].sum() if 'Tutar' in df_export.columns else 0
-    approved = df_export[df_export['Durum']=='Onaylandı']['Tutar'].sum() if 'Durum' in df_export.columns else 0
-    pending  = df_export[df_export['Durum']=='Onay Bekliyor']['Tutar'].sum() if 'Durum' in df_export.columns else 0
-    
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(190, 8, tr_fix("OZET"), ln=True)
-    pdf.set_font("Arial", "", 10)
-    pdf.cell(190, 6, tr_fix(f"Toplam Harcama: {total:,.2f} TL | Onaylanan: {approved:,.2f} TL | Bekleyen: {pending:,.2f} TL"), ln=True)
-    pdf.ln(6)
-    
-    # Table header
-    pdf.set_fill_color(10, 15, 30)
-    pdf.set_text_color(0, 212, 255)
-    pdf.set_font("Arial", "B", 9)
-    cols = [("ID", 25), ("Tarih", 25), ("Firma", 45), ("Tutar", 25), ("Proje", 35), ("Durum", 30), ("Risk%", 15)]
-    for col, w in cols:
-        pdf.cell(w, 8, tr_fix(col), border=1, fill=True, align='C')
-    pdf.ln()
-    
-    # Rows
-    for i, (_, row) in enumerate(df_export.iterrows()):
-        fill = i % 2 == 0
-        pdf.set_fill_color(240, 245, 255) if fill else pdf.set_fill_color(255, 255, 255)
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # Header
+        pdf.set_fill_color(0, 120, 80)
+        pdf.rect(0, 0, 210, 38, 'F')
+        pdf.set_font("Arial", "B", 18)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_y(8)
+        pdf.cell(0, 10, tr_fix(f"STINGA ENERJI - {tr_fix(title.upper())} ({tr_fix(ay_bilgisi)})"), align='C', new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Arial", "", 9)
+        pdf.set_text_color(200, 240, 220)
+        pdf.cell(0, 8, tr_fix(f"Uretim Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')} | Stinga Pro v12.0"), align='C', new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(12)
+        
+        if df_export.empty:
+            pdf.set_text_color(100, 100, 100)
+            pdf.set_font("Arial", "", 11)
+            pdf.cell(0, 10, tr_fix("Bu doneme ait veri bulunmamaktadir."), new_x="LMARGIN", new_y="NEXT")
+            return bytes(pdf.output())
+        
+        # Summary
+        total    = df_export['Tutar'].sum() if 'Tutar' in df_export.columns else 0
+        approved = df_export[df_export['Durum']=='Onaylandı']['Tutar'].sum() if 'Durum' in df_export.columns else 0
+        pending  = df_export[df_export['Durum']=='Onay Bekliyor']['Tutar'].sum() if 'Durum' in df_export.columns else 0
+        
         pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Arial", "", 8)
-        risk = row.get('Risk_Skoru', 0)
-        values = [
-            (str(row.get('ID', ''))[:12], 25),
-            (str(row.get('Tarih', '')), 25),
-            (str(row.get('Firma', ''))[:20], 45),
-            (f"{float(row.get('Tutar',0)):,.0f} TL", 25),
-            (str(row.get('Proje', ''))[:18], 35),
-            (str(row.get('Durum', '')), 30),
-            (f"%{risk}", 15)
-        ]
-        for val, w in values:
-            pdf.cell(w, 7, tr_fix(val), border=1, fill=fill, align='C')
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(0, 8, tr_fix("OZET"), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Arial", "", 9)
+        pdf.cell(0, 6, tr_fix(f"Toplam: {total:,.2f} TL  |  Onaylanan: {approved:,.2f} TL  |  Bekleyen: {pending:,.2f} TL"), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(5)
+        
+        # Table header
+        pdf.set_fill_color(40, 60, 100)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", "B", 8)
+        cols = [("ID", 22), ("Tarih", 22), ("Firma", 48), ("Tutar", 24), ("Proje", 32), ("Durum", 28), ("Risk%", 14)]
+        for col, w in cols:
+            pdf.cell(w, 8, tr_fix(col), border=1, fill=True, align='C')
         pdf.ln()
-    
-    pdf.ln(10)
-    pdf.set_font("Arial", "I", 8)
-    pdf.set_text_color(150, 150, 150)
-    pdf.cell(190, 6, tr_fix("Bu rapor Stinga Pro v12.0 AI Finans Sistemi tarafindan otomatik uretilmistir."), align='C', ln=True)
-    
-    return pdf.output()
+        
+        # Rows
+        for i, (_, row) in enumerate(df_export.iterrows()):
+            fill = i % 2 == 0
+            if fill:
+                pdf.set_fill_color(240, 248, 244)
+            else:
+                pdf.set_fill_color(255, 255, 255)
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Arial", "", 7)
+            risk = row.get('Risk_Skoru', 0)
+            values = [
+                (str(row.get('ID', ''))[:12], 22),
+                (str(row.get('Tarih', '')), 22),
+                (str(row.get('Firma', ''))[:22], 48),
+                (f"{float(row.get('Tutar', 0)):,.0f} TL", 24),
+                (str(row.get('Proje', ''))[:16], 32),
+                (tr_fix(str(row.get('Durum', ''))), 28),
+                (f"%{risk}", 14)
+            ]
+            for val, w in values:
+                pdf.cell(w, 6, tr_fix(val), border=1, fill=fill, align='C')
+            pdf.ln()
+        
+        pdf.ln(8)
+        pdf.set_font("Arial", "I", 7)
+        pdf.set_text_color(150, 150, 150)
+        pdf.cell(0, 5, tr_fix("Bu rapor Stinga Pro v12.0 AI Finans Sistemi tarafindan otomatik uretilmistir."), align='C')
+        
+        return bytes(pdf.output())
+    except Exception as e:
+        # PDF oluşturulamadıysa boş bytes dön
+        return b"%PDF-1.4\n"
 
 # ─── AI FONKSİYONLARI ─────────────────────────────────────────
 def analyze_receipt_pro(image, model):
