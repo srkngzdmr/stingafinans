@@ -1,0 +1,2 @@
+# stingafinans
+Mali,Finans
