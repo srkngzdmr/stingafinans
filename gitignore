@@ -1,0 +1,14 @@
+# Veritabanı dosyaları (kişisel veri içerir, GitHub'a yükleme!)
+*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
