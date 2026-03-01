@@ -560,7 +560,10 @@ def whatsapp_webhook():
     # ── FİŞ ANALİZİ ─────────────────────────────────────────────
     if num_media > 0:
         media_url = request.values.get('MediaUrl0')
-        try:
+        # Twilio 15sn timeout var — hemen yanıt gönder, analizi arka planda yap
+        import threading
+        def analiz_et_ve_gonder():
+            try:
             res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
             if res.status_code in [301, 302, 307, 308]:
                 res = requests.get(res.headers.get('Location'), timeout=15)
@@ -713,16 +716,33 @@ Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no, farklı yazı tipler
                 + rozet_str
                 + f"\n\n🔖 `{new_expense['ID']}`"
             )
-            msg.body(yanit)
+                twilio_client.messages.create(
+                    body=yanit,
+                    from_="whatsapp:+14155238886",
+                    to=sender_phone
+                )
 
-        except json.JSONDecodeError as e:
-            print(f"JSON HATA: {e}", flush=True)
-            msg.body("❌ Fiş okunamadı. Daha net bir fotoğraf çekip tekrar deneyin.")
-        except Exception as e:
-            import traceback
-            print(f"GENEL HATA: {traceback.format_exc()}", flush=True)
-            msg.body(f"❌ Hata: {str(e)}")
+            except json.JSONDecodeError as e:
+                print(f"JSON HATA: {e}", flush=True)
+                twilio_client.messages.create(
+                    body="❌ Fiş okunamadı. Daha net bir fotoğraf çekip tekrar deneyin.",
+                    from_="whatsapp:+14155238886",
+                    to=sender_phone
+                )
+            except Exception as e:
+                import traceback
+                print(f"GENEL HATA: {traceback.format_exc()}", flush=True)
+                twilio_client.messages.create(
+                    body=f"❌ Hata: {str(e)}",
+                    from_="whatsapp:+14155238886",
+                    to=sender_phone
+                )
 
+        # Hemen "analiz ediliyor" yanıtı gönder
+        msg.body("⏳ Fişiniz analiz ediliyor, lütfen bekleyin...")
+        t = threading.Thread(target=analiz_et_ve_gonder)
+        t.daemon = True
+        t.start()
         return str(resp)
 
     # ── VARSAYILAN
