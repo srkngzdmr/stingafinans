@@ -777,6 +777,27 @@ def rapor_endpoint():
     }, 200
 
 
+@app.route("/expenses", methods=['GET'])
+def expenses_endpoint():
+    """Tüm fişleri döner — Streamlit dashboard bu endpoint'i kullanır."""
+    data = load_data()
+    return {"expenses": data.get("expenses", [])}, 200
+
+
+@app.route("/all-data", methods=['GET'])
+def all_data_endpoint():
+    """Streamlit için tam veri seti: fişler, bütçeler, rozetler, anomaliler."""
+    data = load_data()
+    return {
+        "expenses":         data.get("expenses", []),
+        "budgets":          data.get("budgets", {}),
+        "wallets":          data.get("wallets", {}),
+        "rozetler":         data.get("rozetler", {}),
+        "fis_sayaci":       data.get("fis_sayaci", {}),
+        "anomaly_log":      data.get("anomaly_log", []),
+    }, 200
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
