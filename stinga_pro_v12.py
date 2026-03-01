@@ -614,9 +614,10 @@ for k, v in defaults.items():
 
 # ─── API ──────────────────────────────────────────────────────
 API_KEYS = [
-    "AIzaSyBOIenEvMYx1OT2suTWDPVMV4W4wj3Xxso",
-    "AIzaSyCyJNBT-3-K1P_Ylebj4rCSzqwOkF31KLg"
+    st.secrets.get("GEMINI_API_KEY_1", ""),
+    st.secrets.get("GEMINI_API_KEY_2", "")
 ]
+API_KEYS = [k for k in API_KEYS if k]  # boş olanları çıkar
 
 def configure_ai():
     try:
