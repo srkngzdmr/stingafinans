@@ -773,8 +773,11 @@ def export_pdf_advanced(df_export, title="Mali Rapor", ay_bilgisi="Tüm Zamanlar
         # Table header
         pdf.set_fill_color(40, 60, 100)
         pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", "B", 8)
-        cols = [("ID", 22), ("Tarih", 22), ("Firma", 48), ("Tutar", 24), ("Proje", 32), ("Durum", 28), ("Risk%", 14)]
+        pdf.set_font("Arial", "B", 7)
+        cols = [
+            ("ID", 18), ("Fiş Tarihi", 20), ("Yükleme Zamanı", 30), ("Personel", 22),
+            ("Firma", 35), ("Tutar", 20), ("Kategori", 22), ("Durum", 20), ("Risk%", 13)
+        ]
         for col, w in cols:
             pdf.cell(w, 8, tr_fix(col), border=1, fill=True, align='C')
         pdf.ln()
@@ -787,20 +790,52 @@ def export_pdf_advanced(df_export, title="Mali Rapor", ay_bilgisi="Tüm Zamanlar
             else:
                 pdf.set_fill_color(255, 255, 255)
             pdf.set_text_color(0, 0, 0)
-            pdf.set_font("Arial", "", 7)
+            pdf.set_font("Arial", "", 6)
             risk = row.get('Risk_Skoru', 0)
+            
+            # Risk rengini belirle
+            if risk >= 70:
+                pdf.set_text_color(180, 0, 0)
+            elif risk >= 30:
+                pdf.set_text_color(150, 80, 0)
+            else:
+                pdf.set_text_color(0, 100, 50)
+            
+            yukleme = str(row.get('Yukleme_Zamani', row.get('Tarih', '')))
+            kisisel = row.get('Kisisel_Giderler', [])
+            kisisel_str = ", ".join(kisisel) if isinstance(kisisel, list) and kisisel else ""
+            
             values = [
-                (str(row.get('ID', ''))[:12], 22),
-                (str(row.get('Tarih', '')), 22),
-                (str(row.get('Firma', ''))[:22], 48),
-                (f"{float(row.get('Tutar', 0)):,.0f} TL", 24),
-                (str(row.get('Proje', ''))[:16], 32),
-                (tr_fix(str(row.get('Durum', ''))), 28),
-                (f"%{risk}", 14)
+                (str(row.get('ID', ''))[-8:], 18),
+                (str(row.get('Tarih', '')), 20),
+                (yukleme[:16], 30),
+                (str(row.get('Kullanıcı', '')), 22),
+                (str(row.get('Firma', ''))[:18], 35),
+                (f"{float(row.get('Tutar', 0)):,.0f} TL", 20),
+                (str(row.get('Kategori', ''))[:12], 22),
+                (tr_fix(str(row.get('Durum', ''))), 20),
+                (f"%{risk}", 13)
             ]
-            for val, w in values:
+            
+            pdf.set_text_color(0, 0, 0)
+            for j, (val, w) in enumerate(values):
+                if j == 8:  # Risk sütunu renkli
+                    if risk >= 70: pdf.set_text_color(180, 0, 0)
+                    elif risk >= 30: pdf.set_text_color(150, 80, 0)
+                    else: pdf.set_text_color(0, 120, 60)
+                else:
+                    pdf.set_text_color(0, 0, 0)
                 pdf.cell(w, 6, tr_fix(val), border=1, fill=fill, align='C')
             pdf.ln()
+            
+            # Kişisel gider varsa alt satırda göster
+            if kisisel_str:
+                pdf.set_font("Arial", "I", 6)
+                pdf.set_text_color(180, 0, 0)
+                pdf.cell(18, 5, "", border=0)
+                pdf.cell(162, 5, tr_fix(f"  ⚠ Kisisel Gider: {kisisel_str}"), border=0)
+                pdf.ln()
+                pdf.set_text_color(0, 0, 0)
         
         pdf.ln(8)
         pdf.set_font("Arial", "I", 7)
@@ -815,18 +850,46 @@ def export_pdf_advanced(df_export, title="Mali Rapor", ay_bilgisi="Tüm Zamanlar
 # ─── AI FONKSİYONLARI ─────────────────────────────────────────
 def analyze_receipt_pro(image, model):
     bugun = datetime.now().strftime("%Y-%m-%d")
-    prompt = f"""Sen Stinga Enerji Baş Denetçisisin. Fişi tara. 
-Bugünün tarihi: {bugun}. Fişteki tarih bu tarihten ÖNCE olmalıdır. Eğer fişteki tarih {bugun} tarihinden sonraysa anomali=true yap.
-Tarih formatı mutlaka YYYY-MM-DD olsun. Yılı dikkatli oku: 2025 ve 2026 karıştırma.
+    prompt = f"""Sen Stinga Enerji şirketinin kıdemli mali denetçisisin. Fişi tara ve iş kurallarına göre risk skoru belirle.
+
+Bugünün tarihi: {bugun}. Fişteki tarih bu tarihten ÖNCE olmalı. Sonraki tarihse anomali=true.
+Yılı dikkatli oku: 2025 ve 2026 karıştırma. Tarih formatı: YYYY-MM-DD
+
+=== RİSK SKORLAMA KURALLARI ===
+YEMEK:
+- Fişte yemek/restoran/kafe kategorisiyse başlangıç risk skoru: 2
+- (Günlük kaçıncı yemek fişi olduğu Python tarafında hesaplanacak, burada sadece kategoriyi belirle)
+
+KONAKLAMA:
+- Otel/konaklama kategorisi: maksimum risk skoru 2 olsun
+
+YAKIT:
+- Akaryakıt/benzin/motorin: başlangıç risk skoru 1
+- (Günlük birden fazla yakıt fişi Python tarafında kontrol edilecek)
+
+KİŞİSEL GİDERLER (ÇOK ÖNEMLİ):
+- Fişte şu ürünler varsa mutlaka belirt ve risk skoru 40+ yap:
+  çikolata, şeker, şekerleme, sigara, alkol, bira, içki, kozmetik, parfüm, oyuncak,
+  kişisel bakım, şampuan, dizi/film aboneliği, oyun, müzik aleti
+- Bu ürünler tespit edilirse anomali=true yap ve anomali_aciklamasi'nda hangi ürünler olduğunu yaz
+- kisisel_giderler listesine bu ürünleri ekle
+
+GENEL KURALLAR:
+- Tutar makul görünüyorsa düşük risk, şüpheli yüksekse risk artır
+- Fatura net okunmuyorsa risk +15
+- Gece yarısı saatli fiş (22:00-06:00 arası) risk +10
+
 SADECE aşağıdaki JSON formatını döndür, başka hiçbir şey yazma:
 {{
     "firma": "Firma Adı",
     "tarih": "YYYY-MM-DD",
+    "saat": "HH:MM",
     "toplam_tutar": 0.0,
-    "kategori": "Yemek/Yakıt/Konaklama/Ekipman/Diğer",
-    "risk_skoru": 10,
+    "kategori": "Yemek/Yakıt/Konaklama/Ekipman/Kişisel/Diğer",
+    "risk_skoru": 2,
     "audit_ozeti": "1 cümlelik denetim özeti",
     "kalemler": ["kalem1", "kalem2"],
+    "kisisel_giderler": [],
     "kdv_tutari": 0.0,
     "odeme_turu": "Nakit/Kredi Kartı/Havale",
     "anomali": false,
@@ -841,7 +904,102 @@ SADECE aşağıdaki JSON formatını döndür, başka hiçbir şey yazma:
             return "ANAHTAR_DEGISIMI"
         return f"HATA: {str(e)}"
 
-def detect_anomalies(df, model):
+def apply_business_rules(data_ai, data_store, user_name):
+    """
+    Şirket iş kurallarına göre risk skorunu Python tarafında hesaplar.
+    AI'ın verdiği skoru bu kurallarla günceller.
+    """
+    kategori    = str(data_ai.get("kategori", "")).lower()
+    tarih       = data_ai.get("tarih", datetime.now().strftime("%Y-%m-%d"))
+    risk        = int(data_ai.get("risk_skoru", 5))
+    anomali     = data_ai.get("anomali", False)
+    anomali_msg = data_ai.get("anomali_aciklamasi", "")
+    audit       = data_ai.get("audit_ozeti", "")
+    kisisel     = data_ai.get("kisisel_giderler", [])
+    uyarilar    = []
+
+    # ── Aynı gün aynı kullanıcının fişlerini say ──────────────────
+    bugun_fisleri = [
+        e for e in data_store.get("expenses", [])
+        if e.get("Kullanıcı") == user_name and e.get("Tarih") == tarih
+    ]
+    bugun_yemek = [e for e in bugun_fisleri if "yemek" in str(e.get("Kategori","")).lower()]
+    bugun_yakit = [e for e in bugun_fisleri if "yakıt" in str(e.get("Kategori","")).lower() or "yakit" in str(e.get("Kategori","")).lower()]
+
+    # ── YEMEK KURALLARI ────────────────────────────────────────────
+    if "yemek" in kategori:
+        kac_inci = len(bugun_yemek) + 1  # Bu fiş kaçıncı olacak
+        if kac_inci == 1:
+            risk = max(risk, 2)
+            audit += " | Günün 1. yemek fişi."
+        elif kac_inci == 2:
+            risk = max(risk, 6)
+            audit += " | Günün 2. yemek fişi."
+        elif kac_inci == 3:
+            risk = max(risk, 5)
+            audit += " | Günün 3. yemek fişi."
+        else:
+            risk = max(risk, 75)
+            anomali = True
+            uyari = f"🍽️ Günde {kac_inci}. yemek fişi! Aşırı yemek harcaması tespit edildi."
+            anomali_msg = (anomali_msg + " | " + uyari).strip(" | ")
+            audit += f" | ⚠️ Günde {kac_inci}. yemek fişi — yüksek risk."
+            uyarilar.append(uyari)
+
+    # ── KONAKLAMA KURALLARI ────────────────────────────────────────
+    elif "konaklama" in kategori or "otel" in kategori:
+        risk = min(risk, 2)
+        audit += " | Konaklama fişi — standart risk uygulandı."
+
+    # ── YAKIT KURALLARI ───────────────────────────────────────────
+    elif "yakıt" in kategori or "yakit" in kategori or "akaryakıt" in kategori:
+        kac_yakit = len(bugun_yakit) + 1
+        if kac_yakit == 1:
+            risk = max(risk, 1)
+            audit += " | Günün ilk yakıt fişi."
+        else:
+            risk = min(max(risk, kac_yakit * 10), 20)
+            uyari = f"⛽ Aynı gün {kac_yakit}. yakıt fişi!"
+            anomali_msg = (anomali_msg + " | " + uyari).strip(" | ")
+            audit += f" | ⚠️ Günde {kac_yakit}. yakıt fişi."
+            uyarilar.append(uyari)
+            if kac_yakit >= 3:
+                anomali = True
+
+    # ── KİŞİSEL GİDER KURALLARI ───────────────────────────────────
+    kisisel_keywords = [
+        "çikolata","cikolata","şeker","sekerleme","sigara","alkol","bira","içki","icki",
+        "kozmetik","parfüm","parfum","oyuncak","şampuan","sampuan","dizi","film",
+        "abonelik","oyun","müzik","muzik","kişisel","kisisel","atıştırmalık","cips",
+        "snack","fast food","energy drink","kahve kapsül"
+    ]
+    
+    # AI'ın tespit ettiklerine ek olarak kalemlerden de kontrol et
+    tüm_kalemler = " ".join([str(k).lower() for k in data_ai.get("kalemler", [])])
+    bulunan_kisisel = list(kisisel) if kisisel else []
+    
+    for kw in kisisel_keywords:
+        if kw in tüm_kalemler and kw not in " ".join(bulunan_kisisel).lower():
+            bulunan_kisisel.append(kw)
+
+    if bulunan_kisisel:
+        risk = max(risk, 45)
+        anomali = True
+        kisisel_str = ", ".join(bulunan_kisisel)
+        uyari = f"🚫 Kişisel gider tespiti: {kisisel_str}"
+        anomali_msg = (anomali_msg + " | " + uyari).strip(" | ")
+        audit += f" | ⚠️ Kişisel gider içeriyor: {kisisel_str}"
+        uyarilar.append(uyari)
+        data_ai["kisisel_giderler"] = bulunan_kisisel
+
+    # Güncellenmiş değerleri yaz
+    data_ai["risk_skoru"]         = min(risk, 100)
+    data_ai["anomali"]            = anomali
+    data_ai["anomali_aciklamasi"] = anomali_msg
+    data_ai["audit_ozeti"]        = audit
+    data_ai["_uyarilar"]          = uyarilar  # UI'da göstermek için
+
+    return data_ai
     if df.empty or len(df) < 3:
         return []
     
@@ -1463,7 +1621,12 @@ else:
                                         tarih_str = datetime.now().strftime("%Y-%m-%d")
                                         data_ai["tarih"] = tarih_str
 
+                                    # ── İş Kuralı Motoru Uygula ──
+                                    data_ai = apply_business_rules(data_ai, data_store, user_name)
+                                    uyarilar = data_ai.pop("_uyarilar", [])
+
                                     # Save file
+                                    yukleme_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                     path = f"arsiv/{datetime.now().strftime('%Y_%m')}"
                                     os.makedirs(path, exist_ok=True)
                                     f_path = os.path.join(path, f"{datetime.now().strftime('%H%M%S')}_{f.name}")
@@ -1473,6 +1636,8 @@ else:
                                     new_e = {
                                         "ID": datetime.now().strftime("%Y%m%d%H%M%S"),
                                         "Tarih": data_ai.get("tarih", datetime.now().strftime("%Y-%m-%d")),
+                                        "Saat": data_ai.get("saat", ""),
+                                        "Yukleme_Zamani": yukleme_zamani,
                                         "Kullanıcı": user_name,
                                         "Firma": data_ai.get("firma", "Bilinmiyor"),
                                         "Kategori": data_ai.get("kategori", "Diğer"),
@@ -1480,6 +1645,7 @@ else:
                                         "KDV": float(data_ai.get("kdv_tutari", 0)),
                                         "Odeme_Turu": data_ai.get("odeme_turu", "Bilinmiyor"),
                                         "Kalemler": data_ai.get("kalemler", []),
+                                        "Kisisel_Giderler": data_ai.get("kisisel_giderler", []),
                                         "Durum": "Onay Bekliyor",
                                         "Dosya_Yolu": f_path,
                                         "Risk_Skoru": int(data_ai.get("risk_skoru", 0)),
@@ -1512,6 +1678,10 @@ else:
                                     anomali = data_ai.get("anomali", False)
                                     
                                     st.success("✅ Fiş başarıyla işlendi! +50 XP kazandın!")
+                                    
+                                    # İş kuralı uyarıları
+                                    for uyari in uyarilar:
+                                        st.warning(uyari)
                                     
                                     # Result card
                                     st.markdown(f"""
