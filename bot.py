@@ -572,7 +572,9 @@ def whatsapp_webhook():
                 msg.body("⚠️ *Mükerrer Fiş!*\nBu fişi daha önce girdiniz. Farklı bir fiş gönderin.")
                 return str(resp)
 
+            print(f"Gorsel indirildi: {len(raw_bytes)} bytes", flush=True)
             image = Image.open(BytesIO(raw_bytes))
+            print("Gemini cagiriliyor...", flush=True)
 
             # ── GEMINI: Ultra detaylı analiz promptu
             prompt = """Sen hem mali denetçi hem adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür:
@@ -596,6 +598,7 @@ def whatsapp_webhook():
 Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no, farklı yazı tipleri."""
 
             ai_res    = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
+            print(f"Gemini yaniti: {ai_res.text[:200]}", flush=True)
             json_text = re.sub(r"```json?|```", "", ai_res.text).strip()
             fis       = json.loads(json_text)
 
@@ -712,9 +715,12 @@ Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no, farklı yazı tipler
             )
             msg.body(yanit)
 
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            print(f"JSON HATA: {e}", flush=True)
             msg.body("❌ Fiş okunamadı. Daha net bir fotoğraf çekip tekrar deneyin.")
         except Exception as e:
+            import traceback
+            print(f"GENEL HATA: {traceback.format_exc()}", flush=True)
             msg.body(f"❌ Hata: {str(e)}")
 
         return str(resp)
