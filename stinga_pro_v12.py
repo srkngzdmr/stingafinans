@@ -614,7 +614,7 @@ for k, v in defaults.items():
 
 # ─── API ──────────────────────────────────────────────────────
 API_KEYS = [
-    "AIzaSyCxqgwwnlYqKSp1_qUaN8tmRYt7nypHRnk",
+    "AIzaSyBOIenEvMYx1OT2suTWDPVMV4W4wj3Xxso",
     "AIzaSyCyJNBT-3-K1P_Ylebj4rCSzqwOkF31KLg"
 ]
 
