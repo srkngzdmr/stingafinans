@@ -1668,8 +1668,38 @@ def approve_endpoint():
             data.setdefault("wallets",{})[kullanici] = max(0, data.get("wallets",{}).get(kullanici,0) - tutar)
             add_xp(kullanici, 25, "Fiş onaylandı", data=data)
             add_notification(kullanici, f"✅ {firma} (₺{tutar:,.0f}) onaylandı", "success", data=data)
+            whatsapp_mesaj = (
+                f"✅ *FİŞİNİZ ONAYLANDI*\n{'─'*28}\n"
+                f"🏢 {firma}\n"
+                f"💰 ₺{tutar:,.0f}\n"
+                f"👤 Onaylayan: {approver}\n"
+                f"🔖 `{fis_id}`"
+            )
         else:
             add_notification(kullanici, f"❌ {firma} harcamanız reddedildi", "warning", data=data)
+            whatsapp_mesaj = (
+                f"❌ *FİŞİNİZ REDDEDİLDİ*\n{'─'*28}\n"
+                f"🏢 {firma}\n"
+                f"💰 ₺{tutar:,.0f}\n"
+                f"👤 Reddeden: {approver}\n"
+                f"🔖 `{fis_id}`"
+            )
+
+        # Fişi gönderen kişinin telefon numarasını bul ve WhatsApp bildirimi gönder
+        kullanici_phone = next(
+            (phone for phone, info in PHONE_DIRECTORY.items() if info["ad"] == kullanici),
+            None
+        )
+        if kullanici_phone:
+            try:
+                twilio_client.messages.create(
+                    body=whatsapp_mesaj,
+                    from_="whatsapp:+14155238886",
+                    to=kullanici_phone
+                )
+            except Exception as wa_e:
+                print(f"WhatsApp bildirim hatası ({kullanici}): {wa_e}", flush=True)
+
         save_data(data)
         return jsonify({"ok": True, "ID": fis_id, "action": action}), 200
     except Exception as e:
