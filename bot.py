@@ -36,25 +36,24 @@ TWILIO_SID   = os.getenv("TWILIO_SID")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
 twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
 
-# DB_FILE mutlak yol — Railway'de çalışma dizini kaymaları için
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stinga_v13_db.json")
+DB_FILE      = "stinga_v13_db.json"
 DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
 
 PHONE_DIRECTORY = {
     "whatsapp:+905350328406": {
-        "ad": "Okan İlhan",   "rol": "Saha Personeli",         "limit": 5000,
+        "ad": "Okan",   "rol": "Saha Personeli",         "limit": 5000,
         "emoji": "🔧",  "yetki": "user",  "dashboard_key": "okan"
     },
     "whatsapp:+905322002337": {
-        "ad": "Serkan Güzdemir", "rol": "İşletme Müdürü",      "limit": 10000,
+        "ad": "Serkan", "rol": "İşletme Müdürü",         "limit": 10000,
         "emoji": "⚡",  "yetki": "admin", "dashboard_key": "serkan"
     },
     "whatsapp:+905547858627": {
-        "ad": "Zeynep Özyaman", "rol": "Yönetim Kurulu Başkanı", "limit": 50000,
+        "ad": "Zeynep", "rol": "Yönetim Kurulu Başkanı", "limit": 50000,
         "emoji": "👑",  "yetki": "admin", "dashboard_key": "zeynep"
     },
     "whatsapp:+905304305213": {
-        "ad": "Şenol Özyaman", "rol": "Genel Müdür", "limit": 30000,
+        "ad": "Şenol", "rol": "Genel Müdür", "limit": 30000,
         "emoji": "🏢",  "yetki": "user", "dashboard_key": "senol",
         "dashboard_rol": "user", "dashboard_sifre": "456"
     },
@@ -99,7 +98,7 @@ def load_data() -> dict:
     default = {
         "expenses": [],
         # Harcırah bakiyeleri (dashboard Finans&Kasa bölümü)
-        "wallets":  {"Zeynep Özyaman": 50000, "Serkan Güzdemir": 25000, "Okan İlhan": 5000, "Şenol Özyaman": 30000},
+        "wallets":  {"Zeynep": 50000, "Serkan": 25000, "Okan": 5000, "Şenol": 30000},
         # Proje bazlı bütçe (dashboard ultra-card göstergeleri)
         "budgets": {
             "Maden Sahası":   {"limit": 100000, "spent": 0},
@@ -108,92 +107,42 @@ def load_data() -> dict:
             "Genel Merkez":   {"limit": 40000,  "spent": 0},
         },
         # WhatsApp uyarıları için kişi limitleri
-        "user_limits": {"Zeynep Özyaman": 50000, "Serkan Güzdemir": 10000, "Okan İlhan": 5000, "Şenol Özyaman": 30000},
+        "user_limits": {"Zeynep": 50000, "Serkan": 10000, "Okan": 5000, "Şenol": 30000},
         "anomaly_log": [],
         "duplicate_hashes": [],
         "user_states": {},
-        "rozetler": {"Zeynep Özyaman": [], "Serkan Güzdemir": [], "Okan İlhan": [], "Şenol Özyaman": []},
-        "fis_sayaci": {"Zeynep Özyaman": 0, "Serkan Güzdemir": 0, "Okan İlhan": 0, "Şenol Özyaman": 0},
+        "rozetler": {"Zeynep": [], "Serkan": [], "Okan": [], "Şenol": []},
+        "fis_sayaci": {"Zeynep": 0, "Serkan": 0, "Okan": 0, "Şenol": 0},
         "karakter_modu": {},
         # Dashboard ek alanları
-        "xp": {"Zeynep Özyaman": 0, "Serkan Güzdemir": 0, "Okan İlhan": 0, "Şenol Özyaman": 0},
+        "xp": {"Zeynep": 0, "Serkan": 0, "Okan": 0, "Şenol": 0},
         "notifications": [],
         "ledger": [],
     }
-    # Önce ana, bozuksa backup dene
-    for try_file in [DB_FILE, DB_FILE + ".bak"]:
-        if not os.path.exists(try_file):
-            continue
-        try:
-            with open(try_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            for k, v in default.items():
-                data.setdefault(k, v)
-            # Yeni tam isimlerle eksik alt-alanlara ekle
-            for field in ["wallets", "user_limits", "rozetler", "fis_sayaci", "xp"]:
-                if "Şenol Özyaman" not in data.get(field, {}):
-                    data[field]["Şenol Özyaman"] = default[field].get("Şenol Özyaman", 0 if field != "rozetler" else [])
-            # budgets eski flat formattan migrate et
-            budgets = data.get("budgets", {})
-            if budgets and isinstance(list(budgets.values())[0], (int, float)):
-                data["budgets"] = default["budgets"]
-            print(f"DB yüklendi ({try_file}): {len(data.get('expenses',[]))} fiş", flush=True)
-            return data
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"DB okuma hatası ({try_file}): {e}", flush=True)
-            continue
-    print("UYARI: Geçerli DB bulunamadı, default döndürülüyor", flush=True)
-    return default
-
-import threading as _threading
-_DB_LOCK = _threading.Lock()
+    if not os.path.exists(DB_FILE):
+        return default
+    with open(DB_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    for k, v in default.items():
+        data.setdefault(k, v)
+    # Şenol'u eksik alt-alanlara ekle
+    for field in ["wallets", "user_limits", "rozetler", "fis_sayaci", "xp"]:
+        if "Şenol" not in data.get(field, {}):
+            data[field]["Şenol"] = default[field].get("Şenol", 0 if field != "rozetler" else [])
+    # budgets eski flat formattan ({"Zeynep":50000}) proje formatına migrate et
+    budgets = data.get("budgets", {})
+    if budgets and isinstance(list(budgets.values())[0], (int, float)):
+        data["budgets"] = default["budgets"]
+    return data
 
 def save_data(d: dict):
-    """Thread-safe atomik kayıt. Lock + tmp dosya → veri bozulmasını önler."""
-    tmp = DB_FILE + ".tmp"
-    with _DB_LOCK:
-        try:
-            # Mevcut dosyayı backup al
-            if os.path.exists(DB_FILE):
-                try:
-                    os.replace(DB_FILE, DB_FILE + ".bak")
-                except:
-                    pass
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(d, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, DB_FILE)
-            print(f"DB kaydedildi: {len(d.get('expenses',[]))} fiş", flush=True)
-        except Exception as e:
-            print(f"KAYIT HATASI: {e}", flush=True)
-            try:
-                with open(DB_FILE, "w", encoding="utf-8") as f:
-                    json.dump(d, f, ensure_ascii=False, indent=2)
-            except Exception as e2:
-                print(f"FALLBACK KAYIT HATASI: {e2}", flush=True)
-
-def load_data_safe() -> dict:
-    """Thread-safe okuma. Bozuk JSON'a karşı .bak dosyasından restore."""
-    with _DB_LOCK:
-        # Önce ana dosyayı dene
-        for try_file in [DB_FILE, DB_FILE + ".bak"]:
-            if os.path.exists(try_file):
-                try:
-                    with open(try_file, "r", encoding="utf-8") as f:
-                        return json.load(f)
-                except json.JSONDecodeError:
-                    print(f"JSON BOZUK: {try_file}", flush=True)
-                    continue
-        # Hiçbiri yoksa boş DB döndür
-        print("UYARI: DB dosyası bulunamadı, boş başlatılıyor", flush=True)
-        return {}
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
 
 
-def add_notification(target: str, message: str, notif_type: str = "info", data: dict = None):
-    """Dashboard bildirim kuyruğuna ekle. data verilirse mevcut objeye yazar (kaydetmez)."""
-    _own = data is None
-    if _own:
-        data = load_data()
-    data.setdefault("notifications", [])
+def add_notification(target: str, message: str, notif_type: str = "info"):
+    """Dashboard bildirim kuyruğuna ekle."""
+    data = load_data()
     data["notifications"].append({
         "user":  target,
         "msg":   message,
@@ -202,19 +151,16 @@ def add_notification(target: str, message: str, notif_type: str = "info", data: 
         "date":  datetime.now().strftime("%Y-%m-%d"),
         "read":  False,
     })
-    if _own:
-        save_data(data)
+    save_data(data)
 
 
-def add_xp(user_name: str, amount: int, reason: str = "", data: dict = None):
-    """Dashboard XP sistemine puan ekle. data verilirse mevcut objeye yazar (kaydetmez)."""
-    _own = data is None
-    if _own:
-        data = load_data()
-    data.setdefault("xp", {})
+def add_xp(user_name: str, amount: int, reason: str = ""):
+    """Dashboard XP sistemine puan ekle."""
+    data = load_data()
+    if "xp" not in data:
+        data["xp"] = {}
     data["xp"][user_name] = data["xp"].get(user_name, 0) + amount
     if reason:
-        data.setdefault("notifications", [])
         data["notifications"].append({
             "user":  user_name,
             "msg":   f"🏆 +{amount} XP kazandın! ({reason})",
@@ -223,8 +169,7 @@ def add_xp(user_name: str, amount: int, reason: str = "", data: dict = None):
             "date":  datetime.now().strftime("%Y-%m-%d"),
             "read":  False,
         })
-    if _own:
-        save_data(data)
+    save_data(data)
 
 # ─────────────────────────────────────────────
 #  YARDIMCI
@@ -689,8 +634,6 @@ def whatsapp_webhook():
 
         def analiz_et_gonder():
             try:
-                    # Thread içinde taze veri yükle — stale data sorununu önler
-                    data = load_data()
                     res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
                     if res.status_code in [301, 302, 307, 308]:
                         res = requests.get(res.headers.get('Location'), timeout=15)
@@ -699,84 +642,38 @@ def whatsapp_webhook():
                     img_hash  = gorsel_hash(raw_bytes)
 
                     if img_hash in data["duplicate_hashes"]:
-                        twilio_client.messages.create(
-                            body="⚠️ *Mükerrer Fiş Tespit Edildi!*\n\nBu fişi daha önce sisteme girdiniz.\nAynı fişi tekrar gönderemezsiniz.",
-                            from_="whatsapp:+14155238886",
-                            to=sender_phone
-                        )
-                        return
+                        msg.body("⚠️ *Mükerrer Fiş!*\nBu fişi daha önce girdiniz. Farklı bir fiş gönderin.")
+                        return str(resp)
 
                     print(f"Gorsel indirildi: {len(raw_bytes)} bytes", flush=True)
                     image = Image.open(BytesIO(raw_bytes))
                     print("Gemini cagiriliyor...", flush=True)
 
-                    # ── Firma+Tutar bazlı mükerrer fiş kontrolü (hash farklı olsa bile)
-                    # Bu kontrol AI analizinden önce yapılır
-                    # (hash kontrolü yukarıda yapıldı, bu ek güvenlik katmanı)
-
                     # ── GEMINI: Ultra detaylı analiz promptu
-                    bugun = datetime.now().strftime("%Y-%m-%d")
-                    prompt = f"""Sen hem mali denetçi hem adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür.
-
-ÖNEMLİ: Bugünün tarihi {bugun}. Fişin tarihi bu tarihten ÖNCE veya bugün olmalıdır.
-Fişte yazan tarihi olduğu gibi oku (DD-MM-YYYY veya DD/MM/YYYY formatını YYYY-MM-DD'ye çevir).
-Tarih {bugun}'den sonraysa risk_skoru'nu artır ama tarihi yine de fişten okuduğun gibi yaz.
-Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
-
-        {{
+                    prompt = """Sen hem mali denetçi hem adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür:
+        {
           "firma": "Firma adı",
           "tarih": "YYYY-MM-DD",
           "toplam_tutar": 0.0,
           "kdv_tutari": 0.0,
           "odeme_yontemi": "nakit|kredi_karti|havale",
-          "kalemler": [{{"aciklama": "...", "tutar": 0.0}}],
+          "kalemler": [{"aciklama": "...", "tutar": 0.0}],
           "para_birimi": "TRY",
           "risk_skoru": 0,
           "risk_nedenleri": ["neden1", "neden2"],
-          "audit_notu": "1 cümle kısa mali özet — HTML TAG KULLANMA, düz metin yaz",
+          "audit_notu": "kısa özet",
           "sahte_mi": false,
           "sahtelik_nedeni": "",
           "gorsel_kalitesi": "iyi|orta|kotu",
           "fis_turu": "restoran|market|akaryakıt|otel|diger",
           "ilginc_detay": "fişte dikkat çeken garip veya ilginç bir şey"
-        }}
-        Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no, farklı yazı tipleri.
-        audit_notu'na asla HTML, <div>, <style> gibi tag yazmayacaksın."""
+        }
+        Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no, farklı yazı tipleri."""
 
                     ai_res    = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
                     print(f"Gemini yaniti: {ai_res.text[:200]}", flush=True)
-
-                    # Robust JSON parse — Gemini bazen açıklama metni ekleyebilir
-                    raw_text  = ai_res.text
-                    json_text = re.sub(r"```json?|```", "", raw_text).strip()
-                    # Sadece JSON objesini çıkar
-                    _m = re.search(r'\{.*\}', json_text, re.DOTALL)
-                    if _m:
-                        json_text = _m.group()
-                    try:
-                        fis = json.loads(json_text)
-                    except json.JSONDecodeError:
-                        # Son çare: Gemini'den tekrar iste
-                        print("JSON parse hatası, retry...", flush=True)
-                        retry_prompt = f"Sadece JSON döndür, başka hiçbir şey yazma:\n{prompt}"
-                        ai_res2   = client.models.generate_content(model=MODEL_NAME, contents=[retry_prompt, image])
-                        json_text2 = re.sub(r"```json?|```", "", ai_res2.text).strip()
-                        _m2 = re.search(r'\{.*\}', json_text2, re.DOTALL)
-                        fis = json.loads(_m2.group() if _m2 else json_text2)
-
-                    # ── Tarih doğrulama: gelecek tarih uyarısı ekle ama tarihi değiştirme
-                    fis_tarihi = fis.get("tarih", "")
-                    try:
-                        from datetime import datetime as _dt
-                        fis_dt = _dt.strptime(fis_tarihi, "%Y-%m-%d")
-                        bugun_dt = _dt.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                        if fis_dt > bugun_dt:
-                            # Gelecek tarih → risk artır ama tarihi koru
-                            fis["risk_skoru"] = min(100, int(fis.get("risk_skoru", 0)) + 30)
-                            fis.setdefault("risk_nedenleri", []).append("⚠️ Gelecek tarihli fiş")
-                            print(f"UYARI: Gelecek tarih tespit edildi: {fis_tarihi}", flush=True)
-                    except:
-                        pass
+                    json_text = re.sub(r"```json?|```", "", ai_res.text).strip()
+                    fis       = json.loads(json_text)
 
                     # Para birimi dönüşümü
                     tutar_try   = float(fis.get("toplam_tutar", 0))
@@ -806,14 +703,7 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                     fis["kategori"] = kategori
                     yorum = yaratici_yorum(fis, user_name, karakter)
 
-                    # Fişi kaydet — eksik key'leri güvenli ekle
-                    data.setdefault("fis_sayaci", {})
-                    data.setdefault("expenses", [])
-                    data.setdefault("duplicate_hashes", [])
-                    data.setdefault("anomaly_log", [])
-                    data.setdefault("xp", {})
-                    data.setdefault("notifications", [])
-                    data.setdefault("rozetler", {})
+                    # Fişi kaydet
                     data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
                     # Durum — dashboard ile uyumlu değerler
                     if sahtelik["sahte_mi"] or sahtelik["guvensizlik_skoru"] >= 70:
@@ -821,25 +711,9 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                     else:
                         durum = "Onay Bekliyor"
 
-                    # Görseli THUMBNAIL olarak sıkıştır → max 50KB, JSON bozulmasın
-                    import base64 as _b64mod
-                    try:
-                        _thumb_img = Image.open(BytesIO(raw_bytes)).convert("RGB")
-                        _thumb_img.thumbnail((400, 400), Image.LANCZOS)
-                        _thumb_buf = BytesIO()
-                        _thumb_img.save(_thumb_buf, format="JPEG", quality=55, optimize=True)
-                        _thumb_bytes = _thumb_buf.getvalue()
-                        gorsel_b64_str = _b64mod.b64encode(_thumb_bytes).decode("utf-8")
-                        gorsel_data_uri = f"data:image/jpeg;base64,{gorsel_b64_str}"
-                        print(f"Thumbnail boyutu: {len(_thumb_bytes)//1024}KB", flush=True)
-                    except Exception as _te:
-                        print(f"Thumbnail hatası: {_te}", flush=True)
-                        gorsel_data_uri = ""
-
                     new_expense = {
                         "ID"                 : datetime.now().strftime("%Y%m%d%H%M%S"),
                         "Tarih"              : fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
-                        "Yukleme_Zamani"     : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "Kullanıcı"          : user_name,
                         "Rol"                : user_info["rol"],
                         "Firma"              : fis.get("firma", "Bilinmiyor"),
@@ -847,55 +721,22 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         "KDV"                : float(fis.get("kdv_tutari", 0)),
                         "ParaBirimi"         : para_birimi,
                         "OdemeTipi"          : fis.get("odeme_yontemi", "bilinmiyor"),
-                        "Odeme_Turu"         : fis.get("odeme_yontemi", "bilinmiyor"),
                         "Kategori"           : kategori,
                         "Durum"              : durum,
                         "Risk_Skoru"         : sahtelik["guvensizlik_skoru"],
-                        "AI_Audit"           : re.sub(r'<[^>]+>', '', str(fis.get("audit_notu", ""))).strip(),
+                        "AI_Audit"           : fis.get("audit_notu", ""),
                         "AI_Anomali"         : fis.get("anomali", False),
                         "AI_Anomali_Aciklama": fis.get("anomali_aciklamasi", ""),
                         "Anomaliler"         : anomaliler,
                         "Hash"               : img_hash,
                         "Karakter"           : karakter,
                         "IlgincDetay"        : fis.get("ilginc_detay", ""),
+                        # Proje/Öncelik WhatsApp'tan girilmez; dashboard'dan güncellenebilir
                         "Proje"              : "Genel Merkez",
                         "Oncelik"            : "Normal",
                         "Notlar"             : "",
-                        "Kaynak"             : "WhatsApp",
                         "Dosya_Yolu"         : "",
-                        "Gorsel_B64"         : gorsel_data_uri,
                     }
-
-                    # ── Firma+Tutar+Tarih bazlı mükerrer fiş kontrolü (AI sonrası, kayıttan önce)
-                    firma_yeni = str(fis.get("firma", "")).strip().lower()
-                    tutar_yeni = float(fis.get("toplam_tutar", 0))
-                    tarih_yeni = fis.get("tarih", "")
-                    mukerrer_fis = None
-                    for e in data.get("expenses", []):
-                        firma_eski = str(e.get("Firma", "")).strip().lower()
-                        tutar_eski = float(e.get("Tutar", 0))
-                        tarih_eski = str(e.get("Tarih", ""))
-                        if (firma_eski == firma_yeni and
-                                abs(tutar_eski - tutar_yeni) < 1.0 and
-                                tarih_eski == tarih_yeni):
-                            mukerrer_fis = e
-                            break
-
-                    if mukerrer_fis:
-                        twilio_client.messages.create(
-                            body=(
-                                f"⚠️ *Mükerrer Fiş Tespit Edildi!*\n\n"
-                                f"Bu fişe ait kayıt sistemde zaten mevcut:\n"
-                                f"🏢 {mukerrer_fis.get('Firma','?')}\n"
-                                f"💰 ₺{float(mukerrer_fis.get('Tutar',0)):,.2f}\n"
-                                f"📅 {mukerrer_fis.get('Tarih','?')}\n"
-                                f"👤 {mukerrer_fis.get('Kullanıcı','?')} tarafından girilmiş\n\n"
-                                f"Aynı fişi tekrar gönderemezsiniz."
-                            ),
-                            from_="whatsapp:+14155238886",
-                            to=sender_phone
-                        )
-                        return
 
                     data["expenses"].append(new_expense)
                     data["duplicate_hashes"].append(img_hash)
@@ -916,22 +757,17 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
 
                     # Rozet kontrolü
                     yeni_rozetler = rozet_kontrol(user_name, data, new_expense)
+                    save_data(data)
+                    add_xp(user_name, 50, "WhatsApp fiş tarama")
 
-                    # XP ve bildirimler — save_data'dan ÖNCE, aynı data objesi üzerinde
-                    add_xp(user_name, 50, "WhatsApp fiş tarama", data=data)
-
-                    # Admin'lere dashboard bildirimi (aynı data objesi)
+                    # Admin'lere dashboard bildirimi gönder
                     for ukey, udata_info in PHONE_DIRECTORY.items():
-                        if udata_info.get("dashboard_rol") == "admin" and udata_info["ad"] != user_name:
+                        if udata_info.get("yetki") == "admin" and udata_info["ad"] != user_name:
                             add_notification(
                                 udata_info["ad"],
-                                f"📋 {user_name} → {new_expense['Proje']}: {new_expense['Firma']} ₺{tutar_try:,.0f}",
-                                "info",
-                                data=data
+                                f"📋 {user_name} → {proje}: {fis.get('firma','?')} ₺{tutar_try:,.0f}",
+                                "info"
                             )
-
-                    # Tek seferde kaydet — tüm değişiklikler (expenses, xp, notifications, rozetler)
-                    save_data(data)
 
                     # Yanıt oluştur
                     risk = sahtelik["guvensizlik_skoru"]
@@ -960,11 +796,8 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
 
                     seviye = seviye_hesapla(data["fis_sayaci"].get(user_name, 0))
 
-                    # Güncel kasa bakiyesi
-                    kasa_bakiye = data.get("wallets", {}).get(user_name, 0)
-
                     yanit = (
-                        f"✅ *FİŞ ALINDI — ONAYA GÖNDERİLDİ*\n"
+                        f"✅ *FİŞ ALINDI*\n"
                         f"{'─'*28}\n"
                         f"🏢 {fis.get('firma','?')}\n"
                         f"💰 {tutar_try:,.2f} ₺"
@@ -977,13 +810,11 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         + ilginc_str
                         + f"\n\n💬 *{karakter.upper()} YORUMU:*\n{yorum}"
                         + f"\n\n📊 Bütçe: {butce_durumu_str(user_name, data)}"
-                        + f"\n💳 Kasa Bakiyeniz: *{kasa_bakiye:,.0f} ₺*"
                         + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
                         + sahte_str
                         + anomali_str
                         + rozet_str
-                        + f"\n\n📨 Fişiniz yönetici onayına gönderildi."
-                        + f"\n🔖 `{new_expense['ID']}`"
+                        + f"\n\n🔖 `{new_expense['ID']}`"
                     )
                     twilio_client.messages.create(
                         body=yanit,
@@ -1007,12 +838,9 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                 )
 
         import threading
-        # DB yazma kilidi — iki eş zamanlı fiş birbirini ezmesin
-        if not hasattr(analiz_et_gonder, '_lock'):
-            analiz_et_gonder._lock = threading.Lock()
         t = threading.Thread(target=analiz_et_gonder, daemon=True)
         t.start()
-        msg.body("⏳ *Stinga Yapay Zeka* fişinizi analiz ediyor, lütfen bekleyin...")
+        msg.body("⏳ Fişiniz analiz ediliyor, lütfen bekleyin...")
         return str(resp)
 
     # ── VARSAYILAN
@@ -1055,60 +883,6 @@ def expenses_endpoint():
     """Tüm fişleri döner — Streamlit dashboard bu endpoint'i kullanır."""
     data = load_data()
     return jsonify({"expenses": data.get("expenses", [])}), 200
-
-
-@app.route("/add-expense", methods=['POST'])
-def add_expense_endpoint():
-    """
-    Streamlit dashboard'dan manuel fiş ekle.
-    Dashboard'un AI analizi yapıp buraya gönderdiği fişleri DB'ye yazar.
-    """
-    try:
-        new_e = request.get_json(force=True)
-        if not new_e:
-            return jsonify({"error": "Boş veri"}), 400
-
-        data = load_data()
-
-        # Zorunlu alanlar yoksa varsayılan ekle
-        if not new_e.get("ID"):
-            new_e["ID"] = datetime.now().strftime("%Y%m%d%H%M%S")
-        if not new_e.get("Tarih"):
-            new_e["Tarih"] = datetime.now().strftime("%Y-%m-%d")
-        if not new_e.get("Durum"):
-            new_e["Durum"] = "Onay Bekliyor"
-
-        # Mükerrer kontrolü
-        for e in data["expenses"]:
-            if (e.get("Firma") == new_e.get("Firma") and
-                abs(float(e.get("Tutar", 0)) - float(new_e.get("Tutar", 0))) < 1 and
-                e.get("Tarih") == new_e.get("Tarih")):
-                return jsonify({"error": "Mükerrer fiş", "duplicate": True}), 409
-
-        # AI_Audit içindeki HTML tag'larını temizle
-        if "AI_Audit" in new_e:
-            new_e["AI_Audit"] = re.sub(r'<[^>]+>', '', str(new_e["AI_Audit"])).strip()
-        data["expenses"].append(new_e)
-
-        # XP ekle
-        add_xp(new_e.get("Kullanıcı", ""), 50, "Dashboard fiş tarama", data=data)
-
-        # Admin bildirimi
-        for ukey, uinfo in PHONE_DIRECTORY.items():
-            if uinfo.get("dashboard_rol") == "admin" and uinfo["ad"] != new_e.get("Kullanıcı", ""):
-                add_notification(
-                    uinfo["ad"],
-                    f"📋 {new_e.get('Kullanıcı','?')} → {new_e.get('Proje','?')}: {new_e.get('Firma','?')} ₺{float(new_e.get('Tutar',0)):,.0f}",
-                    "info",
-                    data=data
-                )
-
-        save_data(data)
-        return jsonify({"ok": True, "ID": new_e["ID"]}), 200
-    except Exception as e:
-        import traceback
-        print(f"add-expense HATA: {traceback.format_exc()}", flush=True)
-        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/all-data", methods=['GET'])
@@ -1154,115 +928,6 @@ def haftalik_ozet():
         except Exception as e:
             print(f"Haftalık özet hatası ({user}): {e}", flush=True)
     return jsonify({"status": "ok", "gonderilen": len(PHONE_DIRECTORY)}), 200
-
-
-@app.route("/approve", methods=['POST'])
-def approve_endpoint():
-    """Dashboard onay/red işlemi. Body: {ID, action: 'approve'|'reject', approver}"""
-    try:
-        body     = request.get_json(force=True) or {}
-        fis_id   = str(body.get("ID", ""))
-        action   = body.get("action", "approve")
-        approver = body.get("approver", "admin")
-
-        if not fis_id:
-            return jsonify({"error": "ID gerekli"}), 400
-
-        data = load_data()
-        found = False
-        kullanici = ""
-        tutar = 0.0
-        firma = ""
-
-        for e in data.get("expenses", []):
-            if str(e.get("ID", "")) == fis_id:
-                found = True
-                kullanici = e.get("Kullanıcı", "")
-                tutar     = float(e.get("Tutar", 0))
-                firma     = e.get("Firma", "?")
-                if action == "approve":
-                    e["Durum"] = "Onaylandı"
-                    e["Onaylayan"] = approver
-                else:
-                    e["Durum"] = "Reddedildi"
-                    e["Reddeden"] = approver
-                break
-
-        if not found:
-            return jsonify({"error": "Fiş bulunamadı", "ID": fis_id}), 404
-
-        if action == "approve":
-            # Cüzdandan düş
-            mevcut = data.get("wallets", {}).get(kullanici, 0)
-            data.setdefault("wallets", {})[kullanici] = max(0, mevcut - tutar)
-            # XP ekle
-            add_xp(kullanici, 25, "Fiş onaylandı", data=data)
-            # Bildirim
-            add_notification(kullanici,
-                f"✅ {firma} (₺{tutar:,.0f}) onaylandı",
-                "success", data=data)
-        else:
-            add_notification(kullanici,
-                f"❌ {firma} harcamanız reddedildi",
-                "warning", data=data)
-
-        save_data(data)
-        print(f"Fiş {action}: ID={fis_id}, kullanıcı={kullanici}", flush=True)
-        return jsonify({"ok": True, "ID": fis_id, "action": action}), 200
-
-    except Exception as e:
-        import traceback
-        print(f"/approve HATA: {traceback.format_exc()}", flush=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/transfer", methods=['POST'])
-def transfer_endpoint():
-    """Dashboard harcırah transferi. Body: {hedef, miktar, aciklama, gonderen}"""
-    try:
-        body      = request.get_json(force=True) or {}
-        hedef     = body.get("hedef", "")
-        miktar    = float(body.get("miktar", 0))
-        aciklama  = body.get("aciklama", "Harcırah")
-        gonderen  = body.get("gonderen", "admin")
-
-        if not hedef or miktar <= 0:
-            return jsonify({"error": "Hedef ve miktar gerekli"}), 400
-
-        data = load_data()
-        data.setdefault("wallets", {})[hedef] = data["wallets"].get(hedef, 0) + miktar
-        data.setdefault("ledger", []).append({
-            "Tarih":  datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "Kaynak": gonderen,
-            "Hedef":  hedef,
-            "İşlem":  aciklama,
-            "Miktar": miktar
-        })
-        add_notification(hedef,
-            f"💰 Hesabınıza ₺{miktar:,.0f} transfer yapıldı. ({aciklama})",
-            "success", data=data)
-        add_xp(hedef, 10, "Transfer alındı", data=data)
-        save_data(data)
-        return jsonify({"ok": True, "hedef": hedef, "miktar": miktar}), 200
-
-    except Exception as e:
-        import traceback
-        print(f"/transfer HATA: {traceback.format_exc()}", flush=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/gorsel/<fis_id>", methods=['GET'])
-def gorsel_endpoint(fis_id):
-    """Fiş görselini döndür. Base64 data URI veya 404."""
-    data = load_data()
-    for e in data.get("expenses", []):
-        if str(e.get("ID", "")) == str(fis_id):
-            b64 = e.get("Gorsel_B64", "")
-            if b64:
-                return jsonify({"ok": True, "gorsel": b64}), 200
-            return jsonify({"ok": False, "error": "Görsel yok"}), 404
-    return jsonify({"ok": False, "error": "Fiş bulunamadı"}), 404
-
 
 
 if __name__ == "__main__":
