@@ -528,6 +528,173 @@ div[data-testid="stAppViewContainer"] > section > div {
 
 .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
 
+/* ══════════════════════════════════════════
+   PREMIUM SIDEBAR STYLES
+══════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+[data-testid="stSidebar"] {
+    background: linear-gradient(170deg, #0a0f1a 0%, #0d1520 50%, #091018 100%) !important;
+    border-right: 1px solid rgba(0,217,126,0.1) !important;
+}
+[data-testid="stSidebar"] > div:first-child {
+    padding: 0 !important;
+}
+[data-testid="stSidebar"] * {
+    color: inherit !important;
+}
+[data-testid="stSidebar"] .stRadio > div {
+    gap: 0 !important;
+}
+[data-testid="stSidebar"] .stRadio label {
+    display: flex !important;
+    align-items: center !important;
+    padding: 9px 14px !important;
+    border-radius: 10px !important;
+    margin: 1px 4px !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    color: rgba(200,220,210,0.65) !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    position: relative !important;
+}
+[data-testid="stSidebar"] .stRadio label:hover {
+    background: rgba(255,255,255,0.05) !important;
+    color: rgba(255,255,255,0.9) !important;
+    transform: translateX(4px) !important;
+    border-color: rgba(255,255,255,0.06) !important;
+}
+[data-testid="stSidebar"] .stRadio label[data-checked="true"],
+[data-testid="stSidebar"] .stRadio input:checked + div {
+    background: linear-gradient(90deg, rgba(0,217,126,0.14), rgba(0,217,126,0.05)) !important;
+    color: #00d97e !important;
+    border-color: rgba(0,217,126,0.25) !important;
+    font-weight: 700 !important;
+}
+[data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p {
+    font-family: 'Syne', sans-serif !important;
+}
+/* Hide default radio circles */
+[data-testid="stSidebar"] .stRadio input[type="radio"] {
+    display: none !important;
+}
+[data-testid="stSidebar"] .stRadio > div > label > div:first-child {
+    display: none !important;
+}
+
+/* Logo frame spin - border only, no hue-rotate */
+.slogo-ring {
+    display: inline-block;
+    padding: 3px;
+    border-radius: 50%;
+    background: conic-gradient(#00d97e 0deg, #283c64 120deg, #00d97e 240deg, #283c64 360deg);
+    animation: slogoRingSpin 10s linear infinite;
+    transition: transform 0.3s ease;
+}
+.slogo-ring:hover {
+    transform: scale(1.05);
+    animation-play-state: paused;
+}
+@keyframes slogoRingSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.slogo-inner-wrap {
+    background: #0d1520;
+    border-radius: 50%;
+    padding: 8px;
+    display: flex; align-items:center; justify-content:center;
+    width: 80px; height: 80px;
+}
+.slogo-inner-wrap img {
+    width: 62px; height: 62px; object-fit: contain;
+    border-radius: 50%;
+    background: #fff;
+}
+
+/* User card */
+.suser-wrap {
+    margin: 6px 12px 4px;
+    padding: 13px 14px;
+    background: linear-gradient(135deg, rgba(0,217,126,0.08), rgba(40,60,100,0.1));
+    border: 1px solid rgba(0,217,126,0.18);
+    border-radius: 14px;
+    transition: all 0.3s ease;
+}
+.suser-wrap:hover {
+    border-color: rgba(0,217,126,0.35);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(0,217,126,0.1);
+}
+.suser-row { display:flex; align-items:center; gap:10px; }
+.suser-ava {
+    width: 42px; height: 42px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, rgba(0,217,126,0.15), rgba(40,60,100,0.3));
+    border: 1px solid rgba(0,217,126,0.2);
+    display: flex; align-items:center; justify-content:center;
+    font-size: 1.4rem;
+    transition: transform 0.25s ease;
+}
+.suser-wrap:hover .suser-ava { transform: rotate(-4deg) scale(1.08); }
+.suser-name-txt { font-size:0.88rem; font-weight:700; color:#fff; letter-spacing:0.02em; }
+.suser-role-txt { font-family:'DM Mono',monospace; font-size:0.57rem; letter-spacing:0.14em; margin-top:2px; }
+.sxp-row { display:flex; justify-content:space-between; font-family:'DM Mono',monospace; font-size:0.57rem; color:rgba(255,255,255,0.35); margin:9px 0 4px; }
+.sxp-outer { height:3px; background:rgba(255,255,255,0.08); border-radius:99px; position:relative; }
+.sxp-inner { height:100%; border-radius:99px; background:linear-gradient(90deg,#00d97e,#00b868); position:relative; }
+.sxp-inner::after { content:''; position:absolute; right:-1px; top:50%; transform:translateY(-50%); width:7px; height:7px; background:#00d97e; border-radius:50%; box-shadow:0 0 7px #00d97e; }
+.suser-meta { display:flex; justify-content:space-between; margin-top:8px; font-family:'DM Mono',monospace; font-size:0.57rem; color:rgba(255,255,255,0.3); }
+
+/* Divider */
+.ssep { height:1px; background:linear-gradient(90deg,transparent,rgba(0,217,126,0.18),transparent); margin:4px 14px; }
+
+/* Notif badge */
+.snotif {
+    margin: 4px 12px;
+    padding: 9px 12px;
+    background: rgba(239,68,68,0.09);
+    border: 1px solid rgba(239,68,68,0.22);
+    border-radius: 9px;
+    display: flex; align-items:center; gap:8px;
+    animation: snotifPulse 2.5s ease-in-out infinite;
+}
+.snotif:hover { background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.38); }
+@keyframes snotifPulse {
+    0%,100% { box-shadow:0 0 0 0 rgba(239,68,68,0); }
+    50%      { box-shadow:0 0 0 4px rgba(239,68,68,0.07); }
+}
+.snotif-lbl { font-size:0.7rem; color:#fca5a5; font-weight:600; flex:1; }
+.snotif-num { background:#ef4444; color:#fff; font-size:0.58rem; font-weight:700; padding:2px 6px; border-radius:99px; font-family:'DM Mono',monospace; }
+
+/* Nav section header */
+.snav-hdr { font-family:'DM Mono',monospace; font-size:0.52rem; color:rgba(255,255,255,0.2); letter-spacing:0.18em; padding:6px 16px 3px; text-transform:uppercase; }
+
+/* Limit bar */
+.slimit-box {
+    margin: 4px 12px 8px;
+    padding: 11px 13px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    transition: all 0.25s;
+}
+.slimit-box:hover { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+.slimit-hdr { font-family:'DM Mono',monospace; font-size:0.54rem; color:rgba(255,255,255,0.28); letter-spacing:0.14em; text-transform:uppercase; margin-bottom:5px; }
+.slimit-row2 { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px; }
+.slimit-pct-txt { font-size:1.2rem; font-weight:800; font-family:'Syne',sans-serif; }
+.slimit-vals-txt { font-family:'DM Mono',monospace; font-size:0.56rem; color:rgba(255,255,255,0.25); }
+.slimit-track2 { height:4px; background:rgba(255,255,255,0.07); border-radius:99px; overflow:hidden; }
+
+/* Active dot blink */
+@keyframes sdotBlink {
+    0%,100% { opacity:1; }
+    50% { opacity:0.25; }
+}
+.sactive-dot { width:5px; height:5px; background:#00d97e; border-radius:50%; box-shadow:0 0 5px #00d97e; animation:sdotBlink 2s ease-in-out infinite; display:inline-block; margin-left:auto; }
+
 /* Upload zone */
 .upload-zone {
     border: 2px dashed var(--border);
@@ -1612,146 +1779,135 @@ else:
     
     # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
-        # Logo
         logo_b64 = get_logo_b64()
-        if logo_b64:
-            st.markdown(f"""
-            <div style="text-align:center; padding:24px 10px 10px 10px;">
-                <div class="sidebar-logo-wrap" style="display:inline-flex;">
-                    <img src="data:image/png;base64,{logo_b64}" 
-                         style="width:120px; height:120px; object-fit:contain; display:block;">
-                </div>
-                <div style="font-family:'Bebas Neue',sans-serif; font-size:1.2rem; 
-                            letter-spacing:4px; color:#ffffff; margin-top:12px;">
-                    STINGA PRO
-                </div>
-                <div style="font-size:0.65rem; color:rgba(255,255,255,0.5); 
-                            letter-spacing:2px; margin-top:3px;">
-                    STİNGA ENERJİ A.Ş.
-                </div>
-            </div>
-            <hr style="border-color:rgba(255,255,255,0.15); margin:10px 0;">
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="text-align:center; padding:16px 10px 8px 10px;">
-                <div style="font-family:'Bebas Neue',sans-serif; font-size:1.4rem; 
-                            letter-spacing:4px; color:#ffffff;">⚡ STINGA PRO</div>
-            </div>
-            """, unsafe_allow_html=True)
-        # User card
         user_xp = data_store.get("xp", {}).get(user_name, 0)
         level = user_xp // 500 + 1
         xp_progress = (user_xp % 500) / 500
-        
-        st.markdown(f"""
-        <div style="padding:16px; background:rgba(255,255,255,0.08); border-radius:16px; 
-                    border:1px solid rgba(255,255,255,0.15); margin-bottom:16px;">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div style="font-size:2.2rem;">{user_info['avatar']}</div>
-                <div>
-                    <div style="font-weight:700; font-size:1rem; color:#ffffff;">{user_name}</div>
-                    <div style="font-size:0.7rem; color:rgba(255,255,255,0.55); text-transform:uppercase; letter-spacing:1px;">
-                        {role.upper()} · Lv.{level}
-                    </div>
-                </div>
-            </div>
-            <div style="margin-top:12px;">
-                <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:rgba(255,255,255,0.45); margin-bottom:4px;">
-                    <span>XP: {user_xp}</span><span>Sonraki: {(level)*500} XP</span>
-                </div>
-                <div style="background:rgba(255,255,255,0.15); border-radius:8px; height:6px; overflow:hidden;">
-                    <div style="width:{xp_progress*100:.0f}%; height:100%; border-radius:8px;
-                                background:linear-gradient(90deg,#007850,#00b878);"></div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Notifications badge
-        my_notifs = [n for n in data_store.get("notifications", []) 
+        my_notifs = [n for n in data_store.get("notifications", [])
                      if (n["user"] == user_name or n["user"] == "Hepsi") and not n.get("read", False)]
         notif_count = len(my_notifs)
-        
-        if notif_count > 0:
-            st.markdown(f"""
-            <div style="background:rgba(220,38,38,0.2); border:1px solid rgba(220,38,38,0.4); 
-                        border-radius:10px; padding:10px 14px; margin-bottom:12px; cursor:pointer;">
-                <span style="color:#ff6b6b; font-weight:700; font-size:0.8rem;">🔔 {notif_count} yeni bildirim</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            with st.expander("Bildirimleri Gör"):
-                for n in reversed(my_notifs[-5:]):
-                    icon = {"xp": "🏆", "info": "ℹ️", "warning": "⚠️", "success": "✅"}.get(n.get("type", "info"), "📌")
-                    st.markdown(f"""
-                    <div class="feed-item">
-                        <div style="color:var(--accent-blue); font-size:1rem;">{icon}</div>
-                        <div>
-                            <div style="font-size:0.8rem; color:var(--text-primary);">{n['msg']}</div>
-                            <div style="font-size:0.7rem; color:var(--text-muted);">{n.get('date','')} {n['time']}</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Navigation
-        # Admin → tüm sayfalar; user → Onay Merkezi yok
-        if role == "admin":
-            pages = [
-                ("🏠 Dashboard",        ""),
-                ("📑 Fiş Tarama",       ""),
-                ("💰 Finans & Kasa",    ""),
-                ("⚖️ Onay Merkezi",     ""),
-                ("🔬 Anomali Dedektörü",""),
-                ("📊 Analitik Merkezi", ""),
-                ("🤖 AI Asistan",       ""),
-                ("🏆 Leaderboard",      ""),
-                ("🗄️ Arşiv & Rapor",   "")
-            ]
-        else:
-            pages = [
-                ("🏠 Dashboard",        ""),
-                ("📑 Fiş Tarama",       ""),
-                ("💰 Finans & Kasa",    ""),
-                ("🤖 AI Asistan",       ""),
-                ("🏆 Leaderboard",      ""),
-                ("🗄️ Arşiv & Rapor",   "")
-            ]
-        
-        selected = st.radio("", [p[0] for p in pages], 
-                           index=[p[0] for p in pages].index(st.session_state.selected_page) 
-                           if st.session_state.selected_page in [p[0] for p in pages] else 0,
-                           label_visibility="collapsed")
-        st.session_state.selected_page = selected
-        
-        st.markdown("---")
-        
-        # Mini stats
+
         if not df_full.empty and 'Tutar' in df_full.columns:
             my_total = df_full[df_full['Kullanıcı'] == user_name]['Tutar'].sum() if 'Kullanıcı' in df_full.columns else 0
             monthly_limit = user_info.get('monthly_limit', 15000)
             usage_pct = min(my_total / monthly_limit * 100, 100) if monthly_limit > 0 else 0
-            color = "#00e090" if usage_pct < 60 else ("#ffcc55" if usage_pct < 85 else "#ff6b6b")
-            
-            st.markdown(f"""
-            <div style="padding:12px; background:rgba(255,255,255,0.08); border-radius:10px; border:1px solid rgba(255,255,255,0.15);">
-                <div style="font-size:0.7rem; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
-                    Aylık Limit Kullanımı
-                </div>
-                <div style="font-size:1.4rem; font-weight:700; color:{color};">{usage_pct:.0f}%</div>
-                <div style="background:rgba(255,255,255,0.15); border-radius:8px; height:6px; overflow:hidden; margin-top:6px;">
-                    <div style="width:{usage_pct:.0f}%; height:100%; border-radius:8px; background:{color};"></div>
-                </div>
-                <div style="font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:4px;">
-                    {my_total:,.0f} / {monthly_limit:,.0f} ₺
+        else:
+            my_total = 0
+            monthly_limit = user_info.get('monthly_limit', 15000)
+            usage_pct = 0
+        usage_color = "#00d97e" if usage_pct < 60 else ("#f59e0b" if usage_pct < 85 else "#ef4444")
+        role_labels = {"admin": "YÖNETİCİ", "user": "PERSONEL"}
+        role_colors = {"admin": "#00d97e", "user": "#60a5fa"}
+        role_label = role_labels.get(role, role.upper())
+        role_color = role_colors.get(role, "#60a5fa")
+
+        # ── 1. LOGO
+        logo_img_html = f'<img src="data:image/png;base64,{logo_b64}">' if logo_b64 else '<span style="font-size:2rem;">⚡</span>'
+        st.markdown(f"""
+        <div style="text-align:center; padding:24px 10px 8px;">
+            <div class="slogo-ring" style="display:inline-block;">
+                <div class="slogo-inner-wrap">{logo_img_html}</div>
+            </div>
+            <div style="font-family:'Syne',sans-serif; font-size:0.95rem; font-weight:800;
+                        letter-spacing:0.32em; color:#fff; margin-top:10px; text-transform:uppercase;">
+                Stinga Pro
+            </div>
+            <div style="font-family:'DM Mono',monospace; font-size:0.54rem; color:rgba(255,255,255,0.3);
+                        letter-spacing:0.18em; margin-top:3px;">
+                STİNGA ENERJİ A.Ş.
+            </div>
+        </div>
+        <div class="ssep"></div>
+        """, unsafe_allow_html=True)
+
+        # ── 2. USER CARD
+        st.markdown(f"""
+        <div class="suser-wrap">
+            <div class="suser-row">
+                <div class="suser-ava">{user_info['avatar']}</div>
+                <div>
+                    <div class="suser-name-txt">{user_name}</div>
+                    <div class="suser-role-txt" style="color:{role_color};">{role_label} · LV.{level}</div>
                 </div>
             </div>
+            <div class="sxp-row">
+                <span>⚡ {user_xp} XP</span>
+                <span>→ {level * 500} XP</span>
+            </div>
+            <div class="sxp-outer">
+                <div class="sxp-inner" style="width:{xp_progress*100:.1f}%;"></div>
+            </div>
+            <div class="suser-meta">
+                <span>{user_info.get('department','—')}</span>
+                <span style="color:{usage_color}; font-weight:700;">%{usage_pct:.0f} limit</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── 3. NOTIFICATION
+        if notif_count > 0:
+            st.markdown(f"""
+            <div class="snotif">
+                <span>🔔</span>
+                <span class="snotif-lbl">{notif_count} yeni bildirim</span>
+                <span class="snotif-num">{notif_count}</span>
+            </div>
             """, unsafe_allow_html=True)
-        
+            with st.expander("Bildirimleri Gör"):
+                for n in reversed(my_notifs[-5:]):
+                    icon = {"xp": "🏆", "info": "ℹ️", "warning": "⚠️", "success": "✅"}.get(n.get("type", "info"), "📌")
+                    st.markdown(f"""
+                    <div style="padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.06);
+                                display:flex; gap:9px; align-items:flex-start;">
+                        <span>{icon}</span>
+                        <div>
+                            <div style="font-size:0.77rem; color:rgba(255,255,255,0.7);">{n['msg']}</div>
+                            <div style="font-size:0.63rem; color:rgba(255,255,255,0.28); font-family:'DM Mono',monospace; margin-top:1px;">{n.get('date','')} {n['time']}</div>
+                        </div>
+                    </div>""", unsafe_allow_html=True)
+
+        # ── 4. SEPARATOR + NAV HEADER
+        st.markdown('<div class="ssep" style="margin-top:6px;"></div><div class="snav-hdr">Navigasyon</div>', unsafe_allow_html=True)
+
+        # ── 5. NAVIGATION (native Streamlit radio — styled via CSS)
+        if role == "admin":
+            pages_keys = [
+                "🏠 Dashboard", "📑 Fiş Tarama", "💰 Finans & Kasa",
+                "⚖️ Onay Merkezi", "🔬 Anomali Dedektörü", "📊 Analitik Merkezi",
+                "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor"
+            ]
+        else:
+            pages_keys = [
+                "🏠 Dashboard", "📑 Fiş Tarama", "💰 Finans & Kasa",
+                "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor"
+            ]
+
+        selected = st.radio("", pages_keys,
+                           index=pages_keys.index(st.session_state.selected_page)
+                           if st.session_state.selected_page in pages_keys else 0,
+                           label_visibility="collapsed")
+        st.session_state.selected_page = selected
+
+        # ── 6. LIMIT BAR
+        st.markdown(f"""
+        <div class="ssep" style="margin-bottom:6px;"></div>
+        <div class="slimit-box">
+            <div class="slimit-hdr">Aylık Limit Kullanımı</div>
+            <div class="slimit-row2">
+                <span class="slimit-pct-txt" style="color:{usage_color};">{usage_pct:.0f}%</span>
+                <span class="slimit-vals-txt">{my_total:,.0f} / {monthly_limit:,.0f} ₺</span>
+            </div>
+            <div class="slimit-track2">
+                <div style="height:100%; width:{usage_pct:.0f}%; background:{usage_color};
+                            box-shadow:0 0 7px {usage_color}88; border-radius:99px;
+                            transition:width 1s ease;"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── 7. LOGOUT
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🚪 Çıkış", use_container_width=True):
+        if st.button("⏻  Oturumu Kapat", use_container_width=True):
             logout()
 
     # ══════════════════════════════════════════════════════════
@@ -1769,20 +1925,16 @@ else:
         my_wallet      = data_store['wallets'].get(user_name, 0)
         total_tx       = len(_kpi_df) if not _kpi_df.empty else 0
         avg_risk       = _kpi_df['Risk_Skoru'].mean() if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
-        # KDV ayrı hesapla
-        total_kdv      = _kpi_df['KDV'].sum() if not _kpi_df.empty and 'KDV' in _kpi_df.columns else 0
-        total_kdvsiz   = _kpi_df['Tutar_KDVsiz'].sum() if not _kpi_df.empty and 'Tutar_KDVsiz' in _kpi_df.columns else (total_approved - total_kdv)
         
-        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
         
         metrics = [
-            (c1, "KDV Dahil", f"₺{total_approved:,.0f}", "✓", "#007850"),
-            (c2, "KDV Hariç", f"₺{(total_approved - total_kdv):,.0f}", "📋", "#1a9e6e"),
-            (c3, "Toplam KDV", f"₺{total_kdv:,.0f}", "🧾", "#2d4a8a"),
-            (c4, "Onay Bekleyen", f"₺{total_pending:,.0f}", "⏳", "#d97706"),
-            (c5, "Kritik Risk", str(crit_risks), "⛔", "#dc2626"),
-            (c6, "Kasa Bakiye", f"₺{my_wallet:,.0f}", "💰", "#007850"),
-            (c7, "Ort. Risk %", f"{avg_risk:.0f}", "🎯", "#ea6c1e"),
+            (c1, "Onaylı Harcama", f"₺{total_approved:,.0f}", "✓", "#007850"),
+            (c2, "Onay Bekleyen", f"₺{total_pending:,.0f}", "⏳", "#d97706"),
+            (c3, "Kritik Risk", str(crit_risks), "⛔", "#dc2626"),
+            (c4, "Kasa Bakiye", f"₺{my_wallet:,.0f}", "💰", "#007850"),
+            (c5, "Toplam İşlem", str(total_tx), "📊", "#283c64"),
+            (c6, "Ort. Risk %", f"{avg_risk:.0f}", "🎯", "#ea6c1e"),
         ]
         
         for col, label, value, icon, color in metrics:
@@ -2263,8 +2415,14 @@ else:
                             if dosya and os.path.exists(str(dosya)):
                                 st.image(str(dosya), caption="Orijinal Fiş", use_container_width=True)
                             elif b64_uri:
-                                st.markdown(f'<img src="{b64_uri}" style="width:100%;border-radius:10px;" alt="Fiş">', unsafe_allow_html=True)
-                                st.caption("📱 WhatsApp'tan gönderildi")
+                                try:
+                                    header, b64_data = b64_uri.split(",", 1) if "," in b64_uri else ("", b64_uri)
+                                    img_bytes = base64.b64decode(b64_data)
+                                    st.image(img_bytes, caption="📱 WhatsApp'tan gönderildi", use_container_width=True)
+                                except Exception:
+                                    st.markdown("""<div style="height:150px;background:var(--bg-secondary);border-radius:10px;
+                                        display:flex;align-items:center;justify-content:center;color:var(--text-muted);">📷 Görsel Yüklenemedi</div>""",
+                                        unsafe_allow_html=True)
                             else:
                                 st.markdown("""<div style="height:150px;background:var(--bg-secondary);border-radius:10px;
                                     display:flex;align-items:center;justify-content:center;color:var(--text-muted);">📷 Görsel Yok</div>""",
@@ -2444,11 +2602,17 @@ else:
                             if dosya and os.path.exists(dosya):
                                 st.image(dosya, caption="Orijinal Fiş", use_container_width=True)
                             elif b64_uri:
-                                st.markdown(
-                                    f'<img src="{b64_uri}" style="width:100%; border-radius:10px; "'                                    f'alt="Fiş Görseli">',
-                                    unsafe_allow_html=True
-                                )
-                                st.caption("📱 WhatsApp'tan gönderilen fiş")
+                                try:
+                                    header, b64_data = b64_uri.split(",", 1) if "," in b64_uri else ("", b64_uri)
+                                    img_bytes = base64.b64decode(b64_data)
+                                    st.image(img_bytes, caption="📱 WhatsApp'tan gönderilen fiş", use_container_width=True)
+                                except Exception:
+                                    st.markdown("""
+                                    <div style="height:150px; background:var(--bg-secondary); border-radius:10px; 
+                                                display:flex; align-items:center; justify-content:center; color:var(--text-muted);">
+                                        📷 Görsel Yüklenemedi
+                                    </div>
+                                    """, unsafe_allow_html=True)
                             else:
                                 st.markdown("""
                                 <div style="height:150px; background:var(--bg-secondary); border-radius:10px; 
@@ -2586,8 +2750,6 @@ else:
                 # Monthly trend
                 monthly = df_temp.groupby(df_temp['dt'].dt.strftime('%Y-%m')).agg(
                     Toplam=('Tutar', 'sum'),
-                    KDV_Toplam=('KDV', 'sum') if 'KDV' in df.columns else ('Tutar', 'count'),
-                    KDV_Hariç=('Tutar_KDVsiz', 'sum') if 'Tutar_KDVsiz' in df.columns else ('Tutar', 'sum'),
                     Adet=('Tutar', 'count'),
                     OrtRisk=('Risk_Skoru', 'mean')
                 ).reset_index()
@@ -2972,11 +3134,19 @@ else:
                         if dosya and os.path.exists(dosya):
                             st.image(dosya, caption=f"Orijinal Fiş — {islem_id}", use_container_width=True)
                         elif b64_uri:
-                            st.markdown(
-                                f'<img src="{b64_uri}" style="width:100%; border-radius:12px;" '                                f'alt="Fiş Görseli">',
-                                unsafe_allow_html=True
-                            )
-                            st.caption(f"📱 WhatsApp Fişi — {islem_id}")
+                            try:
+                                header, b64_data = b64_uri.split(",", 1) if "," in b64_uri else ("", b64_uri)
+                                img_bytes = base64.b64decode(b64_data)
+                                st.image(img_bytes, caption=f"📱 WhatsApp Fişi — {islem_id}", use_container_width=True)
+                            except Exception:
+                                st.markdown(f"""
+                                <div style="height:300px; background:var(--bg-secondary); border-radius:16px; 
+                                            display:flex; flex-direction:column; align-items:center; justify-content:center;
+                                            color:var(--text-muted); border:2px dashed var(--border);">
+                                    <div style="font-size:3rem; opacity:0.3;">📷</div>
+                                    <div style="font-size:0.85rem; margin-top:8px;">Görsel yüklenemedi</div>
+                                </div>
+                                """, unsafe_allow_html=True)
                         else:
                             st.markdown(f"""
                             <div style="height:300px; background:var(--bg-secondary); border-radius:16px; 
