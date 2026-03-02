@@ -707,25 +707,33 @@ def whatsapp_webhook():
                     print("Gemini cagiriliyor...", flush=True)
 
                     # ── GEMINI: Ultra detaylı analiz promptu
-                    prompt = """Sen hem mali denetçi hem adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür:
-        {
+                    bugun = datetime.now().strftime("%Y-%m-%d")
+                    prompt = f"""Sen hem mali denetçi hem adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür.
+
+ÖNEMLİ: Bugünün tarihi {bugun}. Fişin tarihi bu tarihten ÖNCE veya bugün olmalıdır.
+Fişte yazan tarihi olduğu gibi oku (DD-MM-YYYY veya DD/MM/YYYY formatını YYYY-MM-DD'ye çevir).
+Tarih {bugun}'den sonraysa risk_skoru'nu artır ama tarihi yine de fişten okuduğun gibi yaz.
+Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
+
+        {{
           "firma": "Firma adı",
           "tarih": "YYYY-MM-DD",
           "toplam_tutar": 0.0,
           "kdv_tutari": 0.0,
           "odeme_yontemi": "nakit|kredi_karti|havale",
-          "kalemler": [{"aciklama": "...", "tutar": 0.0}],
+          "kalemler": [{{"aciklama": "...", "tutar": 0.0}}],
           "para_birimi": "TRY",
           "risk_skoru": 0,
           "risk_nedenleri": ["neden1", "neden2"],
-          "audit_notu": "kısa özet",
+          "audit_notu": "1 cümle kısa mali özet — HTML TAG KULLANMA, düz metin yaz",
           "sahte_mi": false,
           "sahtelik_nedeni": "",
           "gorsel_kalitesi": "iyi|orta|kotu",
           "fis_turu": "restoran|market|akaryakıt|otel|diger",
           "ilginc_detay": "fişte dikkat çeken garip veya ilginç bir şey"
-        }
-        Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no, farklı yazı tipleri."""
+        }}
+        Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no, farklı yazı tipleri.
+        audit_notu'na asla HTML, <div>, <style> gibi tag yazmayacaksın."""
 
                     ai_res    = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
                     print(f"Gemini yaniti: {ai_res.text[:200]}", flush=True)
@@ -747,6 +755,20 @@ def whatsapp_webhook():
                         json_text2 = re.sub(r"```json?|```", "", ai_res2.text).strip()
                         _m2 = re.search(r'\{.*\}', json_text2, re.DOTALL)
                         fis = json.loads(_m2.group() if _m2 else json_text2)
+
+                    # ── Tarih doğrulama: gelecek tarih uyarısı ekle ama tarihi değiştirme
+                    fis_tarihi = fis.get("tarih", "")
+                    try:
+                        from datetime import datetime as _dt
+                        fis_dt = _dt.strptime(fis_tarihi, "%Y-%m-%d")
+                        bugun_dt = _dt.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                        if fis_dt > bugun_dt:
+                            # Gelecek tarih → risk artır ama tarihi koru
+                            fis["risk_skoru"] = min(100, int(fis.get("risk_skoru", 0)) + 30)
+                            fis.setdefault("risk_nedenleri", []).append("⚠️ Gelecek tarihli fiş")
+                            print(f"UYARI: Gelecek tarih tespit edildi: {fis_tarihi}", flush=True)
+                    except:
+                        pass
 
                     # Para birimi dönüşümü
                     tutar_try   = float(fis.get("toplam_tutar", 0))
@@ -821,7 +843,7 @@ def whatsapp_webhook():
                         "Kategori"           : kategori,
                         "Durum"              : durum,
                         "Risk_Skoru"         : sahtelik["guvensizlik_skoru"],
-                        "AI_Audit"           : fis.get("audit_notu", ""),
+                        "AI_Audit"           : re.sub(r'<[^>]+>', '', str(fis.get("audit_notu", ""))).strip(),
                         "AI_Anomali"         : fis.get("anomali", False),
                         "AI_Anomali_Aciklama": fis.get("anomali_aciklamasi", ""),
                         "Anomaliler"         : anomaliler,
@@ -1019,6 +1041,9 @@ def add_expense_endpoint():
                 e.get("Tarih") == new_e.get("Tarih")):
                 return jsonify({"error": "Mükerrer fiş", "duplicate": True}), 409
 
+        # AI_Audit içindeki HTML tag'larını temizle
+        if "AI_Audit" in new_e:
+            new_e["AI_Audit"] = re.sub(r'<[^>]+>', '', str(new_e["AI_Audit"])).strip()
         data["expenses"].append(new_e)
 
         # XP ekle

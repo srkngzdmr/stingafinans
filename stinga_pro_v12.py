@@ -1065,6 +1065,22 @@ def apply_business_rules(data_ai, data_store, user_name):
     return data_ai
 
 
+import re as _re
+import html as _html
+
+def clean_audit(text: str) -> str:
+    """AI_Audit metnindeki HTML tag'larını kaldır, tırnak işaretlerini escape et."""
+    if not text:
+        return "Analiz tamamlandı."
+    # HTML tag'larını kaldır
+    text = _re.sub(r'<[^>]+>', '', str(text))
+    # Birden fazla boşluğu tek boşluğa indir
+    text = _re.sub(r'\s+', ' ', text).strip()
+    # HTML escape (tırnak sorununu önler)
+    text = _html.escape(text, quote=False)
+    return text if text else "Analiz tamamlandı."
+
+
 def detect_anomalies(df, model=None):
     """DataFrame üzerinde kural tabanlı anomali tespiti."""
     if df is None or df.empty or len(df) < 2:
@@ -2144,7 +2160,7 @@ else:
                                 <div style="font-weight:600; font-size:0.9rem; color:var(--text-primary);">{row.get('Firma','?')}</div>
                                 <div style="font-size:0.75rem; color:var(--text-muted); margin:2px 0;">{row.get('Tarih','?')} · {row.get('Proje','?')}</div>
                                 <div style="font-size:0.7rem; color:var(--text-secondary); margin-top:4px; font-style:italic;">
-                                    {str(row.get('AI_Audit',''))[:80]}{'...' if len(str(row.get('AI_Audit',''))) > 80 else ''}
+                                    {clean_audit(row.get('AI_Audit',''))[:80]}{'...' if len(clean_audit(row.get('AI_Audit',''))) > 80 else ''}
                                 </div>
                             </div>
                             <div style="text-align:right; margin-left:12px;">
@@ -2209,7 +2225,7 @@ else:
                                         {get_status_html(row.get('Durum','?'))}
                                     </div>
                                 </div>
-                                <div class="ai-bubble">🤖 {row.get('AI_Audit','Analiz mevcut değil.')}</div>
+                                <div class="ai-bubble">🤖 {clean_audit(row.get('AI_Audit',''))}</div>
                                 {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
                                     Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','Normal')} · Ödeme: {row.get('Odeme_Turu', row.get('OdemeTipi','?'))}
@@ -2392,7 +2408,7 @@ else:
                                     </div>
                                 </div>
                                 <div class="ai-bubble">
-                                    🤖 {row.get('AI_Audit','')}
+                                    🤖 {clean_audit(row.get('AI_Audit',''))}
                                 </div>
                                 {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
@@ -2939,7 +2955,7 @@ else:
                                 <div><span style="color:var(--text-muted); font-size:0.75rem;">RİSK</span><br>{get_risk_html(satir.get('Risk_Skoru',0))}</div>
                             </div>
                             <div class="ai-bubble" style="margin-top:16px;">
-                                {satir.get('AI_Audit','Analiz mevcut değil.')}
+                                {clean_audit(satir.get('AI_Audit',''))}
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
