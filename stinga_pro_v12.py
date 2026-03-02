@@ -528,6 +528,173 @@ div[data-testid="stAppViewContainer"] > section > div {
 
 .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
 
+/* ══════════════════════════════════════════
+   PREMIUM SIDEBAR STYLES
+══════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+[data-testid="stSidebar"] {
+    background: linear-gradient(170deg, #0a0f1a 0%, #0d1520 50%, #091018 100%) !important;
+    border-right: 1px solid rgba(0,217,126,0.1) !important;
+}
+[data-testid="stSidebar"] > div:first-child {
+    padding: 0 !important;
+}
+[data-testid="stSidebar"] * {
+    color: inherit !important;
+}
+[data-testid="stSidebar"] .stRadio > div {
+    gap: 0 !important;
+}
+[data-testid="stSidebar"] .stRadio label {
+    display: flex !important;
+    align-items: center !important;
+    padding: 9px 14px !important;
+    border-radius: 10px !important;
+    margin: 1px 4px !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    color: rgba(200,220,210,0.65) !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    position: relative !important;
+}
+[data-testid="stSidebar"] .stRadio label:hover {
+    background: rgba(255,255,255,0.05) !important;
+    color: rgba(255,255,255,0.9) !important;
+    transform: translateX(4px) !important;
+    border-color: rgba(255,255,255,0.06) !important;
+}
+[data-testid="stSidebar"] .stRadio label[data-checked="true"],
+[data-testid="stSidebar"] .stRadio input:checked + div {
+    background: linear-gradient(90deg, rgba(0,217,126,0.14), rgba(0,217,126,0.05)) !important;
+    color: #00d97e !important;
+    border-color: rgba(0,217,126,0.25) !important;
+    font-weight: 700 !important;
+}
+[data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p {
+    font-family: 'Syne', sans-serif !important;
+}
+/* Hide default radio circles */
+[data-testid="stSidebar"] .stRadio input[type="radio"] {
+    display: none !important;
+}
+[data-testid="stSidebar"] .stRadio > div > label > div:first-child {
+    display: none !important;
+}
+
+/* Logo frame spin - border only, no hue-rotate */
+.slogo-ring {
+    display: inline-block;
+    padding: 3px;
+    border-radius: 50%;
+    background: conic-gradient(#00d97e 0deg, #283c64 120deg, #00d97e 240deg, #283c64 360deg);
+    animation: slogoRingSpin 10s linear infinite;
+    transition: transform 0.3s ease;
+}
+.slogo-ring:hover {
+    transform: scale(1.05);
+    animation-play-state: paused;
+}
+@keyframes slogoRingSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.slogo-inner-wrap {
+    background: #0d1520;
+    border-radius: 50%;
+    padding: 8px;
+    display: flex; align-items:center; justify-content:center;
+    width: 80px; height: 80px;
+}
+.slogo-inner-wrap img {
+    width: 62px; height: 62px; object-fit: contain;
+    border-radius: 50%;
+    background: #fff;
+}
+
+/* User card */
+.suser-wrap {
+    margin: 6px 12px 4px;
+    padding: 13px 14px;
+    background: linear-gradient(135deg, rgba(0,217,126,0.08), rgba(40,60,100,0.1));
+    border: 1px solid rgba(0,217,126,0.18);
+    border-radius: 14px;
+    transition: all 0.3s ease;
+}
+.suser-wrap:hover {
+    border-color: rgba(0,217,126,0.35);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(0,217,126,0.1);
+}
+.suser-row { display:flex; align-items:center; gap:10px; }
+.suser-ava {
+    width: 42px; height: 42px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, rgba(0,217,126,0.15), rgba(40,60,100,0.3));
+    border: 1px solid rgba(0,217,126,0.2);
+    display: flex; align-items:center; justify-content:center;
+    font-size: 1.4rem;
+    transition: transform 0.25s ease;
+}
+.suser-wrap:hover .suser-ava { transform: rotate(-4deg) scale(1.08); }
+.suser-name-txt { font-size:0.88rem; font-weight:700; color:#fff; letter-spacing:0.02em; }
+.suser-role-txt { font-family:'DM Mono',monospace; font-size:0.57rem; letter-spacing:0.14em; margin-top:2px; }
+.sxp-row { display:flex; justify-content:space-between; font-family:'DM Mono',monospace; font-size:0.57rem; color:rgba(255,255,255,0.35); margin:9px 0 4px; }
+.sxp-outer { height:3px; background:rgba(255,255,255,0.08); border-radius:99px; position:relative; }
+.sxp-inner { height:100%; border-radius:99px; background:linear-gradient(90deg,#00d97e,#00b868); position:relative; }
+.sxp-inner::after { content:''; position:absolute; right:-1px; top:50%; transform:translateY(-50%); width:7px; height:7px; background:#00d97e; border-radius:50%; box-shadow:0 0 7px #00d97e; }
+.suser-meta { display:flex; justify-content:space-between; margin-top:8px; font-family:'DM Mono',monospace; font-size:0.57rem; color:rgba(255,255,255,0.3); }
+
+/* Divider */
+.ssep { height:1px; background:linear-gradient(90deg,transparent,rgba(0,217,126,0.18),transparent); margin:4px 14px; }
+
+/* Notif badge */
+.snotif {
+    margin: 4px 12px;
+    padding: 9px 12px;
+    background: rgba(239,68,68,0.09);
+    border: 1px solid rgba(239,68,68,0.22);
+    border-radius: 9px;
+    display: flex; align-items:center; gap:8px;
+    animation: snotifPulse 2.5s ease-in-out infinite;
+}
+.snotif:hover { background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.38); }
+@keyframes snotifPulse {
+    0%,100% { box-shadow:0 0 0 0 rgba(239,68,68,0); }
+    50%      { box-shadow:0 0 0 4px rgba(239,68,68,0.07); }
+}
+.snotif-lbl { font-size:0.7rem; color:#fca5a5; font-weight:600; flex:1; }
+.snotif-num { background:#ef4444; color:#fff; font-size:0.58rem; font-weight:700; padding:2px 6px; border-radius:99px; font-family:'DM Mono',monospace; }
+
+/* Nav section header */
+.snav-hdr { font-family:'DM Mono',monospace; font-size:0.52rem; color:rgba(255,255,255,0.2); letter-spacing:0.18em; padding:6px 16px 3px; text-transform:uppercase; }
+
+/* Limit bar */
+.slimit-box {
+    margin: 4px 12px 8px;
+    padding: 11px 13px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    transition: all 0.25s;
+}
+.slimit-box:hover { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+.slimit-hdr { font-family:'DM Mono',monospace; font-size:0.54rem; color:rgba(255,255,255,0.28); letter-spacing:0.14em; text-transform:uppercase; margin-bottom:5px; }
+.slimit-row2 { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px; }
+.slimit-pct-txt { font-size:1.2rem; font-weight:800; font-family:'Syne',sans-serif; }
+.slimit-vals-txt { font-family:'DM Mono',monospace; font-size:0.56rem; color:rgba(255,255,255,0.25); }
+.slimit-track2 { height:4px; background:rgba(255,255,255,0.07); border-radius:99px; overflow:hidden; }
+
+/* Active dot blink */
+@keyframes sdotBlink {
+    0%,100% { opacity:1; }
+    50% { opacity:0.25; }
+}
+.sactive-dot { width:5px; height:5px; background:#00d97e; border-radius:50%; box-shadow:0 0 5px #00d97e; animation:sdotBlink 2s ease-in-out infinite; display:inline-block; margin-left:auto; }
+
 /* Upload zone */
 .upload-zone {
     border: 2px dashed var(--border);
@@ -1616,7 +1783,7 @@ else:
         user_xp = data_store.get("xp", {}).get(user_name, 0)
         level = user_xp // 500 + 1
         xp_progress = (user_xp % 500) / 500
-        my_notifs = [n for n in data_store.get("notifications", []) 
+        my_notifs = [n for n in data_store.get("notifications", [])
                      if (n["user"] == user_name or n["user"] == "Hepsi") and not n.get("read", False)]
         notif_count = len(my_notifs)
 
@@ -1624,551 +1791,122 @@ else:
             my_total = df_full[df_full['Kullanıcı'] == user_name]['Tutar'].sum() if 'Kullanıcı' in df_full.columns else 0
             monthly_limit = user_info.get('monthly_limit', 15000)
             usage_pct = min(my_total / monthly_limit * 100, 100) if monthly_limit > 0 else 0
-            usage_color = "#00d97e" if usage_pct < 60 else ("#f59e0b" if usage_pct < 85 else "#ef4444")
         else:
             my_total = 0
             monthly_limit = user_info.get('monthly_limit', 15000)
             usage_pct = 0
-            usage_color = "#00d97e"
-
+        usage_color = "#00d97e" if usage_pct < 60 else ("#f59e0b" if usage_pct < 85 else "#ef4444")
         role_labels = {"admin": "YÖNETİCİ", "user": "PERSONEL"}
         role_colors = {"admin": "#00d97e", "user": "#60a5fa"}
         role_label = role_labels.get(role, role.upper())
         role_color = role_colors.get(role, "#60a5fa")
 
-        logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="width:72px;height:72px;object-fit:contain;">' if logo_b64 else '<div style="font-size:2.5rem;">⚡</div>'
-
-        if role == "admin":
-            nav_pages = [
-                ("🏠", "Dashboard",         "🏠 Dashboard"),
-                ("📑", "Fiş Tarama",        "📑 Fiş Tarama"),
-                ("💰", "Finans & Kasa",     "💰 Finans & Kasa"),
-                ("⚖️", "Onay Merkezi",      "⚖️ Onay Merkezi"),
-                ("🔬", "Anomali Dedektörü", "🔬 Anomali Dedektörü"),
-                ("📊", "Analitik Merkezi",  "📊 Analitik Merkezi"),
-                ("🤖", "AI Asistan",        "🤖 AI Asistan"),
-                ("🏆", "Leaderboard",       "🏆 Leaderboard"),
-                ("🗄️", "Arşiv & Rapor",    "🗄️ Arşiv & Rapor"),
-            ]
-        else:
-            nav_pages = [
-                ("🏠", "Dashboard",        "🏠 Dashboard"),
-                ("📑", "Fiş Tarama",       "📑 Fiş Tarama"),
-                ("💰", "Finans & Kasa",    "💰 Finans & Kasa"),
-                ("🤖", "AI Asistan",       "🤖 AI Asistan"),
-                ("🏆", "Leaderboard",      "🏆 Leaderboard"),
-                ("🗄️", "Arşiv & Rapor",   "🗄️ Arşiv & Rapor"),
-            ]
-
-        nav_items_html = ""
-        for icon, label, key in nav_pages:
-            is_active = st.session_state.selected_page == key
-            nav_items_html += f"""
-            <div class="snav-item {'snav-active' if is_active else ''}" data-page="{key}" onclick="selectPage('{key}')">
-                <span class="snav-icon">{icon}</span>
-                <span class="snav-label">{label}</span>
-                {'<span class="snav-dot"></span>' if is_active else ''}
-            </div>"""
-
-        notif_html = f"""
-        <div class="snotif-badge">
-            <span class="snotif-bell">🔔</span>
-            <span class="snotif-text">{notif_count} yeni bildirim</span>
-            <span class="snotif-count">{notif_count}</span>
-        </div>""" if notif_count > 0 else ""
-
+        # ── 1. LOGO
+        logo_img_html = f'<img src="data:image/png;base64,{logo_b64}">' if logo_b64 else '<span style="font-size:2rem;">⚡</span>'
         st.markdown(f"""
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap');
-
-        [data-testid="stSidebar"] > div:first-child {{
-            padding: 0 !important;
-        }}
-        [data-testid="stSidebar"] {{
-            background: linear-gradient(170deg, #0a0f1a 0%, #0d1520 40%, #091018 100%) !important;
-            border-right: 1px solid rgba(0,217,126,0.12) !important;
-        }}
-
-        .sidebar-shell {{
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            padding: 0;
-            font-family: 'Syne', sans-serif;
-            position: relative;
-            overflow: hidden;
-        }}
-
-        /* Ambient glow background */
-        .sidebar-shell::before {{
-            content: '';
-            position: absolute;
-            top: -80px; left: -80px;
-            width: 260px; height: 260px;
-            background: radial-gradient(circle, rgba(0,217,126,0.07) 0%, transparent 70%);
-            pointer-events: none;
-            animation: ambientPulse 6s ease-in-out infinite;
-        }}
-        .sidebar-shell::after {{
-            content: '';
-            position: absolute;
-            bottom: -60px; right: -60px;
-            width: 200px; height: 200px;
-            background: radial-gradient(circle, rgba(40,60,100,0.15) 0%, transparent 70%);
-            pointer-events: none;
-        }}
-        @keyframes ambientPulse {{
-            0%,100% {{ opacity:0.6; transform:scale(1); }}
-            50% {{ opacity:1; transform:scale(1.1); }}
-        }}
-
-        /* ── LOGO SECTION ── */
-        .slogo-section {{
-            padding: 28px 20px 20px;
-            text-align: center;
-            position: relative;
-        }}
-        .slogo-frame {{
-            display: inline-block;
-            position: relative;
-            padding: 3px;
-            border-radius: 50%;
-            background: conic-gradient(from 0deg, #00d97e, #283c64, #00d97e);
-            animation: logoSpin 8s linear infinite;
-            transition: transform 0.4s ease;
-        }}
-        .slogo-frame:hover {{
-            transform: scale(1.06);
-            animation-play-state: paused;
-        }}
-        @keyframes logoSpin {{
-            from {{ filter: hue-rotate(0deg); }}
-            to   {{ filter: hue-rotate(360deg); }}
-        }}
-        .slogo-inner {{
-            background: #0d1520;
-            border-radius: 50%;
-            padding: 10px;
-            display: flex; align-items:center; justify-content:center;
-            width: 84px; height: 84px;
-        }}
-        .slogo-inner img {{ width:64px; height:64px; object-fit:contain; }}
-        .slogo-title {{
-            font-size: 1.05rem;
-            font-weight: 800;
-            letter-spacing: 0.35em;
-            color: #ffffff;
-            margin-top: 12px;
-            text-transform: uppercase;
-        }}
-        .slogo-sub {{
-            font-size: 0.58rem;
-            color: rgba(255,255,255,0.35);
-            letter-spacing: 0.2em;
-            margin-top: 2px;
-            font-family: 'DM Mono', monospace;
-        }}
-
-        /* ── DIVIDER ── */
-        .sdivider {{
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(0,217,126,0.2), transparent);
-            margin: 0 16px 6px;
-        }}
-
-        /* ── USER CARD ── */
-        .suser-card {{
-            margin: 8px 14px 4px;
-            padding: 14px 16px;
-            background: linear-gradient(135deg, rgba(0,217,126,0.07) 0%, rgba(40,60,100,0.12) 100%);
-            border: 1px solid rgba(0,217,126,0.15);
-            border-radius: 14px;
-            position: relative;
-            overflow: hidden;
-            transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
-            cursor: default;
-        }}
-        .suser-card::before {{
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(0,217,126,0.05), transparent);
-            opacity: 0;
-            transition: opacity 0.3s;
-            border-radius: 14px;
-        }}
-        .suser-card:hover {{
-            border-color: rgba(0,217,126,0.35);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 32px rgba(0,217,126,0.12);
-        }}
-        .suser-card:hover::before {{ opacity: 1; }}
-        .suser-top {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }}
-        .suser-avatar {{
-            width: 44px; height: 44px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, rgba(0,217,126,0.15), rgba(40,60,100,0.3));
-            border: 1px solid rgba(0,217,126,0.2);
-            display: flex; align-items:center; justify-content:center;
-            font-size: 1.5rem;
-            transition: transform 0.3s ease;
-        }}
-        .suser-card:hover .suser-avatar {{ transform: rotate(-5deg) scale(1.1); }}
-        .suser-name {{
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #fff;
-            letter-spacing: 0.02em;
-        }}
-        .suser-role {{
-            font-family: 'DM Mono', monospace;
-            font-size: 0.58rem;
-            color: {role_color};
-            letter-spacing: 0.15em;
-            margin-top: 2px;
-        }}
-        .suser-level {{
-            font-family: 'DM Mono', monospace;
-            font-size: 0.58rem;
-            color: rgba(255,255,255,0.4);
-        }}
-        .sxp-bar-wrap {{
-            margin-top: 12px;
-        }}
-        .sxp-labels {{
-            display: flex;
-            justify-content: space-between;
-            font-family: 'DM Mono', monospace;
-            font-size: 0.58rem;
-            color: rgba(255,255,255,0.35);
-            margin-bottom: 5px;
-        }}
-        .sxp-track {{
-            height: 3px;
-            background: rgba(255,255,255,0.08);
-            border-radius: 99px;
-            overflow: visible;
-            position: relative;
-        }}
-        .sxp-fill {{
-            height: 100%;
-            border-radius: 99px;
-            background: linear-gradient(90deg, #00d97e, #00b868);
-            position: relative;
-            transition: width 1s ease;
-        }}
-        .sxp-fill::after {{
-            content: '';
-            position: absolute;
-            right: -1px; top: 50%;
-            transform: translateY(-50%);
-            width: 7px; height: 7px;
-            background: #00d97e;
-            border-radius: 50%;
-            box-shadow: 0 0 8px #00d97e;
-        }}
-        .suser-spend {{
-            margin-top: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 0.62rem;
-            color: rgba(255,255,255,0.35);
-            font-family: 'DM Mono', monospace;
-        }}
-        .suser-spend-pct {{
-            font-size: 0.72rem;
-            font-weight: 700;
-            color: {usage_color};
-        }}
-
-        /* ── NOTIFICATION BADGE ── */
-        .snotif-badge {{
-            margin: 8px 14px;
-            padding: 10px 14px;
-            background: rgba(239,68,68,0.08);
-            border: 1px solid rgba(239,68,68,0.2);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            transition: all 0.25s ease;
-            animation: notifPulse 2.5s ease-in-out infinite;
-        }}
-        .snotif-badge:hover {{
-            background: rgba(239,68,68,0.15);
-            border-color: rgba(239,68,68,0.4);
-            transform: translateX(2px);
-        }}
-        @keyframes notifPulse {{
-            0%,100% {{ box-shadow: 0 0 0 0 rgba(239,68,68,0); }}
-            50% {{ box-shadow: 0 0 0 4px rgba(239,68,68,0.08); }}
-        }}
-        .snotif-bell {{ font-size: 0.85rem; }}
-        .snotif-text {{ font-size: 0.72rem; color: #fca5a5; font-weight: 600; flex:1; }}
-        .snotif-count {{
-            background: #ef4444;
-            color: #fff;
-            font-size: 0.6rem;
-            font-weight: 700;
-            font-family: 'DM Mono', monospace;
-            padding: 2px 6px;
-            border-radius: 99px;
-            min-width: 20px;
-            text-align: center;
-        }}
-
-        /* ── NAVIGATION ── */
-        .snav-section {{
-            flex: 1;
-            padding: 8px 10px;
-            overflow-y: auto;
-        }}
-        .snav-section::-webkit-scrollbar {{ width: 3px; }}
-        .snav-section::-webkit-scrollbar-track {{ background: transparent; }}
-        .snav-section::-webkit-scrollbar-thumb {{ background: rgba(0,217,126,0.2); border-radius: 99px; }}
-
-        .snav-label-group {{
-            font-family: 'DM Mono', monospace;
-            font-size: 0.55rem;
-            color: rgba(255,255,255,0.2);
-            letter-spacing: 0.18em;
-            padding: 6px 8px 4px;
-            text-transform: uppercase;
-        }}
-
-        .snav-item {{
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            border-radius: 10px;
-            margin: 2px 0;
-            cursor: pointer;
-            transition: all 0.22s cubic-bezier(0.34,1.56,0.64,1);
-            position: relative;
-            overflow: hidden;
-            border: 1px solid transparent;
-        }}
-        .snav-item::before {{
-            content: '';
-            position: absolute;
-            left: 0; top: 0; bottom: 0;
-            width: 3px;
-            background: #00d97e;
-            border-radius: 0 3px 3px 0;
-            transform: scaleY(0);
-            transition: transform 0.2s ease;
-        }}
-        .snav-item:hover {{
-            background: rgba(255,255,255,0.05);
-            border-color: rgba(255,255,255,0.06);
-            transform: translateX(4px);
-        }}
-        .snav-item:hover::before {{ transform: scaleY(0.6); }}
-        .snav-item:hover .snav-icon {{ transform: scale(1.15); filter: brightness(1.3); }}
-        .snav-item:hover .snav-label {{ color: rgba(255,255,255,0.9); }}
-
-        .snav-active {{
-            background: linear-gradient(90deg, rgba(0,217,126,0.12), rgba(0,217,126,0.04)) !important;
-            border-color: rgba(0,217,126,0.2) !important;
-        }}
-        .snav-active::before {{ transform: scaleY(1) !important; }}
-        .snav-active .snav-label {{ color: #00d97e !important; font-weight: 700; }}
-
-        .snav-icon {{
-            font-size: 1rem;
-            width: 24px;
-            text-align: center;
-            transition: transform 0.2s ease, filter 0.2s ease;
-            flex-shrink: 0;
-        }}
-        .snav-label {{
-            font-size: 0.78rem;
-            color: rgba(255,255,255,0.55);
-            font-weight: 500;
-            letter-spacing: 0.01em;
-            transition: color 0.2s ease;
-            flex: 1;
-        }}
-        .snav-dot {{
-            width: 5px; height: 5px;
-            background: #00d97e;
-            border-radius: 50%;
-            box-shadow: 0 0 6px #00d97e;
-            animation: dotBlink 2s ease-in-out infinite;
-        }}
-        @keyframes dotBlink {{
-            0%,100% {{ opacity:1; }}
-            50% {{ opacity:0.3; }}
-        }}
-
-        /* ── BOTTOM LIMIT BAR ── */
-        .slimit-section {{
-            margin: 6px 14px 10px;
-            padding: 12px 14px;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 12px;
-            transition: all 0.25s ease;
-        }}
-        .slimit-section:hover {{
-            background: rgba(255,255,255,0.05);
-            border-color: rgba(255,255,255,0.1);
-        }}
-        .slimit-title {{
-            font-family: 'DM Mono', monospace;
-            font-size: 0.56rem;
-            color: rgba(255,255,255,0.3);
-            letter-spacing: 0.15em;
-            text-transform: uppercase;
-            margin-bottom: 6px;
-        }}
-        .slimit-row {{
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            margin-bottom: 6px;
-        }}
-        .slimit-pct {{
-            font-size: 1.3rem;
-            font-weight: 800;
-            color: {usage_color};
-            font-family: 'Syne', sans-serif;
-        }}
-        .slimit-vals {{
-            font-family: 'DM Mono', monospace;
-            font-size: 0.58rem;
-            color: rgba(255,255,255,0.25);
-        }}
-        .slimit-track {{
-            height: 4px;
-            background: rgba(255,255,255,0.06);
-            border-radius: 99px;
-            overflow: hidden;
-        }}
-        .slimit-fill {{
-            height: 100%;
-            border-radius: 99px;
-            background: {usage_color};
-            box-shadow: 0 0 8px {usage_color}88;
-            transition: width 1s ease;
-        }}
-
-        /* ── LOGOUT BUTTON ── */
-        .slogout-wrap {{
-            padding: 6px 14px 20px;
-        }}
-        .slogout-btn {{
-            width: 100%;
-            padding: 10px;
-            background: transparent;
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 10px;
-            color: rgba(255,255,255,0.35);
-            font-family: 'DM Mono', monospace;
-            font-size: 0.7rem;
-            letter-spacing: 0.1em;
-            cursor: pointer;
-            transition: all 0.25s ease;
-            text-transform: uppercase;
-        }}
-        .slogout-btn:hover {{
-            background: rgba(239,68,68,0.08);
-            border-color: rgba(239,68,68,0.25);
-            color: #fca5a5;
-            transform: translateY(-1px);
-        }}
-        </style>
-
-        <div class="sidebar-shell">
-            <!-- LOGO -->
-            <div class="slogo-section">
-                <div class="slogo-frame">
-                    <div class="slogo-inner">{logo_html}</div>
-                </div>
-                <div class="slogo-title">Stinga Pro</div>
-                <div class="slogo-sub">STİNGA ENERJİ A.Ş.</div>
+        <div style="text-align:center; padding:24px 10px 8px;">
+            <div class="slogo-ring" style="display:inline-block;">
+                <div class="slogo-inner-wrap">{logo_img_html}</div>
             </div>
+            <div style="font-family:'Syne',sans-serif; font-size:0.95rem; font-weight:800;
+                        letter-spacing:0.32em; color:#fff; margin-top:10px; text-transform:uppercase;">
+                Stinga Pro
+            </div>
+            <div style="font-family:'DM Mono',monospace; font-size:0.54rem; color:rgba(255,255,255,0.3);
+                        letter-spacing:0.18em; margin-top:3px;">
+                STİNGA ENERJİ A.Ş.
+            </div>
+        </div>
+        <div class="ssep"></div>
+        """, unsafe_allow_html=True)
 
-            <div class="sdivider"></div>
-
-            <!-- USER CARD -->
-            <div class="suser-card">
-                <div class="suser-top">
-                    <div class="suser-avatar">{user_info['avatar']}</div>
-                    <div>
-                        <div class="suser-name">{user_name}</div>
-                        <div class="suser-role">{role_label} · LV.{level}</div>
-                    </div>
-                </div>
-                <div class="sxp-bar-wrap">
-                    <div class="sxp-labels">
-                        <span>⚡ {user_xp} XP</span>
-                        <span>→ {level * 500} XP</span>
-                    </div>
-                    <div class="sxp-track">
-                        <div class="sxp-fill" style="width:{xp_progress*100:.1f}%;"></div>
-                    </div>
-                </div>
-                <div class="suser-spend">
-                    <span>{user_info.get('department','—')}</span>
-                    <span class="suser-spend-pct">%{usage_pct:.0f} limit</span>
+        # ── 2. USER CARD
+        st.markdown(f"""
+        <div class="suser-wrap">
+            <div class="suser-row">
+                <div class="suser-ava">{user_info['avatar']}</div>
+                <div>
+                    <div class="suser-name-txt">{user_name}</div>
+                    <div class="suser-role-txt" style="color:{role_color};">{role_label} · LV.{level}</div>
                 </div>
             </div>
-
-            <!-- NOTIFICATION -->
-            {notif_html}
-
-            <div class="sdivider" style="margin-top:8px;"></div>
-
-            <!-- NAVIGATION -->
-            <div class="snav-section">
-                <div class="snav-label-group">Navigasyon</div>
-                {nav_items_html}
+            <div class="sxp-row">
+                <span>⚡ {user_xp} XP</span>
+                <span>→ {level * 500} XP</span>
             </div>
-
-            <!-- LIMIT BAR -->
-            <div class="slimit-section">
-                <div class="slimit-title">Aylık Limit</div>
-                <div class="slimit-row">
-                    <span class="slimit-pct">{usage_pct:.0f}%</span>
-                    <span class="slimit-vals">{my_total:,.0f} / {monthly_limit:,.0f} ₺</span>
-                </div>
-                <div class="slimit-track">
-                    <div class="slimit-fill" style="width:{usage_pct:.0f}%;"></div>
-                </div>
+            <div class="sxp-outer">
+                <div class="sxp-inner" style="width:{xp_progress*100:.1f}%;"></div>
+            </div>
+            <div class="suser-meta">
+                <span>{user_info.get('department','—')}</span>
+                <span style="color:{usage_color}; font-weight:700;">%{usage_pct:.0f} limit</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Hidden radio for navigation state (Streamlit requires native widget for state)
-        pages_keys = [p[2] for p in nav_pages]
+        # ── 3. NOTIFICATION
+        if notif_count > 0:
+            st.markdown(f"""
+            <div class="snotif">
+                <span>🔔</span>
+                <span class="snotif-lbl">{notif_count} yeni bildirim</span>
+                <span class="snotif-num">{notif_count}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            with st.expander("Bildirimleri Gör"):
+                for n in reversed(my_notifs[-5:]):
+                    icon = {"xp": "🏆", "info": "ℹ️", "warning": "⚠️", "success": "✅"}.get(n.get("type", "info"), "📌")
+                    st.markdown(f"""
+                    <div style="padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.06);
+                                display:flex; gap:9px; align-items:flex-start;">
+                        <span>{icon}</span>
+                        <div>
+                            <div style="font-size:0.77rem; color:rgba(255,255,255,0.7);">{n['msg']}</div>
+                            <div style="font-size:0.63rem; color:rgba(255,255,255,0.28); font-family:'DM Mono',monospace; margin-top:1px;">{n.get('date','')} {n['time']}</div>
+                        </div>
+                    </div>""", unsafe_allow_html=True)
+
+        # ── 4. SEPARATOR + NAV HEADER
+        st.markdown('<div class="ssep" style="margin-top:6px;"></div><div class="snav-hdr">Navigasyon</div>', unsafe_allow_html=True)
+
+        # ── 5. NAVIGATION (native Streamlit radio — styled via CSS)
+        if role == "admin":
+            pages_keys = [
+                "🏠 Dashboard", "📑 Fiş Tarama", "💰 Finans & Kasa",
+                "⚖️ Onay Merkezi", "🔬 Anomali Dedektörü", "📊 Analitik Merkezi",
+                "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor"
+            ]
+        else:
+            pages_keys = [
+                "🏠 Dashboard", "📑 Fiş Tarama", "💰 Finans & Kasa",
+                "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor"
+            ]
+
         selected = st.radio("", pages_keys,
                            index=pages_keys.index(st.session_state.selected_page)
                            if st.session_state.selected_page in pages_keys else 0,
                            label_visibility="collapsed")
         st.session_state.selected_page = selected
 
-        # Notifications expander
-        if notif_count > 0:
-            with st.expander("🔔 Bildirimleri Gör"):
-                for n in reversed(my_notifs[-5:]):
-                    icon = {"xp": "🏆", "info": "ℹ️", "warning": "⚠️", "success": "✅"}.get(n.get("type", "info"), "📌")
-                    st.markdown(f"""
-                    <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; gap:10px;">
-                        <span style="font-size:0.9rem;">{icon}</span>
-                        <div>
-                            <div style="font-size:0.78rem; color:rgba(255,255,255,0.7);">{n['msg']}</div>
-                            <div style="font-size:0.65rem; color:rgba(255,255,255,0.3); font-family:'DM Mono',monospace; margin-top:2px;">{n.get('date','')} {n['time']}</div>
-                        </div>
-                    </div>""", unsafe_allow_html=True)
+        # ── 6. LIMIT BAR
+        st.markdown(f"""
+        <div class="ssep" style="margin-bottom:6px;"></div>
+        <div class="slimit-box">
+            <div class="slimit-hdr">Aylık Limit Kullanımı</div>
+            <div class="slimit-row2">
+                <span class="slimit-pct-txt" style="color:{usage_color};">{usage_pct:.0f}%</span>
+                <span class="slimit-vals-txt">{my_total:,.0f} / {monthly_limit:,.0f} ₺</span>
+            </div>
+            <div class="slimit-track2">
+                <div style="height:100%; width:{usage_pct:.0f}%; background:{usage_color};
+                            box-shadow:0 0 7px {usage_color}88; border-radius:99px;
+                            transition:width 1s ease;"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
+        # ── 7. LOGOUT
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("⏻  Oturumu Kapat", use_container_width=True):
             logout()
 
