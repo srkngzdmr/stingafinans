@@ -614,6 +614,7 @@ USERS = {
 defaults = {
     'authenticated': False,
     'user_info': None,
+    'splash_done': False,
     'current_key_idx': 0,
     'chat_history': [],
     'dark_mode': True,
@@ -1062,28 +1063,32 @@ def apply_business_rules(data_ai, data_store, user_name):
     data_ai["_uyarilar"]          = uyarilar  # UI'da göstermek için
 
     return data_ai
-    if df.empty or len(df) < 3:
+
+
+def detect_anomalies(df, model=None):
+    """DataFrame üzerinde kural tabanlı anomali tespiti."""
+    if df is None or df.empty or len(df) < 2:
         return []
-    
+
     anomalies = []
-    
-    # Aynı firma duplicate kontrolü
+
+    # Mükerrer fiş (aynı firma + tutar)
     if 'Firma' in df.columns and 'Tutar' in df.columns:
         dups = df[df.duplicated(subset=['Firma', 'Tutar'], keep=False)]
         if not dups.empty:
             anomalies.append({
                 "type": "duplicate",
                 "severity": "high",
-                "message": f"⚠️ Mükerrer fiş tespiti: {dups['Firma'].iloc[0]} - {dups['Tutar'].iloc[0]:,.0f} ₺",
+                "message": f"⚠️ Mükerrer fiş: {dups['Firma'].iloc[0]} — ₺{dups['Tutar'].iloc[0]:,.0f} ({len(dups)} kayıt)",
                 "count": len(dups)
             })
-    
+
     # Hafta sonu harcamaları
     if 'Tarih' in df.columns:
         try:
-            df_temp = df.copy()
-            df_temp['dt'] = pd.to_datetime(df_temp['Tarih'], errors='coerce')
-            weekend = df_temp[df_temp['dt'].dt.dayofweek >= 5]
+            df_t = df.copy()
+            df_t['_dt'] = pd.to_datetime(df_t['Tarih'], errors='coerce')
+            weekend = df_t[df_t['_dt'].dt.dayofweek >= 5]
             if not weekend.empty:
                 anomalies.append({
                     "type": "weekend",
@@ -1093,31 +1098,45 @@ def apply_business_rules(data_ai, data_store, user_name):
                 })
         except:
             pass
-    
-    # Yüksek risk skoru
+
+    # Kritik risk skoru (>70)
     if 'Risk_Skoru' in df.columns:
         high_risk = df[df['Risk_Skoru'] > 70]
         if not high_risk.empty:
             anomalies.append({
                 "type": "high_risk",
                 "severity": "high",
-                "message": f"🔴 {len(high_risk)} adet kritik riskli işlem tespit edildi",
+                "message": f"🔴 {len(high_risk)} adet kritik riskli işlem (risk > 70)",
                 "count": len(high_risk)
             })
-    
-    # Ortalamadan çok sapan tutarlar
+
+    # İstatistiksel aykırı tutarlar (ortalama + 2σ)
     if 'Tutar' in df.columns and len(df) > 3:
-        mean = df['Tutar'].mean()
-        std = df['Tutar'].std()
-        outliers = df[df['Tutar'] > mean + 2 * std]
-        if not outliers.empty:
+        mean_t = df['Tutar'].mean()
+        std_t  = df['Tutar'].std()
+        if std_t > 0:
+            outliers = df[df['Tutar'] > mean_t + 2 * std_t]
+            if not outliers.empty:
+                anomalies.append({
+                    "type": "outlier",
+                    "severity": "medium",
+                    "message": f"📈 Ortalamadan 2σ sapan {len(outliers)} anormal tutar (ort: ₺{mean_t:,.0f})",
+                    "count": len(outliers)
+                })
+
+    # Sahte şüphesi durumundaki fişler
+    if 'Durum' in df.columns:
+        sahte = df[df['Durum'] == 'Sahte Şüphesi']
+        if not sahte.empty:
             anomalies.append({
-                "type": "outlier",
-                "severity": "medium",
-                "message": f"📈 Ortalamadan 2σ sapan {len(outliers)} anormal tutar tespit edildi",
-                "count": len(outliers)
+                "type": "sahte",
+                "severity": "high",
+                "message": f"🚨 {len(sahte)} adet sahte fiş şüphesi tespit edildi",
+                "count": len(sahte)
             })
-    
+
+    return anomalies
+
     return anomalies
 
 def generate_ai_insight(df, model, question=None):
@@ -1233,6 +1252,7 @@ def login():
                     st.session_state.authenticated = True
                     st.session_state.user_info = USERS[username]
                     st.session_state.user_info['username'] = username
+                    st.session_state.splash_done = False  # Her login'de splash tekrar çalışsın
                     st.rerun()
                 else:
                     st.error("⚠️ Hatalı kullanıcı adı veya şifre")
@@ -1255,6 +1275,8 @@ init_db()
 
 if not st.session_state.authenticated:
     login()
+elif not st.session_state.splash_done:
+    show_splash()
 else:
     data_store = load_data()
     model = configure_ai()
