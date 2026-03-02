@@ -1159,12 +1159,47 @@ def whatsapp_webhook():
         def analiz_et_gonder():
             try:
                 data = load_data()
-                res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
-                if res.status_code in [301, 302, 307, 308]:
-                    res = requests.get(res.headers.get('Location'), timeout=15)
 
-                raw_bytes = res.content
-                img_hash  = gorsel_hash(raw_bytes)
+                # ── GÜVENLİ GÖRSEL İNDİRME ─────────────────────────────
+                # allow_redirects=True + auth ile tek seferde indir
+                # Twilio media URL'leri zaman zaman redirect yapar,
+                # auth olmadan takip etmek 401 döndürür → bozuk byte → PIL hatası
+                raw_bytes = None
+                for deneme in range(3):
+                    try:
+                        res = requests.get(
+                            media_url,
+                            auth=(TWILIO_SID, TWILIO_TOKEN),
+                            allow_redirects=True,   # redirect'leri otomatik takip et
+                            timeout=20,
+                            headers={"User-Agent": "StingaBot/14.0"}
+                        )
+                        if res.status_code == 200:
+                            raw_bytes = res.content
+                            break
+                        else:
+                            print(f"Görsel indirme denemesi {deneme+1}: HTTP {res.status_code}", flush=True)
+                    except requests.RequestException as req_e:
+                        print(f"Görsel indirme denemesi {deneme+1} hata: {req_e}", flush=True)
+
+                if not raw_bytes:
+                    twilio_client.messages.create(
+                        body="❌ Görsel indirilemedi. Lütfen tekrar gönderin.",
+                        from_="whatsapp:+14155238886", to=sender_phone
+                    )
+                    return
+
+                # Byte'ların gerçekten bir görsel olup olmadığını kontrol et
+                # (HTML hata sayfası, boş içerik vs. gelmiş olabilir)
+                if len(raw_bytes) < 1000:
+                    print(f"Görsel çok küçük: {len(raw_bytes)} byte — muhtemelen hata sayfası", flush=True)
+                    twilio_client.messages.create(
+                        body="❌ Görsel okunamadı (çok küçük). Lütfen tekrar gönderin.",
+                        from_="whatsapp:+14155238886", to=sender_phone
+                    )
+                    return
+
+                img_hash = gorsel_hash(raw_bytes)
 
                 if img_hash in data["duplicate_hashes"]:
                     twilio_client.messages.create(
@@ -1173,7 +1208,20 @@ def whatsapp_webhook():
                     )
                     return
 
-                image = Image.open(BytesIO(raw_bytes))
+                # Güvenli Image.open — truncated/bozuk görsel toleransı
+                try:
+                    from PIL import ImageFile
+                    ImageFile.LOAD_TRUNCATED_IMAGES = True  # yarım dosyaları da aç
+                    image = Image.open(BytesIO(raw_bytes))
+                    image.load()  # lazy decode'u zorla — burada hata varsa erken yakala
+                    image = image.convert("RGB")  # RGBA, P, L gibi modları normalize et
+                except Exception as pil_e:
+                    print(f"PIL açma hatası: {pil_e} — {len(raw_bytes)} byte, content-type: {res.headers.get('Content-Type','?')}", flush=True)
+                    twilio_client.messages.create(
+                        body="❌ Görsel açılamadı. Lütfen JPEG veya PNG olarak tekrar gönderin.",
+                        from_="whatsapp:+14155238886", to=sender_phone
+                    )
+                    return
 
                 # ── YENİ: FİŞ DNA ANALİZİ (görsel yüklenir yüklenmez)
                 dna_sonuc   = fis_dna_analiz(image, raw_bytes)
