@@ -1263,6 +1263,307 @@ def login():
         </div>
         """, unsafe_allow_html=True)
 
+
+def show_splash():
+    """Şifre sonrası tam ekran WebGL giriş animasyonu."""
+    import streamlit.components.v1 as components
+    
+    user_info = st.session_state.user_info
+    user_name = user_info.get("name", "")
+    avatar    = user_info.get("avatar", "⚡")
+
+    # Tüm Streamlit UI'ı gizle — sadece splash görünsün
+    st.markdown("""
+    <style>
+        header[data-testid="stHeader"] { display:none !important; }
+        #MainMenu { display:none !important; }
+        footer { display:none !important; }
+        .block-container { padding:0 !important; max-width:100% !important; }
+        [data-testid="stAppViewContainer"] { background:#000 !important; }
+        [data-testid="stVerticalBlock"] { gap:0 !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # JS → Python köprüsü: splash bitince query param set eder
+    splash_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ background:#000; overflow:hidden; font-family:'Space Grotesk',sans-serif; }}
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@300;600&display=swap');
+
+  #c {{ position:fixed; inset:0; width:100%; height:100%; }}
+
+  #ui {{
+    position:fixed; inset:0;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    pointer-events:none; z-index:10;
+  }}
+
+  .logo-wrap {{
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+    opacity:0; transform:translateY(24px);
+    animation: rise 1.1s cubic-bezier(0.16,1,0.3,1) 0.4s forwards;
+  }}
+
+  .brand {{
+    font-family:'Bebas Neue',sans-serif;
+    font-size: min(11vw, 88px);
+    letter-spacing:.18em;
+    background:linear-gradient(135deg,#00e896 0%,#1a9e6e 50%,#2d4a8a 100%);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    filter:drop-shadow(0 0 32px rgba(0,200,120,.6));
+    line-height:1;
+  }}
+  .sub {{
+    font-size:11px; letter-spacing:.42em;
+    color:rgba(0,200,140,.55); text-transform:uppercase; font-weight:300;
+  }}
+  .welcome {{
+    font-size:13px; letter-spacing:.25em;
+    color:rgba(255,255,255,.35); text-transform:uppercase;
+    margin-top:4px;
+  }}
+
+  .divider {{
+    width:1px; height:44px;
+    background:linear-gradient(to bottom,transparent,rgba(0,200,120,.35),transparent);
+    margin:24px 0 20px;
+    opacity:0; animation:rise .7s ease 1.3s forwards;
+  }}
+
+  .prog-wrap {{
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    opacity:0; animation:rise .7s ease 1.5s forwards;
+  }}
+  .prog-bar {{
+    width:220px; height:1px;
+    background:rgba(255,255,255,.07); position:relative; overflow:hidden;
+  }}
+  .prog-fill {{
+    position:absolute; left:0; top:0; height:100%;
+    background:linear-gradient(90deg,#00e896,#2d4a8a);
+    width:0%; transition:width .12s linear;
+    box-shadow:0 0 10px rgba(0,232,150,.9);
+  }}
+  .prog-lbl {{
+    font-size:10px; letter-spacing:.32em;
+    color:rgba(255,255,255,.28); text-transform:uppercase;
+  }}
+
+  .corner {{ position:fixed; width:36px; height:36px; opacity:0; animation:fade .5s ease 1.9s forwards; }}
+  .tl {{ top:22px; left:22px; border-top:1px solid rgba(0,200,120,.25); border-left:1px solid rgba(0,200,120,.25); }}
+  .tr {{ top:22px; right:22px; border-top:1px solid rgba(0,200,120,.25); border-right:1px solid rgba(0,200,120,.25); }}
+  .bl {{ bottom:22px; left:22px; border-bottom:1px solid rgba(0,200,120,.25); border-left:1px solid rgba(0,200,120,.25); }}
+  .br {{ bottom:22px; right:22px; border-bottom:1px solid rgba(0,200,120,.25); border-right:1px solid rgba(0,200,120,.25); }}
+
+  .scan {{
+    position:fixed; left:0; right:0; height:1px; top:-1px;
+    background:linear-gradient(90deg,transparent,rgba(0,200,120,.12),transparent);
+    animation:scan 4s linear 1.4s infinite;
+  }}
+
+  #flash {{
+    position:fixed; inset:0;
+    background:#fff; opacity:0; pointer-events:none; z-index:99;
+  }}
+
+  @keyframes rise {{ to {{ opacity:1; transform:translateY(0); }} }}
+  @keyframes fade {{ to {{ opacity:1; }} }}
+  @keyframes scan {{ 0% {{ top:-1px; }} 100% {{ top:100vh; }} }}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div class="logo-wrap">
+    <svg width="82" height="82" viewBox="0 0 100 100" fill="none">
+      <defs>
+        <radialGradient id="g1" cx="50%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#00e896"/>
+          <stop offset="60%" stop-color="#1a9e6e"/>
+          <stop offset="100%" stop-color="#0f2240"/>
+        </radialGradient>
+        <filter id="glow"><feGaussianBlur stdDeviation="1.5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <circle cx="50" cy="50" r="47" stroke="url(#g1)" stroke-width="1" fill="none" opacity=".5"/>
+      <circle cx="50" cy="50" r="42" stroke="rgba(0,200,120,.15)" stroke-width=".5"
+              stroke-dasharray="4 8" fill="none">
+        <animateTransform attributeName="transform" type="rotate"
+          from="0 50 50" to="360 50 50" dur="12s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="50" cy="50" r="37" fill="url(#g1)" opacity=".9"/>
+      <path filter="url(#glow)"
+        d="M36 28 C36 28,54 28,56 35 C58 42,44 44,44 44 C44 44,62 46,64 54
+           C66 62,48 72,44 72 L36 72 L42 72 C42 72,58 70,56 63
+           C54 56,38 54,38 54 C38 54,56 52,54 44 C52 36,36 36,36 36 Z"
+        fill="none" stroke="rgba(0,232,150,.9)" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="50" cy="50" r="47" fill="none" stroke="rgba(0,200,120,.12)" stroke-width="2">
+        <animate attributeName="r" values="47;53;47" dur="3s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values=".12;0;.12" dur="3s" repeatCount="indefinite"/>
+      </circle>
+    </svg>
+    <div class="brand">STINGA</div>
+    <div class="sub">AI Finans Platformu · v15.0</div>
+    <div class="welcome">{avatar} Hoş geldin, {user_name}</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="prog-wrap">
+    <div class="prog-bar"><div class="prog-fill" id="pf"></div></div>
+    <div class="prog-lbl" id="pl">Sistem başlatılıyor</div>
+  </div>
+</div>
+
+<div class="corner tl"></div>
+<div class="corner tr"></div>
+<div class="corner bl"></div>
+<div class="corner br"></div>
+<div class="scan"></div>
+<div id="flash"></div>
+
+<script>
+// ── WEBGL SHADER ─────────────────────────────────
+const cv = document.getElementById('c');
+const gl = cv.getContext('webgl');
+function rsz() {{
+  cv.width  = window.innerWidth  * devicePixelRatio;
+  cv.height = window.innerHeight * devicePixelRatio;
+  cv.style.width  = window.innerWidth  + 'px';
+  cv.style.height = window.innerHeight + 'px';
+  gl.viewport(0,0,cv.width,cv.height);
+}}
+window.addEventListener('resize',rsz); rsz();
+
+const vs = `attribute vec2 p; void main(){{gl_Position=vec4(p,0,1);}}`;
+const fs = `
+precision highp float;
+uniform vec2 uR; uniform float uT;
+#define TAU 6.2831853
+vec2 warp(vec2 p,float t){{
+  float a=atan(p.y,p.x),r=length(p);
+  a+=.3*sin(r*3.-t*.8)+.15*cos(r*5.+t*.5);
+  return vec2(cos(a),sin(a))*r;
+}}
+float ring(vec2 uv,float r,float w){{return smoothstep(w,.0,abs(length(uv)-r));}}
+void main(){{
+  vec2 uv=(gl_FragCoord.xy*2.-uR)/min(uR.x,uR.y);
+  float t=uT*.4;
+  float v=1.-smoothstep(.3,1.4,length(uv));
+  vec3 col=mix(vec3(0.),vec3(.02,.05,.12),v);
+
+  vec2 wp=warp(uv,t), wp2=warp(uv*.8,t*1.3+1.);
+  float aur=0.;
+  for(int i=0;i<5;i++){{
+    float fi=float(i);
+    float ph=fi*1.2+t*(.6+fi*.1);
+    float b=sin(wp.x*(2.5+fi*.8)+ph)*.5+.5;
+    b*=sin(wp2.y*(1.75+fi*.56)+ph*1.1)*.5+.5;
+    aur+=b*(.18-fi*.025);
+  }}
+  aur=pow(aur,1.4);
+  vec3 g1=vec3(0.,.91,.59),g2=vec3(.1,.62,.43),nav=vec3(.11,.19,.36);
+  col+=mix(g2,g1,aur)*aur*1.8;
+
+  float tp=mod(t*.7,1.);
+  for(int k=0;k<6;k++){{
+    float fk=float(k)/6.,ph=mod(fk+tp,1.);
+    float al=(1.-ph)*(1.-ph);
+    col+=ring(uv,ph*1.6,mix(.018,.004,ph))*al*mix(g1,nav,smoothstep(0.,1.6,length(uv)))*.9;
+  }}
+  col+=ring(uv,.35,.004)*g1*.45;
+
+  float ang=atan(uv.y,uv.x),bm=0.;
+  for(int b=0;b<8;b++){{
+    float fb=float(b),ao=fb*TAU/8.+t*(.15+fb*.02);
+    bm+=smoothstep(.06,.0,mod(ang-ao,TAU)/TAU)*.07;
+  }}
+  col+=bm*smoothstep(1.5,.1,length(uv))*g1*.6;
+  col+=clamp(.06/(length(uv*.9)+.01)*.18,0.,.5)*mix(g1,vec3(1.),.3);
+  float gr=fract(sin(dot(gl_FragCoord.xy,vec2(127.1+uT*.01,311.7+uT*.01)))*43758.5);
+  col+=pow(max(col+(gr-.5)*.022,0.),vec3(.88));
+  col=mix(col,col*vec3(.85,1.,.9),.25);
+  gl_FragColor=vec4(col,1.);
+}}`;
+
+function sh(type,src){{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;}}
+const pr=gl.createProgram();
+gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));
+gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));
+gl.linkProgram(pr); gl.useProgram(pr);
+const buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+const ap=gl.getAttribLocation(pr,'p');
+gl.enableVertexAttribArray(ap);
+gl.vertexAttribPointer(ap,2,gl.FLOAT,false,0,0);
+const uR=gl.getUniformLocation(pr,'uR'),uT=gl.getUniformLocation(pr,'uT');
+let t0=null;
+(function loop(ts){{
+  if(!t0)t0=ts;
+  gl.uniform2f(uR,cv.width,cv.height);
+  gl.uniform1f(uT,(ts-t0)/1000);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  requestAnimationFrame(loop);
+}})(0);
+
+// ── PROGRESS ─────────────────────────────────────
+const pf=document.getElementById('pf'),pl=document.getElementById('pl');
+const steps=[[15,'Güvenlik protokolleri'],[35,'AI motoru yükleniyor'],
+             [55,'Gemini bağlantısı kuruldu'],[72,'Finans verileri çekiliyor'],
+             [88,'Dashboard hazırlanıyor'],[100,'Giriş yapılıyor...']];
+let si=0;
+function tick(){{
+  if(si>=steps.length)return;
+  const[p,m]=steps[si++];
+  pf.style.width=p+'%'; pl.textContent=m;
+  if(si<steps.length){{setTimeout(tick,260+Math.random()*200);}}
+  else{{
+    setTimeout(()=>{{
+      const fl=document.getElementById('flash');
+      fl.style.transition='opacity .2s ease';
+      fl.style.opacity='1';
+      // Streamlit parent'a sinyal gönder
+      setTimeout(()=>{{
+        try{{window.parent.postMessage({{type:'splash_done'}},  '*');}}catch(e){{}}
+        // Fallback: URL hash değiştir
+        try{{window.parent.location.hash='splash_done';}}catch(e){{}}
+      }},150);
+    }},500);
+  }}
+}}
+setTimeout(tick, 1600);
+</script>
+</body>
+</html>
+"""
+
+    # Tam ekran component render et
+    components.html(splash_html, height=800, scrolling=False)
+
+    # Streamlit tarafı: belirli süre sonra splash_done=True yapıp rerun
+    import time
+    
+    # Progress süresi ~3.5sn + 0.5sn flash = 4sn
+    # st.empty() placeholder ile bekle
+    placeholder = st.empty()
+    
+    with placeholder:
+        time.sleep(4.2)
+    
+    placeholder.empty()
+    st.session_state.splash_done = True
+    st.rerun()
+
+
 def logout():
     for key in ['authenticated', 'user_info', 'chat_history']:
         if key == 'authenticated': st.session_state[key] = False
