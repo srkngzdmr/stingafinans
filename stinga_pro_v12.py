@@ -29,50 +29,84 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ─── ULTRA DARK THEME CSS ─────────────────────────────────────
+# ─── LOGO BASE64 ──────────────────────────────────────────────
+import base64 as _b64
+
+def _get_logo_b64():
+    try:
+        logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+        if os.path.exists(logo_path):
+            with open(logo_path, "rb") as f:
+                return _b64.b64encode(f.read()).decode()
+    except:
+        pass
+    return ""
+
+# ─── AÇIK TEMA CSS ────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Bebas+Neue&family=JetBrains+Mono:wght@400;700&display=swap');
 
 :root {
-    --bg-primary: #050810;
-    --bg-secondary: #0a0f1e;
-    --bg-card: #0d1526;
-    --bg-hover: #111d35;
-    --accent-blue: #00d4ff;
-    --accent-green: #00ff88;
-    --accent-orange: #ff6b35;
-    --accent-purple: #8b5cf6;
-    --accent-red: #ff3b5c;
-    --text-primary: #e8f4fd;
-    --text-secondary: #7a9bbf;
-    --text-muted: #3d5a7a;
-    --border: #1a2d4a;
-    --border-glow: rgba(0, 212, 255, 0.3);
-    --shadow-glow: 0 0 30px rgba(0, 212, 255, 0.15);
+    --bg-primary:    #f0f4f8;
+    --bg-secondary:  #ffffff;
+    --bg-card:       #ffffff;
+    --bg-hover:      #e8f4f0;
+    --sidebar-bg:    #0f2240;
+    --sidebar-card:  #1a3560;
+    --sidebar-hover: #1e3d6e;
+    --accent-green:  #1a9e6e;
+    --accent-navy:   #2d4a8a;
+    --accent-teal:   #0d7a5f;
+    --accent-light:  #4cc9a0;
+    --accent-orange: #e8a020;
+    --accent-red:    #e05252;
+    --text-primary:  #0f2240;
+    --text-secondary:#2d4a6a;
+    --text-muted:    #6b8caa;
+    --text-sidebar:  #c8ddf0;
+    --border:        #d0e4f0;
+    --border-card:   #e0eeea;
+    --shadow:        0 2px 12px rgba(15,34,64,0.08);
+    --shadow-hover:  0 8px 30px rgba(26,158,110,0.15);
 }
+
 * { box-sizing: border-box; }
+
 html, body, [class*="css"] {
     font-family: 'Space Grotesk', sans-serif !important;
     background-color: var(--bg-primary) !important;
     color: var(--text-primary) !important;
 }
+
 .stApp {
-    background: 
-        radial-gradient(ellipse at 10% 20%, rgba(0, 212, 255, 0.04) 0%, transparent 50%),
-        radial-gradient(ellipse at 90% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
-        var(--bg-primary) !important;
+    background: var(--bg-primary) !important;
 }
+
+/* ── SİDEBAR ── */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #080d1a 0%, #050810 100%) !important;
-    border-right: 1px solid var(--border) !important;
+    background: var(--sidebar-bg) !important;
+    border-right: none !important;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.15) !important;
 }
+[data-testid="stSidebar"] * {
+    color: var(--text-sidebar) !important;
+}
+[data-testid="stSidebar"] .stRadio label {
+    color: var(--text-sidebar) !important;
+}
+[data-testid="stSidebar"] hr {
+    border-color: rgba(255,255,255,0.1) !important;
+}
+
+/* ── KARTLAR ── */
 .ultra-card {
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-card);
     border-radius: 16px;
     padding: 24px;
     margin: 12px 0;
+    box-shadow: var(--shadow);
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
@@ -81,96 +115,104 @@ html, body, [class*="css"] {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple), var(--accent-green));
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-green), var(--accent-navy));
     opacity: 0;
     transition: opacity 0.3s ease;
 }
 .ultra-card:hover::before { opacity: 1; }
 .ultra-card:hover {
-    border-color: rgba(0, 212, 255, 0.3);
-    box-shadow: var(--shadow-glow);
+    box-shadow: var(--shadow-hover);
     transform: translateY(-2px);
+    border-color: rgba(26,158,110,0.3);
 }
+
 .metric-card {
-    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-hover) 100%);
-    border: 1px solid var(--border);
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
     border-radius: 20px;
-    padding: 28px;
+    padding: 24px 16px;
     text-align: center;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: var(--shadow);
+    transition: all 0.3s ease;
 }
 .metric-card:hover {
-    transform: translateY(-6px) scale(1.02);
-    box-shadow: 0 20px 60px rgba(0, 212, 255, 0.15);
-    border-color: var(--accent-blue);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-hover);
+    border-color: var(--accent-green);
 }
 .metric-value {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 3rem;
-    color: var(--accent-blue);
-    line-height: 1;
-    margin: 8px 0;
-    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+    font-size: 2.5rem;
+    color: var(--accent-green);
+    line-height: 1.1;
+    margin: 6px 0;
 }
 .metric-label {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
+    font-size: 0.7rem;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 2px;
     font-weight: 600;
 }
+
+/* ── RİSK BADGELERİ ── */
 .risk-badge {
     display: inline-block;
-    padding: 4px 12px;
+    padding: 3px 10px;
     border-radius: 20px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
 }
-.risk-low  { background: rgba(0,255,136,0.15); color:#00ff88; border:1px solid rgba(0,255,136,0.3); }
-.risk-mid  { background: rgba(255,171,0,0.15); color:#ffab00; border:1px solid rgba(255,171,0,0.3); }
-.risk-high { background: rgba(255,59,92,0.15); color:#ff3b5c; border:1px solid rgba(255,59,92,0.3); }
+.risk-low  { background: #e6faf3; color: #1a9e6e; border: 1px solid #a8e6cf; }
+.risk-mid  { background: #fff8e6; color: #b87800; border: 1px solid #ffd580; }
+.risk-high { background: #fdeaea; color: #c0392b; border: 1px solid #f5b5b5; }
+
+/* ── BUTONLAR ── */
 .stButton > button {
-    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%) !important;
-    color: #050810 !important;
+    background: linear-gradient(135deg, var(--accent-green) 0%, var(--accent-teal) 100%) !important;
+    color: #ffffff !important;
     border: none !important;
-    border-radius: 12px !important;
+    border-radius: 10px !important;
     font-weight: 700 !important;
     font-family: 'Space Grotesk', sans-serif !important;
-    letter-spacing: 0.5px !important;
+    letter-spacing: 0.3px !important;
     transition: all 0.3s ease !important;
-    padding: 0.6rem 1.2rem !important;
+    box-shadow: 0 4px 12px rgba(26,158,110,0.25) !important;
 }
 .stButton > button:hover {
     transform: translateY(-2px) !important;
-    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.4) !important;
-    background: linear-gradient(135deg, #33ddff 0%, #00aadd 100%) !important;
+    box-shadow: 0 8px 20px rgba(26,158,110,0.35) !important;
+    background: linear-gradient(135deg, #20b880 0%, #0f8a6a 100%) !important;
 }
+
+/* ── SAYFA BAŞLIĞI ── */
 .page-header {
     display: flex;
     align-items: center;
     gap: 16px;
-    margin-bottom: 32px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border-card);
 }
 .page-title {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 2.8rem;
+    font-size: 2.6rem;
     letter-spacing: 3px;
     line-height: 1;
-    background: linear-gradient(135deg, #e8f4fd, #00d4ff);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--text-primary);
 }
+
+/* ── TABLO ── */
 [data-testid="stDataFrame"] {
     border: 1px solid var(--border) !important;
     border-radius: 12px !important;
     overflow: hidden !important;
+    box-shadow: var(--shadow) !important;
 }
+
+/* ── INPUT ── */
 .stTextInput > div > div > input,
 .stSelectbox > div > div > div,
 .stNumberInput > div > div > input,
@@ -181,44 +223,77 @@ html, body, [class*="css"] {
     color: var(--text-primary) !important;
     font-family: 'Space Grotesk', sans-serif !important;
 }
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--accent-green) !important;
+    box-shadow: 0 0 0 3px rgba(26,158,110,0.1) !important;
+}
+
+/* ── TAB ── */
 .stTabs [data-baseweb="tab-list"] {
     background: var(--bg-secondary) !important;
     border-radius: 12px !important;
     padding: 4px !important;
     border: 1px solid var(--border) !important;
+    box-shadow: var(--shadow) !important;
 }
 .stTabs [data-baseweb="tab"] {
     background: transparent !important;
     border-radius: 8px !important;
-    color: var(--text-secondary) !important;
+    color: var(--text-muted) !important;
     font-family: 'Space Grotesk', sans-serif !important;
     font-weight: 600 !important;
 }
 .stTabs [aria-selected="true"] {
-    background: var(--bg-card) !important;
-    color: var(--accent-blue) !important;
+    background: var(--accent-green) !important;
+    color: white !important;
 }
-.stSuccess { background: rgba(0,255,136,0.1) !important; border-left: 3px solid #00ff88 !important; }
-.stError   { background: rgba(255,59,92,0.1) !important; border-left: 3px solid #ff3b5c !important; }
-.stWarning { background: rgba(255,171,0,0.1) !important; border-left: 3px solid #ffab00 !important; }
-.stInfo    { background: rgba(0,212,255,0.1) !important; border-left: 3px solid #00d4ff !important; }
-.stProgress > div > div { background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)) !important; }
-hr { border-color: var(--border) !important; }
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--accent-blue); }
+
+/* ── ALERT ── */
+.stSuccess { background: #e6faf3 !important; border-left: 3px solid var(--accent-green) !important; color: #0f5132 !important; }
+.stError   { background: #fdeaea !important; border-left: 3px solid #e05252 !important; color: #842029 !important; }
+.stWarning { background: #fff8e6 !important; border-left: 3px solid #e8a020 !important; color: #664d00 !important; }
+.stInfo    { background: #e8f4ff !important; border-left: 3px solid var(--accent-navy) !important; color: #0a3060 !important; }
+.stProgress > div > div { background: linear-gradient(90deg, var(--accent-green), var(--accent-navy)) !important; }
+
+/* ── SIDEBAR İÇİ KARTLAR ── */
+.sidebar-card {
+    background: var(--sidebar-card);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+.sidebar-card:hover { background: var(--sidebar-hover); }
+
+/* ── STATUS PILL ── */
+.status-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.pill-approved { background: #e6faf3; color: #1a9e6e; }
+.pill-pending  { background: #fff8e6; color: #b87800; }
+.pill-rejected { background: #fdeaea; color: #c0392b; }
+
+/* ── ANOMALİ ALERT ── */
 .anomaly-alert {
-    background: linear-gradient(135deg, rgba(255,59,92,0.1), rgba(255,107,53,0.1));
-    border: 1px solid rgba(255,59,92,0.3);
+    background: linear-gradient(135deg, #fdeaea, #fff0f0);
+    border: 1px solid #f5b5b5;
     border-radius: 12px;
     padding: 16px;
     margin: 8px 0;
 }
+
+/* ── BÜTÇE BAR ── */
 .budget-track {
-    background: var(--bg-secondary);
+    background: #e8f0f8;
     border-radius: 8px;
-    height: 8px;
+    height: 6px;
     overflow: hidden;
     margin: 6px 0;
 }
@@ -227,77 +302,85 @@ hr { border-color: var(--border) !important; }
     border-radius: 8px;
     transition: width 0.8s ease;
 }
+
+/* ── LEADERBOARD ── */
 .lb-item {
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
     border-radius: 10px;
-    margin: 4px 0;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
+    margin: 6px 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    box-shadow: var(--shadow);
     transition: all 0.2s;
 }
-.lb-item:hover { border-color: var(--accent-blue); }
+.lb-item:hover { border-color: var(--accent-green); box-shadow: var(--shadow-hover); }
 .lb-rank { font-family: 'Bebas Neue'; font-size: 1.5rem; color: var(--text-muted); width: 30px; }
-.lb-rank.gold   { color: #ffd700; }
-.lb-rank.silver { color: #c0c0c0; }
-.lb-rank.bronze { color: #cd7f32; }
-.feed-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--border);
-}
-.status-pill {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-.pill-approved { background: rgba(0,255,136,0.15); color: #00ff88; }
-.pill-pending  { background: rgba(255,171,0,0.15); color: #ffab00; }
-.pill-rejected { background: rgba(255,59,92,0.15); color: #ff3b5c; }
+.lb-rank.gold   { color: #f0a500; }
+.lb-rank.silver { color: #888; }
+.lb-rank.bronze { color: #a06030; }
+
+/* ── AI BUBBLE ── */
 .ai-bubble {
-    background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(0,212,255,0.1));
-    border: 1px solid rgba(139,92,246,0.3);
-    border-radius: 16px;
-    padding: 20px;
-    margin: 12px 0;
+    background: linear-gradient(135deg, #eefaf6, #e8f4ff);
+    border: 1px solid rgba(26,158,110,0.25);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin: 10px 0;
     position: relative;
+    color: var(--text-primary);
 }
 .ai-bubble::before {
     content: '⚡ AI';
     position: absolute;
-    top: -10px; left: 16px;
-    background: linear-gradient(135deg, #8b5cf6, #00d4ff);
+    top: -10px; left: 14px;
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-navy));
     color: white;
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 700;
     padding: 2px 8px;
     border-radius: 10px;
     letter-spacing: 1px;
 }
+
+/* ── EMPTY STATE ── */
 .empty-state {
     text-align: center;
     padding: 60px 20px;
     color: var(--text-muted);
 }
-.empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
+.empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+
+/* ── FEED ITEM ── */
+.feed-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-green); }
+
+/* ── ANİMASYON ── */
 @keyframes float {
     0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-10px); }
+    50% { transform: translateY(-8px); }
 }
 @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.3); }
-    50% { box-shadow: 0 0 30px rgba(0, 212, 255, 0.6); }
+    0%, 100% { box-shadow: 0 0 8px rgba(26,158,110,0.2); }
+    50% { box-shadow: 0 0 20px rgba(26,158,110,0.5); }
 }
 .floating { animation: float 4s ease-in-out infinite; }
 .pulsing  { animation: pulse-glow 2s ease-in-out infinite; }
+
+hr { border-color: var(--border) !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -651,15 +734,29 @@ def predict_monthly_spend(df, model):
 
 # ─── GİRİŞ EKRANI ────────────────────────────────────────────
 def login():
-    st.markdown("""
-    <div style="text-align:center; padding: 40px 0 20px 0;">
-        <div style="font-size:4rem; margin-bottom:8px;" class="floating">⚡</div>
-        <h1 style="font-family:'Bebas Neue',sans-serif; font-size:3.5rem; letter-spacing:6px;
-                   background:linear-gradient(135deg,#00d4ff,#8b5cf6);
-                   -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-                   margin:0;">STINGA PRO</h1>
-        <p style="color:#3d5a7a; font-size:0.85rem; letter-spacing:4px; text-transform:uppercase; margin-top:8px;">
+    # Logo yükle
+    logo_b64 = ""
+    try:
+        import base64 as _b64
+        _lp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+        if os.path.exists(_lp):
+            with open(_lp, "rb") as _lf:
+                logo_b64 = _b64.b64encode(_lf.read()).decode()
+    except:
+        pass
+
+    logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="width:110px; height:110px; border-radius:50%; object-fit:cover; box-shadow:0 4px 20px rgba(26,158,110,0.3); margin-bottom:12px;">' if logo_b64 else '<div style="font-size:4rem;" class="floating">⚡</div>'
+
+    st.markdown(f"""
+    <div style="text-align:center; padding: 50px 0 24px 0;">
+        {logo_html}
+        <h1 style="font-family:'Bebas Neue',sans-serif; font-size:3.2rem; letter-spacing:6px;
+                   color:#0f2240; margin:8px 0 0 0;">STINGA PRO</h1>
+        <p style="color:#6b8caa; font-size:0.82rem; letter-spacing:4px; text-transform:uppercase; margin-top:6px;">
             v13.0 · AI Finans Platformu
+        </p>
+        <p style="color:#1a9e6e; font-size:0.78rem; letter-spacing:2px; margin-top:2px;">
+            STİNGA ENERJİ A.Ş.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -668,11 +765,11 @@ def login():
     with col2:
         st.markdown('<div class="ultra-card pulsing">', unsafe_allow_html=True)
         with st.form("login_form"):
-            st.markdown("<p style='color:#7a9bbf; font-size:0.85rem; text-transform:uppercase; letter-spacing:2px; margin-bottom:16px;'>🔐 Güvenli Giriş</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color:#2d4a6a; font-size:0.85rem; text-transform:uppercase; letter-spacing:2px; margin-bottom:16px; font-weight:600;'>🔐 Güvenli Giriş</p>", unsafe_allow_html=True)
             username = st.text_input("Kullanıcı Adı", placeholder="kullanıcı adınız").lower().strip()
             password = st.text_input("Şifre", type="password", placeholder="••••••••")
             st.markdown("<br>", unsafe_allow_html=True)
-            submit = st.form_submit_button("⚡ GİRİŞ YAP", use_container_width=True)
+            submit = st.form_submit_button("GİRİŞ YAP", use_container_width=True)
             if submit:
                 if username in USERS and USERS[username]["password"] == hash_password(password):
                     st.session_state.authenticated = True
@@ -683,7 +780,7 @@ def login():
                     st.error("⚠️ Hatalı kullanıcı adı veya şifre")
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown("""
-        <div style="text-align:center; margin-top:24px; color:#3d5a7a; font-size:0.75rem;">
+        <div style="text-align:center; margin-top:20px; color:#6b8caa; font-size:0.72rem;">
             🔒 256-bit AES · Gemini 2.5 Flash AI
         </div>
         """, unsafe_allow_html=True)
@@ -719,28 +816,51 @@ else:
 
     # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
+        # ── Logo
+        try:
+            import base64 as _b64
+            _lp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+            if os.path.exists(_lp):
+                with open(_lp, "rb") as _lf:
+                    _lb64 = _b64.b64encode(_lf.read()).decode()
+                st.markdown(f'''
+                <div style="text-align:center; padding:20px 0 8px 0;">
+                    <img src="data:image/png;base64,{_lb64}"
+                         style="width:80px; height:80px; border-radius:50%; object-fit:cover;
+                                box-shadow:0 2px 12px rgba(0,0,0,0.3);">
+                    <div style="color:#c8ddf0; font-family:'Bebas Neue',sans-serif; font-size:1.2rem;
+                                letter-spacing:4px; margin-top:8px;">STINGA PRO</div>
+                    <div style="color:#4cc9a0; font-size:0.65rem; letter-spacing:2px; margin-top:2px;">
+                        STİNGA ENERJİ A.Ş.
+                    </div>
+                </div>
+                <hr style="border-color:rgba(255,255,255,0.1); margin:0 0 12px 0;">
+                ''', unsafe_allow_html=True)
+        except:
+            st.markdown('<div style="text-align:center; padding:20px 0; color:#c8ddf0; font-family:Bebas Neue; font-size:1.3rem; letter-spacing:4px;">⚡ STINGA PRO</div>', unsafe_allow_html=True)
+
         user_xp  = data_store.get("xp", {}).get(user_name, 0)
         level    = user_xp // 500 + 1
         xp_progress = (user_xp % 500) / 500
 
         st.markdown(f"""
-        <div style="padding:20px 16px; background:var(--bg-card); border-radius:16px;
-                    border:1px solid var(--border); margin-bottom:16px;">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div style="font-size:2.2rem;">{user_info['avatar']}</div>
+        <div style="padding:14px; background:rgba(255,255,255,0.07); border-radius:12px;
+                    border:1px solid rgba(255,255,255,0.1); margin-bottom:12px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="font-size:2rem;">{user_info['avatar']}</div>
                 <div>
-                    <div style="font-weight:700; font-size:1rem; color:var(--text-primary);">{user_name}</div>
-                    <div style="font-size:0.7rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px;">
+                    <div style="font-weight:700; font-size:0.95rem; color:#e8f4fd;">{user_name}</div>
+                    <div style="font-size:0.65rem; color:#4cc9a0; text-transform:uppercase; letter-spacing:1px;">
                         {role.upper()} · Lv.{level}
                     </div>
                 </div>
             </div>
-            <div style="margin-top:12px;">
-                <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-muted);">
-                    <span>XP: {user_xp}</span><span>Sonraki: {level*500} XP</span>
+            <div style="margin-top:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:#7aa8c8;">
+                    <span>XP: {user_xp}</span><span>Sonraki: {level*500}</span>
                 </div>
-                <div class="budget-track">
-                    <div class="budget-fill" style="width:{xp_progress*100:.0f}%; background:linear-gradient(90deg,#8b5cf6,#00d4ff);"></div>
+                <div class="budget-track" style="background:rgba(255,255,255,0.1);">
+                    <div class="budget-fill" style="width:{xp_progress*100:.0f}%; background:linear-gradient(90deg,#1a9e6e,#4cc9a0);"></div>
                 </div>
             </div>
         </div>
@@ -748,12 +868,12 @@ else:
 
         # Rol etiketi
         if role == "admin":
-            st.markdown("""<div style="background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.3);
-                border-radius:8px; padding:6px 12px; font-size:0.75rem; color:#00d4ff; text-align:center; margin-bottom:12px;">
+            st.markdown("""<div style="background:rgba(26,158,110,0.2); border:1px solid rgba(26,158,110,0.4);
+                border-radius:8px; padding:6px 12px; font-size:0.72rem; color:#4cc9a0; text-align:center; margin-bottom:12px;">
                 ✅ YÖNETİCİ · Tüm veriler + Onay yetkisi</div>""", unsafe_allow_html=True)
         else:
-            st.markdown("""<div style="background:rgba(255,171,0,0.1); border:1px solid rgba(255,171,0,0.3);
-                border-radius:8px; padding:6px 12px; font-size:0.75rem; color:#ffab00; text-align:center; margin-bottom:12px;">
+            st.markdown("""<div style="background:rgba(232,160,32,0.15); border:1px solid rgba(232,160,32,0.3);
+                border-radius:8px; padding:6px 12px; font-size:0.72rem; color:#f0c060; text-align:center; margin-bottom:12px;">
                 👤 PERSONEL · Sadece kendi fişlerin</div>""", unsafe_allow_html=True)
 
         # Bildirimler
@@ -761,18 +881,18 @@ else:
                      if (n["user"] == user_name or n["user"] == "Hepsi") and not n.get("read")]
         notif_count = len(my_notifs)
         if notif_count > 0:
-            st.markdown(f"""<div style="background:rgba(255,59,92,0.1); border:1px solid rgba(255,59,92,0.3);
+            st.markdown(f"""<div style="background:rgba(224,82,82,0.15); border:1px solid rgba(224,82,82,0.35);
                 border-radius:10px; padding:10px 14px; margin-bottom:12px;">
-                <span style="color:#ff3b5c; font-weight:700; font-size:0.8rem;">🔔 {notif_count} yeni bildirim</span>
+                <span style="color:#f08080; font-weight:700; font-size:0.8rem;">🔔 {notif_count} yeni bildirim</span>
                 </div>""", unsafe_allow_html=True)
             with st.expander("Bildirimleri Gör"):
                 for n in reversed(my_notifs[-5:]):
                     icon = {"xp":"🏆","info":"ℹ️","warning":"⚠️","success":"✅"}.get(n.get("type","info"),"📌")
                     st.markdown(f"""<div class="feed-item">
-                        <div style="color:var(--accent-blue);">{icon}</div>
+                        <div style="color:#4cc9a0;">{icon}</div>
                         <div>
-                            <div style="font-size:0.8rem; color:var(--text-primary);">{n['msg']}</div>
-                            <div style="font-size:0.7rem; color:var(--text-muted);">{n.get('date','')} {n.get('time','')}</div>
+                            <div style="font-size:0.8rem; color:#e8f4fd;">{n['msg']}</div>
+                            <div style="font-size:0.68rem; color:#7aa8c8;">{n.get('date','')} {n.get('time','')}</div>
                         </div></div>""", unsafe_allow_html=True)
 
         st.markdown("---")
@@ -812,8 +932,8 @@ else:
             my_total      = df['Tutar'].sum()
             monthly_limit = user_info.get('monthly_limit', 15000)
             usage_pct     = min(my_total / monthly_limit * 100, 100) if monthly_limit > 0 else 0
-            color = "#00ff88" if usage_pct < 60 else ("#ffab00" if usage_pct < 85 else "#ff3b5c")
-            st.markdown(f"""<div style="padding:12px; background:var(--bg-card); border-radius:10px; border:1px solid var(--border);">
+            color = "#4cc9a0" if usage_pct < 60 else ("#e8a020" if usage_pct < 85 else "#e05252")
+            st.markdown(f"""<div style="padding:12px; background:rgba(255,255,255,0.07); border-radius:10px; border:1px solid rgba(255,255,255,0.1);">
                 <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase;">Aylık Limit</div>
                 <div style="font-size:1.4rem; font-weight:700; color:{color};">{usage_pct:.0f}%</div>
                 <div class="budget-track">
@@ -868,8 +988,8 @@ else:
             total_wallet = sum(data_store['wallets'].values())
             if total_wallet < total_pending:
                 st.markdown(f"""<div class="anomaly-alert">
-                    <strong style="color:#ff3b5c;">⚠️ LİKİDİTE UYARISI</strong>
-                    <p style="margin:4px 0 0 0; font-size:0.85rem; color:#ffb3c0;">
+                    <strong style="color:#c0392b;">⚠️ LİKİDİTE UYARISI</strong>
+                    <p style="margin:4px 0 0 0; font-size:0.85rem; color:#842029;">
                     Toplam kasa ({total_wallet:,.0f} ₺) onay bekleyen tutarın ({total_pending:,.0f} ₺) altında.
                     </p></div>""", unsafe_allow_html=True)
 
@@ -883,10 +1003,10 @@ else:
                     df_temp['cumulative'] = df_temp['Tutar'].cumsum()
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=df_temp['dt'], y=df_temp['cumulative'],
-                        fill='tozeroy', fillcolor='rgba(0,212,255,0.08)',
-                        line=dict(color='#00d4ff', width=2), name='Kümülatif'))
+                        fill='tozeroy', fillcolor='rgba(26,158,110,0.1)',
+                        line=dict(color='#1a9e6e', width=2), name='Kümülatif'))
                     fig.add_trace(go.Bar(x=df_temp['dt'], y=df_temp['Tutar'],
-                        marker_color='rgba(139,92,246,0.4)', name='Günlük', yaxis='y2'))
+                        marker_color='rgba(26,158,110,0.4)', name='Günlük', yaxis='y2'))
                     fig.update_layout(title="📈 Kümülatif & Günlük Harcama",
                         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                         font=dict(color='#7a9bbf'), height=320,
@@ -899,7 +1019,7 @@ else:
                     proj_data = df.groupby('Proje')['Tutar'].sum().reset_index()
                     fig2 = go.Figure(go.Pie(
                         labels=proj_data['Proje'], values=proj_data['Tutar'], hole=0.6,
-                        marker=dict(colors=['#00d4ff','#8b5cf6','#00ff88','#ff6b35'])))
+                        marker=dict(colors=['#1a9e6e','#2d4a8a','#4cc9a0','#e8a020'])))
                     fig2.update_layout(title="🗂️ Proje Dağılımı",
                         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                         font=dict(color='#7a9bbf'), height=320)
@@ -922,7 +1042,7 @@ else:
                     fig4 = go.Figure(go.Bar(x=cat_data['Tutar'], y=cat_data['Kategori'],
                         orientation='h',
                         marker=dict(color=cat_data['Tutar'],
-                            colorscale=[[0,'#1a2d4a'],[0.5,'#00d4ff'],[1,'#8b5cf6']]),
+                            colorscale=[[0,'#e8f4f0'],[0.5,'#1a9e6e'],[1,'#2d4a8a']]),
                         text=[f"₺{v:,.0f}" for v in cat_data['Tutar']], textposition='outside'))
                     fig4.update_layout(title='🏷️ Kategoriler',
                         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
@@ -1038,7 +1158,7 @@ else:
                                     <div style="display:flex; justify-content:space-between; align-items:start;">
                                         <div>
                                             <div style="font-size:1.3rem; font-weight:700;">{data_ai.get('firma','?')}</div>
-                                            <div style="font-size:2rem; font-family:'Bebas Neue'; color:var(--accent-blue);">
+                                            <div style="font-size:2rem; font-family:'Bebas Neue'; color:var(--accent-green);">
                                                 ₺{float(data_ai.get('toplam_tutar',0)):,.2f}</div>
                                             <div style="font-size:0.8rem; color:var(--text-muted);">
                                                 {data_ai.get('kategori','?')} · {data_ai.get('odeme_turu','?')}</div>
@@ -1093,7 +1213,7 @@ else:
             limit = bdata.get("limit",0)
             spent = bdata.get("spent",0)
             pct   = min(spent/limit*100, 100) if limit > 0 else 0
-            color = "#00ff88" if pct < 60 else ("#ffab00" if pct < 85 else "#ff3b5c")
+            color = "#1a9e6e" if pct < 60 else ("#e8a020" if pct < 85 else "#e05252")
             with b_cols[i % 4]:
                 st.markdown(f"""<div class="metric-card">
                     <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase;">{proj}</div>
@@ -1101,7 +1221,7 @@ else:
                     <div class="budget-track">
                         <div class="budget-fill" style="width:{pct:.0f}%; background:{color};"></div>
                     </div>
-                    <div style="font-size:0.7rem; color:var(--text-muted);">₺{spent:,.0f} / ₺{limit:,.0f}</div>
+                    <div style="font-size:0.7rem; color:#7aa8c8;">₺{spent:,.0f} / ₺{limit:,.0f}</div>
                     </div>""", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1120,7 +1240,7 @@ else:
                             <span style="font-size:1.5rem;">{avatar}</span>
                             <div>
                                 <div style="font-weight:600;">{person}</div>
-                                <div style="font-size:0.7rem; color:var(--text-muted);">Limit: ₺{person_limit:,.0f}</div>
+                                <div style="font-size:0.7rem; color:#7aa8c8;">Limit: ₺{person_limit:,.0f}</div>
                             </div>
                         </div>
                         <div style="font-family:'Bebas Neue'; font-size:1.8rem; color:var(--accent-green);">₺{bal:,.0f}</div>
@@ -1155,9 +1275,9 @@ else:
                     st.markdown(f"""<div style="padding:10px 0; border-bottom:1px solid var(--border);">
                         <div style="display:flex; justify-content:space-between;">
                             <span style="font-size:0.8rem; color:var(--text-secondary);">{entry.get('Hedef','?')} ← {entry.get('Kaynak','?')}</span>
-                            <span style="font-family:'JetBrains Mono'; color:var(--accent-blue);">+₺{entry.get('Miktar',0):,.0f}</span>
+                            <span style="font-family:'JetBrains Mono'; color:var(--accent-green);">+₺{entry.get('Miktar',0):,.0f}</span>
                         </div>
-                        <div style="font-size:0.7rem; color:var(--text-muted);">{entry.get('Tarih','?')} · {entry.get('İşlem','')}</div>
+                        <div style="font-size:0.7rem; color:#7aa8c8;">{entry.get('Tarih','?')} · {entry.get('İşlem','')}</div>
                         </div>""", unsafe_allow_html=True)
             else:
                 st.info("Henüz hareket yok.")
@@ -1181,7 +1301,7 @@ else:
                                     <div style="font-size:0.8rem; color:var(--text-muted);">{row.get('Tarih','?')} · {row.get('Kategori','?')}</div>
                                 </div>
                                 <div style="text-align:right;">
-                                    <div style="font-family:'Bebas Neue'; font-size:2rem; color:var(--accent-blue);">₺{float(row.get('Tutar',0)):,.0f}</div>
+                                    <div style="font-family:'Bebas Neue'; font-size:2rem; color:var(--accent-green);">₺{float(row.get('Tutar',0)):,.0f}</div>
                                     {get_risk_html(risk)}
                                 </div>
                             </div>
@@ -1231,11 +1351,11 @@ else:
         with col2:
             st.markdown(f"""<div class="metric-card">
                 <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Toplam Harcamam</div>
-                <div style="font-family:'Bebas Neue'; font-size:3rem; color:var(--accent-blue);">₺{my_spend:,.0f}</div>
+                <div style="font-family:'Bebas Neue'; font-size:3rem; color:var(--accent-green);">₺{my_spend:,.0f}</div>
                 </div>""", unsafe_allow_html=True)
         with col3:
             kalan = monthly_limit - my_spend
-            color = "#00ff88" if kalan > 0 else "#ff3b5c"
+            color = "#1a9e6e" if kalan > 0 else "#e05252"
             st.markdown(f"""<div class="metric-card">
                 <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Kalan Limit</div>
                 <div style="font-family:'Bebas Neue'; font-size:3rem; color:{color};">₺{kalan:,.0f}</div>
@@ -1258,7 +1378,7 @@ else:
             if anomalies:
                 st.markdown(f"### 🔴 {len(anomalies)} Anomali Tespit Edildi")
                 for a in anomalies:
-                    sev_color = {"high":"#ff3b5c","medium":"#ffab00","low":"#00d4ff"}.get(a['severity'],"#00d4ff")
+                    sev_color = {"high":"#e05252","medium":"#e8a020","low":"#1a9e6e"}.get(a['severity'],"#00d4ff")
                     st.markdown(f"""<div class="ultra-card" style="border-left:4px solid {sev_color};">
                         <div style="display:flex; align-items:center; gap:12px;">
                             <div>
@@ -1294,14 +1414,14 @@ Türkçe olarak: 1. En riskli 3 işlem ve neden 2. Olağandışı patternler 3. 
                 if 'Tutar' in df_full.columns and 'Proje' in df_full.columns:
                     fig = px.box(df_full, x='Proje', y='Tutar', color='Proje',
                         title='Proje Bazlı Tutar Dağılımı',
-                        color_discrete_sequence=['#00d4ff','#8b5cf6','#00ff88','#ff6b35'])
+                        color_discrete_sequence=['#1a9e6e','#2d4a8a','#4cc9a0','#e8a020'])
                     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                         font=dict(color='#7a9bbf'), showlegend=False)
                     st.plotly_chart(fig, use_container_width=True)
             with col_s2:
                 if 'Risk_Skoru' in df_full.columns:
                     fig2 = px.histogram(df_full, x='Risk_Skoru', nbins=10,
-                        title='Risk Skoru Dağılımı', color_discrete_sequence=['#ff3b5c'])
+                        title='Risk Skoru Dağılımı', color_discrete_sequence=['#e05252'])
                     fig2.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                         font=dict(color='#7a9bbf'))
                     st.plotly_chart(fig2, use_container_width=True)
@@ -1322,9 +1442,9 @@ Türkçe olarak: 1. En riskli 3 işlem ve neden 2. Olağandışı patternler 3. 
                     Toplam=('Tutar','sum'), Adet=('Tutar','count')).reset_index()
                 monthly.columns = ['Ay','Toplam','Adet']
                 fig = make_subplots(rows=2, cols=1, subplot_titles=('Aylık Harcama','İşlem Adedi'), shared_xaxes=True)
-                fig.add_trace(go.Bar(x=monthly['Ay'], y=monthly['Toplam'], marker_color='#00d4ff', name='Harcama'), row=1, col=1)
+                fig.add_trace(go.Bar(x=monthly['Ay'], y=monthly['Toplam'], marker_color='#1a9e6e', name='Harcama'), row=1, col=1)
                 fig.add_trace(go.Scatter(x=monthly['Ay'], y=monthly['Adet'],
-                    line=dict(color='#8b5cf6',width=2), fill='tozeroy', fillcolor='rgba(139,92,246,0.1)', name='Adet'), row=2, col=1)
+                    line=dict(color='#2d4a8a',width=2), fill='tozeroy', fillcolor='rgba(45,74,138,0.1)', name='Adet'), row=2, col=1)
                 fig.update_layout(height=450, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#7a9bbf'), showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
@@ -1368,7 +1488,7 @@ Türkçe olarak: 1. En riskli 3 işlem ve neden 2. Olağandışı patternler 3. 
                             with col_x:
                                 st.markdown(f"""<div class="metric-card">
                                     <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Bu Ay</div>
-                                    <div style="font-family:'Bebas Neue'; font-size:2.5rem; color:var(--accent-blue);">₺{current:,.0f}</div>
+                                    <div style="font-family:'Bebas Neue'; font-size:2.5rem; color:var(--accent-green);">₺{current:,.0f}</div>
                                     </div>""", unsafe_allow_html=True)
                             with col_y:
                                 st.markdown(f"""<div class="metric-card">
@@ -1453,12 +1573,12 @@ Türkçe olarak: 1. En riskli 3 işlem ve neden 2. Olağandışı patternler 3. 
                     <div style="font-weight:700;">{uname} <span style="font-size:0.75rem; color:var(--text-muted);">Lv.{level}</span></div>
                     <div style="font-size:0.75rem; color:var(--text-secondary);">₺{total_spend:,.0f} · {approved_count} onaylı fiş</div>
                     <div class="budget-track" style="margin-top:6px; width:200px;">
-                        <div class="budget-fill" style="width:{bar_pct:.0f}%; background:{'linear-gradient(90deg,#ffd700,#ffab00)' if i==0 else 'linear-gradient(90deg,#00d4ff,#8b5cf6)'};"></div>
+                        <div class="budget-fill" style="width:{bar_pct:.0f}%; background:{'linear-gradient(90deg,#f0a500,#e8c040)' if i==0 else 'linear-gradient(90deg,#1a9e6e,#2d4a8a)'};"></div>
                     </div>
                 </div>
                 <div style="text-align:right;">
-                    <div style="font-family:'Bebas Neue'; font-size:1.8rem; color:{'#ffd700' if i==0 else 'var(--accent-blue)'};">{xp}</div>
-                    <div style="font-size:0.7rem; color:var(--text-muted);">XP</div>
+                    <div style="font-family:'Bebas Neue'; font-size:1.8rem; color:{'#f0a500' if i==0 else '#1a9e6e'};">{xp}</div>
+                    <div style="font-size:0.7rem; color:#7aa8c8;">XP</div>
                 </div></div>""", unsafe_allow_html=True)
 
         st.markdown("<br>")
