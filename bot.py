@@ -36,8 +36,7 @@ TWILIO_SID   = os.getenv("TWILIO_SID")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
 twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
 
-# DB_FILE mutlak yol — Railway'de çalışma dizini kaymaları için
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stinga_v13_db.json")
+DB_FILE      = "stinga_v13_db.json"
 DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
 
 PHONE_DIRECTORY = {
@@ -137,25 +136,13 @@ def load_data() -> dict:
     return data
 
 def save_data(d: dict):
-    """Atomik kayıt: geçici dosyaya yaz, sonra rename — veri bozulmasını önler."""
-    tmp = DB_FILE + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, DB_FILE)
-    except Exception as e:
-        print(f"KAYIT HATASI: {e}", flush=True)
-        # Fallback: direkt yaz
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=2)
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
 
 
-def add_notification(target: str, message: str, notif_type: str = "info", data: dict = None):
-    """Dashboard bildirim kuyruğuna ekle. data verilirse mevcut objeye yazar (kaydetmez)."""
-    _own = data is None
-    if _own:
-        data = load_data()
-    data.setdefault("notifications", [])
+def add_notification(target: str, message: str, notif_type: str = "info"):
+    """Dashboard bildirim kuyruğuna ekle."""
+    data = load_data()
     data["notifications"].append({
         "user":  target,
         "msg":   message,
@@ -164,19 +151,16 @@ def add_notification(target: str, message: str, notif_type: str = "info", data: 
         "date":  datetime.now().strftime("%Y-%m-%d"),
         "read":  False,
     })
-    if _own:
-        save_data(data)
+    save_data(data)
 
 
-def add_xp(user_name: str, amount: int, reason: str = "", data: dict = None):
-    """Dashboard XP sistemine puan ekle. data verilirse mevcut objeye yazar (kaydetmez)."""
-    _own = data is None
-    if _own:
-        data = load_data()
-    data.setdefault("xp", {})
+def add_xp(user_name: str, amount: int, reason: str = ""):
+    """Dashboard XP sistemine puan ekle."""
+    data = load_data()
+    if "xp" not in data:
+        data["xp"] = {}
     data["xp"][user_name] = data["xp"].get(user_name, 0) + amount
     if reason:
-        data.setdefault("notifications", [])
         data["notifications"].append({
             "user":  user_name,
             "msg":   f"🏆 +{amount} XP kazandın! ({reason})",
@@ -185,8 +169,7 @@ def add_xp(user_name: str, amount: int, reason: str = "", data: dict = None):
             "date":  datetime.now().strftime("%Y-%m-%d"),
             "read":  False,
         })
-    if _own:
-        save_data(data)
+    save_data(data)
 
 # ─────────────────────────────────────────────
 #  YARDIMCI
@@ -651,8 +634,6 @@ def whatsapp_webhook():
 
         def analiz_et_gonder():
             try:
-                    # Thread içinde taze veri yükle — stale data sorununu önler
-                    data = load_data()
                     res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
                     if res.status_code in [301, 302, 307, 308]:
                         res = requests.get(res.headers.get('Location'), timeout=15)
@@ -691,24 +672,8 @@ def whatsapp_webhook():
 
                     ai_res    = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
                     print(f"Gemini yaniti: {ai_res.text[:200]}", flush=True)
-
-                    # Robust JSON parse — Gemini bazen açıklama metni ekleyebilir
-                    raw_text  = ai_res.text
-                    json_text = re.sub(r"```json?|```", "", raw_text).strip()
-                    # Sadece JSON objesini çıkar
-                    _m = re.search(r'\{.*\}', json_text, re.DOTALL)
-                    if _m:
-                        json_text = _m.group()
-                    try:
-                        fis = json.loads(json_text)
-                    except json.JSONDecodeError:
-                        # Son çare: Gemini'den tekrar iste
-                        print("JSON parse hatası, retry...", flush=True)
-                        retry_prompt = f"Sadece JSON döndür, başka hiçbir şey yazma:\n{prompt}"
-                        ai_res2   = client.models.generate_content(model=MODEL_NAME, contents=[retry_prompt, image])
-                        json_text2 = re.sub(r"```json?|```", "", ai_res2.text).strip()
-                        _m2 = re.search(r'\{.*\}', json_text2, re.DOTALL)
-                        fis = json.loads(_m2.group() if _m2 else json_text2)
+                    json_text = re.sub(r"```json?|```", "", ai_res.text).strip()
+                    fis       = json.loads(json_text)
 
                     # Para birimi dönüşümü
                     tutar_try   = float(fis.get("toplam_tutar", 0))
@@ -738,14 +703,7 @@ def whatsapp_webhook():
                     fis["kategori"] = kategori
                     yorum = yaratici_yorum(fis, user_name, karakter)
 
-                    # Fişi kaydet — eksik key'leri güvenli ekle
-                    data.setdefault("fis_sayaci", {})
-                    data.setdefault("expenses", [])
-                    data.setdefault("duplicate_hashes", [])
-                    data.setdefault("anomaly_log", [])
-                    data.setdefault("xp", {})
-                    data.setdefault("notifications", [])
-                    data.setdefault("rozetler", {})
+                    # Fişi kaydet
                     data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
                     # Durum — dashboard ile uyumlu değerler
                     if sahtelik["sahte_mi"] or sahtelik["guvensizlik_skoru"] >= 70:
@@ -799,22 +757,17 @@ def whatsapp_webhook():
 
                     # Rozet kontrolü
                     yeni_rozetler = rozet_kontrol(user_name, data, new_expense)
+                    save_data(data)
+                    add_xp(user_name, 50, "WhatsApp fiş tarama")
 
-                    # XP ve bildirimler — save_data'dan ÖNCE, aynı data objesi üzerinde
-                    add_xp(user_name, 50, "WhatsApp fiş tarama", data=data)
-
-                    # Admin'lere dashboard bildirimi (aynı data objesi)
+                    # Admin'lere dashboard bildirimi gönder
                     for ukey, udata_info in PHONE_DIRECTORY.items():
-                        if udata_info.get("dashboard_rol") == "admin" and udata_info["ad"] != user_name:
+                        if udata_info.get("yetki") == "admin" and udata_info["ad"] != user_name:
                             add_notification(
                                 udata_info["ad"],
-                                f"📋 {user_name} → {new_expense['Proje']}: {new_expense['Firma']} ₺{tutar_try:,.0f}",
-                                "info",
-                                data=data
+                                f"📋 {user_name} → {proje}: {fis.get('firma','?')} ₺{tutar_try:,.0f}",
+                                "info"
                             )
-
-                    # Tek seferde kaydet — tüm değişiklikler (expenses, xp, notifications, rozetler)
-                    save_data(data)
 
                     # Yanıt oluştur
                     risk = sahtelik["guvensizlik_skoru"]

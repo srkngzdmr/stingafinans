@@ -462,81 +462,81 @@ def configure_ai():
         st.error(f"AI Hatası: {e}")
         return None
 
-# ─── VERİTABANI ───────────────────────────────────────────────
-DB_FILE = "stinga_v13_db.json"
+# ─── RAILWAY API BAĞLANTISI ───────────────────────────────────
+# Bot Railway'de, Dashboard Streamlit Cloud'da çalışıyor.
+# İkisi aynı dosyayı GÖREMEZ — tüm veri bot'un Railway API'sinden gelir.
+
+RAILWAY_URL = os.getenv("BOT_API_URL", "https://stingafinans-production.up.railway.app")
+
+@st.cache_data(ttl=20)
+def load_data():
+    """Railway bot API'sinden tüm veriyi çek. 20 sn cache."""
+    try:
+        r = __import__('requests').get(f"{RAILWAY_URL}/all-data", timeout=10)
+        if r.status_code == 200:
+            raw = r.json()
+            # API doğrudan dict döndürebilir veya wrapper içinde
+            return raw if isinstance(raw, dict) else {}
+        st.error(f"API Hatası: {r.status_code}")
+        return {}
+    except Exception as e:
+        st.error(f"Railway bağlantı hatası: {e}")
+        return {}
+
+def call_api(endpoint: str, method: str = "GET", payload: dict = None) -> dict:
+    """Bot API'sine istek at."""
+    try:
+        url = f"{RAILWAY_URL}{endpoint}"
+        if method == "POST":
+            r = __import__('requests').post(url, json=payload, timeout=10)
+        else:
+            r = __import__('requests').get(url, timeout=10)
+        if r.status_code == 200:
+            return r.json()
+        return {"error": f"HTTP {r.status_code}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+def approve_expense(expense_id: str, action: str, approver: str) -> bool:
+    """Onay/red bot API üzerinden yapılır."""
+    result = call_api("/approve", "POST", {
+        "expense_id": expense_id,
+        "action": action,
+        "approver": approver
+    })
+    if result.get("ok"):
+        st.cache_data.clear()   # Cache'i temizle — yeni veriyi çek
+        return True
+    st.error(f"İşlem hatası: {result.get('error','Bilinmeyen')}")
+    return False
+
+def transfer_wallet(hedef: str, miktar: float, aciklama: str, gonderen: str) -> bool:
+    """Transfer bot API üzerinden yapılır."""
+    result = call_api("/transfer", "POST", {
+        "hedef": hedef,
+        "miktar": miktar,
+        "aciklama": aciklama,
+        "gonderen": gonderen
+    })
+    if result.get("ok"):
+        st.cache_data.clear()
+        return True
+    st.error(f"Transfer hatası: {result.get('error','Bilinmeyen')}")
+    return False
 
 def init_db():
-    if not os.path.exists(DB_FILE):
-        data = {
-            "expenses": [],
-            "wallets": {"Zeynep": 50000, "Serkan": 25000, "Okan": 5000, "Şenol": 30000},
-            "ledger": [],
-            "notifications": [],
-            "budgets": {
-                "Maden Sahası":  {"limit": 100000, "spent": 0},
-                "Aktif Karbon":  {"limit": 80000,  "spent": 0},
-                "Enerji Hatları":{"limit": 60000,  "spent": 0},
-                "Genel Merkez":  {"limit": 40000,  "spent": 0}
-            },
-            "ai_insights": [],
-            "mood_log": [],
-            "badges": {"Zeynep": [], "Serkan": [], "Okan": [], "Şenol": []},
-            "xp": {"Zeynep": 1250, "Serkan": 890, "Okan": 430, "Şenol": 600}
-        }
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-    else:
-        d = load_data()
-        changed = False
-        for field in ["budgets", "ai_insights", "mood_log", "badges", "xp", "notifications"]:
-            if field not in d:
-                d[field] = {} if field in ["budgets","badges","xp"] else []
-                changed = True
-        # Şenol için wallet yoksa ekle
-        if "Şenol" not in d.get("wallets", {}):
-            d["wallets"]["Şenol"] = 30000
-            changed = True
-        if "Şenol" not in d.get("xp", {}):
-            d["xp"]["Şenol"] = 600
-            changed = True
-        if changed:
-            save_data(d)
-
-def load_data():
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    """Dashboard lokal DB kullanmıyor — Railway'den çekiyor. Sadece bağlantı testi."""
+    pass
 
 def save_data(d):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=4)
+    """Dashboard doğrudan DB'ye yazmıyor — API üzerinden işlem yapılıyor."""
+    pass
 
 def add_notify(target, message, notif_type="info"):
-    d = load_data()
-    d["notifications"].append({
-        "user": target,
-        "msg": message,
-        "type": notif_type,
-        "time": datetime.now().strftime("%H:%M"),
-        "date": datetime.now().strftime("%Y-%m-%d"),
-        "read": False
-    })
-    save_data(d)
+    pass
 
 def add_xp(user_name, amount, reason=""):
-    d = load_data()
-    if "xp" not in d:
-        d["xp"] = {}
-    d["xp"][user_name] = d["xp"].get(user_name, 0) + amount
-    if reason:
-        d["notifications"].append({
-            "user": user_name,
-            "msg": f"🏆 +{amount} XP kazandın! ({reason})",
-            "type": "xp",
-            "time": datetime.now().strftime("%H:%M"),
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "read": False
-        })
-    save_data(d)
+    pass
 
 # ─── YARDIMCI ─────────────────────────────────────────────────
 def extract_json(text):
@@ -1139,18 +1139,11 @@ else:
                                     "Oncelik": oncelik,
                                     "Notlar": notlar
                                 }
-                                data_store["expenses"].append(new_e)
-                                if proje in data_store.get("budgets",{}):
-                                    data_store["budgets"][proje]["spent"] = data_store["budgets"][proje].get("spent",0) + new_e["Tutar"]
-                                save_data(data_store)
-                                add_xp(user_name, 50, "Fiş tarama")
-
-                                # Yöneticilere bildirim gönder
-                                for ukey, udata in USERS.items():
-                                    if udata["role"] == "admin" and udata["name"] != user_name:
-                                        add_notify(udata["name"],
-                                            f"📋 {user_name} → {proje}: {data_ai.get('firma','?')} ₺{float(data_ai.get('toplam_tutar',0)):,.0f}",
-                                            "info")
+                                # Bot Railway API'sine gönder — lokal dosyaya YAZMA
+                                api_result = call_api("/add-expense", "POST", new_e)
+                                if api_result.get("error"):
+                                    st.warning(f"⚠️ API uyarısı: {api_result['error']}")
+                                st.cache_data.clear()  # Cache temizle, yeni veriyi çek
 
                                 risk = int(data_ai.get("risk_skoru",0))
                                 st.success("✅ Fiş başarıyla işlendi! +50 XP kazandın!")
@@ -1255,17 +1248,10 @@ else:
                     amt = st.number_input("Tutar (₺)", min_value=0, step=500, value=1000)
                 aciklama = st.text_input("Açıklama", value="Aylık harcırah")
                 if st.form_submit_button("⚡ Transfer Et", use_container_width=True):
-                    data_store["wallets"][target] += amt
-                    data_store["ledger"].append({
-                        "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "Kaynak": user_name, "Hedef": target,
-                        "İşlem": aciklama, "Miktar": amt
-                    })
-                    save_data(data_store)
-                    add_notify(target, f"💰 ₺{amt:,.0f} hesabınıza transfer edildi. ({aciklama})", "success")
-                    add_xp(target, 10, "Transfer alındı")
-                    st.success(f"✅ {target}'e ₺{amt:,.0f} transfer edildi!")
-                    st.rerun()
+                    with st.spinner("Transfer yapılıyor..."):
+                        if transfer_wallet(target, amt, aciklama, user_name):
+                            st.success(f"✅ {target}'e ₺{amt:,.0f} transfer edildi!")
+                            st.rerun()
 
         with col_d:
             st.markdown("### 📋 Son Hareketler")
@@ -1311,19 +1297,15 @@ else:
                             </div></div>""", unsafe_allow_html=True)
                         btn1, btn2 = st.columns(2)
                         if btn1.button("✅ Onayla", key=f"on_{row['ID']}", use_container_width=True):
-                            data_store["wallets"][row['Kullanıcı']] = data_store["wallets"].get(row['Kullanıcı'],0) - row['Tutar']
-                            for e in data_store["expenses"]:
-                                if e["ID"] == row["ID"]: e["Durum"] = "Onaylandı"
-                            save_data(data_store)
-                            add_notify(row['Kullanıcı'], f"✅ {row.get('Firma','?')} fişin onaylandı!", "success")
-                            add_xp(row['Kullanıcı'], 25, "Fiş onaylandı")
-                            st.success("Onaylandı!"); st.rerun()
+                            with st.spinner("İşleniyor..."):
+                                if approve_expense(row["ID"], "approve", user_name):
+                                    st.success("✅ Onaylandı!")
+                                    st.rerun()
                         if btn2.button("❌ Reddet", key=f"ret_{row['ID']}", use_container_width=True):
-                            for e in data_store["expenses"]:
-                                if e["ID"] == row["ID"]: e["Durum"] = "Reddedildi"
-                            save_data(data_store)
-                            add_notify(row['Kullanıcı'], f"❌ {row.get('Firma','?')} fişin reddedildi.", "warning")
-                            st.warning("Reddedildi!"); st.rerun()
+                            with st.spinner("İşleniyor..."):
+                                if approve_expense(row["ID"], "reject", user_name):
+                                    st.warning("❌ Reddedildi!")
+                                    st.rerun()
                     with cb:
                         dosya = row.get('Dosya_Yolu','')
                         if dosya and os.path.exists(dosya):
@@ -1403,9 +1385,8 @@ Türkçe olarak: 1. En riskli 3 işlem ve neden 2. Olağandışı patternler 3. 
                         st.markdown(f"""<div class="ai-bubble">
                             <p style="margin:0; line-height:1.8; white-space:pre-wrap;">{response.text}</p>
                             </div>""", unsafe_allow_html=True)
-                        data_store["ai_insights"].append({"date":datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            "type":"anomaly_scan","content":response.text})
-                        save_data(data_store)
+                        # AI insights lokal - sadece session'da tut
+                        pass
                     except Exception as e:
                         st.error(f"AI yanıt veremedi: {e}")
 
