@@ -572,11 +572,15 @@ def whatsapp_webhook():
         for e in ay_fis:
             cat_bd[e.get("Kategori","diger")] += e["Tutar"]
         cat_str = "\n".join(f"  {k}: {v:,.0f} ₺" for k, v in sorted(cat_bd.items(), key=lambda x: -x[1]))
+        # KDV özeti
+        toplam_kdv = sum(float(e.get("KDV", 0)) for e in ay_fis)
+        toplam_kdvsiz = sum(float(e.get("Tutar_KDVsiz", e.get("Tutar", 0))) for e in ay_fis)
         kehane  = harcama_kehaneti(user_name, data)
         msg.body(
             f"📊 *{datetime.now().strftime('%B %Y')} Özeti*\n"
             f"{'─'*28}\n"
-            f"💰 Toplam: *{toplam:,.0f} ₺*\n"
+            f"💰 KDV Dahil: *{toplam:,.0f} ₺*\n"
+            f"📊 KDV Hariç: *{toplam_kdvsiz:,.0f} ₺* | KDV: {toplam_kdv:,.0f} ₺\n"
             f"🧾 Fiş: {len(ay_fis)}\n\n"
             f"📁 Kategoriler:\n{cat_str}\n\n"
             f"📉 Bütçe: {butce_durumu_str(user_name, data)}\n\n"
@@ -845,6 +849,8 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         "Firma"              : fis.get("firma", "Bilinmiyor"),
                         "Tutar"              : tutar_try,
                         "KDV"                : float(fis.get("kdv_tutari", 0)),
+                        "Tutar_KDVsiz"       : round(tutar_try - float(fis.get("kdv_tutari", 0)), 2),
+                        "KDV_Orani"          : (round(float(fis.get("kdv_tutari", 0)) / tutar_try * 100) if tutar_try > 0 and float(fis.get("kdv_tutari", 0)) > 0 else 0),
                         "ParaBirimi"         : para_birimi,
                         "OdemeTipi"          : fis.get("odeme_yontemi", "bilinmiyor"),
                         "Odeme_Turu"         : fis.get("odeme_yontemi", "bilinmiyor"),
