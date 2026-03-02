@@ -42,19 +42,19 @@ DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
 
 PHONE_DIRECTORY = {
     "whatsapp:+905350328406": {
-        "ad": "Okan",   "rol": "Saha Personeli",         "limit": 5000,
+        "ad": "Okan İlhan",   "rol": "Saha Personeli",         "limit": 5000,
         "emoji": "🔧",  "yetki": "user",  "dashboard_key": "okan"
     },
     "whatsapp:+905322002337": {
-        "ad": "Serkan", "rol": "İşletme Müdürü",         "limit": 10000,
+        "ad": "Serkan Güzdemir", "rol": "İşletme Müdürü",      "limit": 10000,
         "emoji": "⚡",  "yetki": "admin", "dashboard_key": "serkan"
     },
     "whatsapp:+905547858627": {
-        "ad": "Zeynep", "rol": "Yönetim Kurulu Başkanı", "limit": 50000,
+        "ad": "Zeynep Özyaman", "rol": "Yönetim Kurulu Başkanı", "limit": 50000,
         "emoji": "👑",  "yetki": "admin", "dashboard_key": "zeynep"
     },
     "whatsapp:+905304305213": {
-        "ad": "Şenol", "rol": "Genel Müdür", "limit": 30000,
+        "ad": "Şenol Özyaman", "rol": "Genel Müdür", "limit": 30000,
         "emoji": "🏢",  "yetki": "user", "dashboard_key": "senol",
         "dashboard_rol": "user", "dashboard_sifre": "456"
     },
@@ -84,12 +84,12 @@ ROZETLER = {
 }
 
 SEVIYELER = [
-    (0,    "🥉 Toplam Sistemde Kayıtlı Fiş Sayısı"),
-    (5,    "🥈 Toplam Sistemde Kayıtlı Fiş Sayısı"),
+    (0,    "🥉 Stajyer Muhasebeci"),
+    (5,    "🥈 Junior Analist"),
     (15,   "🥇 Kıdemli Analist"),
-    (30,   "💎 Toplam Sistemde Kayıtlı Fiş Sayısı"),
-    (60,   "🏆 Toplam Sistemde Kayıtlı Fiş Sayısı"),
-    (100,  "👑 Toplam Sistemde Kayıtlı Fiş Sayısı"),
+    (30,   "💎 Finans Uzmanı"),
+    (60,   "🏆 CFO Adayı"),
+    (100,  "👑 Finans Efsanesi"),
 ]
 
 # ─────────────────────────────────────────────
@@ -99,24 +99,24 @@ def load_data() -> dict:
     default = {
         "expenses": [],
         # Harcırah bakiyeleri (dashboard Finans&Kasa bölümü)
-        "wallets":  {"Zeynep": 50000, "Serkan": 25000, "Okan": 5000, "Şenol": 30000},
+        "wallets":  {"Zeynep Özyaman": 50000, "Serkan Güzdemir": 25000, "Okan İlhan": 5000, "Şenol Özyaman": 30000},
         # Proje bazlı bütçe (dashboard ultra-card göstergeleri)
         "budgets": {
-            "Maden Sahası":   {"limit": 80000, "spent": 0},
-            "İş Seyahati":   {"limit": 40000,  "spent": 0},
-            "Diğer Harcamalar": {"limit": 60000,  "spent": 0},
-            "Genel Merkez":   {"limit": 150000,  "spent": 0},
+            "Maden Sahası":   {"limit": 100000, "spent": 0},
+            "Aktif Karbon":   {"limit": 80000,  "spent": 0},
+            "Enerji Hatları": {"limit": 60000,  "spent": 0},
+            "Genel Merkez":   {"limit": 40000,  "spent": 0},
         },
         # WhatsApp uyarıları için kişi limitleri
-        "user_limits": {"Zeynep": 100000, "Serkan": 20000, "Okan": 5000, "Şenol": 60000},
+        "user_limits": {"Zeynep Özyaman": 50000, "Serkan Güzdemir": 10000, "Okan İlhan": 5000, "Şenol Özyaman": 30000},
         "anomaly_log": [],
         "duplicate_hashes": [],
         "user_states": {},
-        "rozetler": {"Zeynep": [], "Serkan": [], "Okan": [], "Şenol": []},
-        "fis_sayaci": {"Zeynep": 0, "Serkan": 0, "Okan": 0, "Şenol": 0},
+        "rozetler": {"Zeynep Özyaman": [], "Serkan Güzdemir": [], "Okan İlhan": [], "Şenol Özyaman": []},
+        "fis_sayaci": {"Zeynep Özyaman": 0, "Serkan Güzdemir": 0, "Okan İlhan": 0, "Şenol Özyaman": 0},
         "karakter_modu": {},
         # Dashboard ek alanları
-        "xp": {"Zeynep": 0, "Serkan": 0, "Okan": 0, "Şenol": 0},
+        "xp": {"Zeynep Özyaman": 0, "Serkan Güzdemir": 0, "Okan İlhan": 0, "Şenol Özyaman": 0},
         "notifications": [],
         "ledger": [],
     }
@@ -129,10 +129,10 @@ def load_data() -> dict:
                 data = json.load(f)
             for k, v in default.items():
                 data.setdefault(k, v)
-            # Şenol'u eksik alt-alanlara ekle
+            # Yeni tam isimlerle eksik alt-alanlara ekle
             for field in ["wallets", "user_limits", "rozetler", "fis_sayaci", "xp"]:
-                if "Şenol" not in data.get(field, {}):
-                    data[field]["Şenol"] = default[field].get("Şenol", 0 if field != "rozetler" else [])
+                if "Şenol Özyaman" not in data.get(field, {}):
+                    data[field]["Şenol Özyaman"] = default[field].get("Şenol Özyaman", 0 if field != "rozetler" else [])
             # budgets eski flat formattan migrate et
             budgets = data.get("budgets", {})
             if budgets and isinstance(list(budgets.values())[0], (int, float)):
@@ -699,12 +699,20 @@ def whatsapp_webhook():
                     img_hash  = gorsel_hash(raw_bytes)
 
                     if img_hash in data["duplicate_hashes"]:
-                        msg.body("⚠️ *Mükerrer Fiş!*\nBu fişi daha önce girdiniz. Farklı bir fiş gönderin.")
-                        return str(resp)
+                        twilio_client.messages.create(
+                            body="⚠️ *Mükerrer Fiş Tespit Edildi!*\n\nBu fişi daha önce sisteme girdiniz.\nAynı fişi tekrar gönderemezsiniz.",
+                            from_="whatsapp:+14155238886",
+                            to=sender_phone
+                        )
+                        return
 
                     print(f"Gorsel indirildi: {len(raw_bytes)} bytes", flush=True)
                     image = Image.open(BytesIO(raw_bytes))
                     print("Gemini cagiriliyor...", flush=True)
+
+                    # ── Firma+Tutar bazlı mükerrer fiş kontrolü (hash farklı olsa bile)
+                    # Bu kontrol AI analizinden önce yapılır
+                    # (hash kontrolü yukarıda yapıldı, bu ek güvenlik katmanı)
 
                     # ── GEMINI: Ultra detaylı analiz promptu
                     bugun = datetime.now().strftime("%Y-%m-%d")
@@ -858,6 +866,37 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         "Gorsel_B64"         : gorsel_data_uri,
                     }
 
+                    # ── Firma+Tutar+Tarih bazlı mükerrer fiş kontrolü (AI sonrası, kayıttan önce)
+                    firma_yeni = str(fis.get("firma", "")).strip().lower()
+                    tutar_yeni = float(fis.get("toplam_tutar", 0))
+                    tarih_yeni = fis.get("tarih", "")
+                    mukerrer_fis = None
+                    for e in data.get("expenses", []):
+                        firma_eski = str(e.get("Firma", "")).strip().lower()
+                        tutar_eski = float(e.get("Tutar", 0))
+                        tarih_eski = str(e.get("Tarih", ""))
+                        if (firma_eski == firma_yeni and
+                                abs(tutar_eski - tutar_yeni) < 1.0 and
+                                tarih_eski == tarih_yeni):
+                            mukerrer_fis = e
+                            break
+
+                    if mukerrer_fis:
+                        twilio_client.messages.create(
+                            body=(
+                                f"⚠️ *Mükerrer Fiş Tespit Edildi!*\n\n"
+                                f"Bu fişe ait kayıt sistemde zaten mevcut:\n"
+                                f"🏢 {mukerrer_fis.get('Firma','?')}\n"
+                                f"💰 ₺{float(mukerrer_fis.get('Tutar',0)):,.2f}\n"
+                                f"📅 {mukerrer_fis.get('Tarih','?')}\n"
+                                f"👤 {mukerrer_fis.get('Kullanıcı','?')} tarafından girilmiş\n\n"
+                                f"Aynı fişi tekrar gönderemezsiniz."
+                            ),
+                            from_="whatsapp:+14155238886",
+                            to=sender_phone
+                        )
+                        return
+
                     data["expenses"].append(new_expense)
                     data["duplicate_hashes"].append(img_hash)
                     if anomaliler:
@@ -921,8 +960,11 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
 
                     seviye = seviye_hesapla(data["fis_sayaci"].get(user_name, 0))
 
+                    # Güncel kasa bakiyesi
+                    kasa_bakiye = data.get("wallets", {}).get(user_name, 0)
+
                     yanit = (
-                        f"✅ *FİŞ SİSTEME KAYDEDİLDİ.*\n"
+                        f"✅ *FİŞ ALINDI — ONAYA GÖNDERİLDİ*\n"
                         f"{'─'*28}\n"
                         f"🏢 {fis.get('firma','?')}\n"
                         f"💰 {tutar_try:,.2f} ₺"
@@ -935,11 +977,13 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         + ilginc_str
                         + f"\n\n💬 *{karakter.upper()} YORUMU:*\n{yorum}"
                         + f"\n\n📊 Bütçe: {butce_durumu_str(user_name, data)}"
+                        + f"\n💳 Kasa Bakiyeniz: *{kasa_bakiye:,.0f} ₺*"
                         + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
                         + sahte_str
                         + anomali_str
                         + rozet_str
-                        + f"\n\n🔖 `{new_expense['ID']}`"
+                        + f"\n\n📨 Fişiniz yönetici onayına gönderildi."
+                        + f"\n🔖 `{new_expense['ID']}`"
                     )
                     twilio_client.messages.create(
                         body=yanit,
@@ -968,7 +1012,7 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
             analiz_et_gonder._lock = threading.Lock()
         t = threading.Thread(target=analiz_et_gonder, daemon=True)
         t.start()
-        msg.body("⏳ Fişiniz analiz ediliyor, sonuç birkaç saniye içinde gelecek...")
+        msg.body("⏳ *Stinga Yapay Zeka* fişinizi analiz ediyor, lütfen bekleyin...")
         return str(resp)
 
     # ── VARSAYILAN
