@@ -2259,8 +2259,14 @@ else:
                             if dosya and os.path.exists(str(dosya)):
                                 st.image(str(dosya), caption="Orijinal Fiş", use_container_width=True)
                             elif b64_uri:
-                                st.markdown(f'<img src="{b64_uri}" style="width:100%;border-radius:10px;" alt="Fiş">', unsafe_allow_html=True)
-                                st.caption("📱 WhatsApp'tan gönderildi")
+                                try:
+                                    header, b64_data = b64_uri.split(",", 1) if "," in b64_uri else ("", b64_uri)
+                                    img_bytes = base64.b64decode(b64_data)
+                                    st.image(img_bytes, caption="📱 WhatsApp'tan gönderildi", use_container_width=True)
+                                except Exception:
+                                    st.markdown("""<div style="height:150px;background:var(--bg-secondary);border-radius:10px;
+                                        display:flex;align-items:center;justify-content:center;color:var(--text-muted);">📷 Görsel Yüklenemedi</div>""",
+                                        unsafe_allow_html=True)
                             else:
                                 st.markdown("""<div style="height:150px;background:var(--bg-secondary);border-radius:10px;
                                     display:flex;align-items:center;justify-content:center;color:var(--text-muted);">📷 Görsel Yok</div>""",
@@ -2440,11 +2446,17 @@ else:
                             if dosya and os.path.exists(dosya):
                                 st.image(dosya, caption="Orijinal Fiş", use_container_width=True)
                             elif b64_uri:
-                                st.markdown(
-                                    f'<img src="{b64_uri}" style="width:100%; border-radius:10px; "'                                    f'alt="Fiş Görseli">',
-                                    unsafe_allow_html=True
-                                )
-                                st.caption("📱 WhatsApp'tan gönderilen fiş")
+                                try:
+                                    header, b64_data = b64_uri.split(",", 1) if "," in b64_uri else ("", b64_uri)
+                                    img_bytes = base64.b64decode(b64_data)
+                                    st.image(img_bytes, caption="📱 WhatsApp'tan gönderilen fiş", use_container_width=True)
+                                except Exception:
+                                    st.markdown("""
+                                    <div style="height:150px; background:var(--bg-secondary); border-radius:10px; 
+                                                display:flex; align-items:center; justify-content:center; color:var(--text-muted);">
+                                        📷 Görsel Yüklenemedi
+                                    </div>
+                                    """, unsafe_allow_html=True)
                             else:
                                 st.markdown("""
                                 <div style="height:150px; background:var(--bg-secondary); border-radius:10px; 
@@ -2966,11 +2978,19 @@ else:
                         if dosya and os.path.exists(dosya):
                             st.image(dosya, caption=f"Orijinal Fiş — {islem_id}", use_container_width=True)
                         elif b64_uri:
-                            st.markdown(
-                                f'<img src="{b64_uri}" style="width:100%; border-radius:12px;" '                                f'alt="Fiş Görseli">',
-                                unsafe_allow_html=True
-                            )
-                            st.caption(f"📱 WhatsApp Fişi — {islem_id}")
+                            try:
+                                header, b64_data = b64_uri.split(",", 1) if "," in b64_uri else ("", b64_uri)
+                                img_bytes = base64.b64decode(b64_data)
+                                st.image(img_bytes, caption=f"📱 WhatsApp Fişi — {islem_id}", use_container_width=True)
+                            except Exception:
+                                st.markdown(f"""
+                                <div style="height:300px; background:var(--bg-secondary); border-radius:16px; 
+                                            display:flex; flex-direction:column; align-items:center; justify-content:center;
+                                            color:var(--text-muted); border:2px dashed var(--border);">
+                                    <div style="font-size:3rem; opacity:0.3;">📷</div>
+                                    <div style="font-size:0.85rem; margin-top:8px;">Görsel yüklenemedi</div>
+                                </div>
+                                """, unsafe_allow_html=True)
                         else:
                             st.markdown(f"""
                             <div style="height:300px; background:var(--bg-secondary); border-radius:16px; 
