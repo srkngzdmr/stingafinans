@@ -14,7 +14,7 @@ from collections import defaultdict
 #  YAPILANDIRMA
 # ─────────────────────────────────────────────
 # Railway bot URL'ini buraya gir (Railway > Settings > Domains)
-BOT_API_URL = st.secrets.get("BOT_API_URL", "https://YOUR-RAILWAY-URL.railway.app")
+BOT_API_URL = st.secrets.get("BOT_API_URL", "https://stingafinans-production.up.railway.app")
 
 PHONE_DIRECTORY = {
     "Okan":   {"rol": "Saha Müdürü",  "limit": 5000,  "emoji": "🔧"},
