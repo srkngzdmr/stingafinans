@@ -120,34 +120,72 @@ def load_data() -> dict:
         "notifications": [],
         "ledger": [],
     }
-    if not os.path.exists(DB_FILE):
-        return default
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    for k, v in default.items():
-        data.setdefault(k, v)
-    # Şenol'u eksik alt-alanlara ekle
-    for field in ["wallets", "user_limits", "rozetler", "fis_sayaci", "xp"]:
-        if "Şenol" not in data.get(field, {}):
-            data[field]["Şenol"] = default[field].get("Şenol", 0 if field != "rozetler" else [])
-    # budgets eski flat formattan ({"Zeynep":50000}) proje formatına migrate et
-    budgets = data.get("budgets", {})
-    if budgets and isinstance(list(budgets.values())[0], (int, float)):
-        data["budgets"] = default["budgets"]
-    return data
+    # Önce ana, bozuksa backup dene
+    for try_file in [DB_FILE, DB_FILE + ".bak"]:
+        if not os.path.exists(try_file):
+            continue
+        try:
+            with open(try_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for k, v in default.items():
+                data.setdefault(k, v)
+            # Şenol'u eksik alt-alanlara ekle
+            for field in ["wallets", "user_limits", "rozetler", "fis_sayaci", "xp"]:
+                if "Şenol" not in data.get(field, {}):
+                    data[field]["Şenol"] = default[field].get("Şenol", 0 if field != "rozetler" else [])
+            # budgets eski flat formattan migrate et
+            budgets = data.get("budgets", {})
+            if budgets and isinstance(list(budgets.values())[0], (int, float)):
+                data["budgets"] = default["budgets"]
+            print(f"DB yüklendi ({try_file}): {len(data.get('expenses',[]))} fiş", flush=True)
+            return data
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"DB okuma hatası ({try_file}): {e}", flush=True)
+            continue
+    print("UYARI: Geçerli DB bulunamadı, default döndürülüyor", flush=True)
+    return default
+
+import threading as _threading
+_DB_LOCK = _threading.Lock()
 
 def save_data(d: dict):
-    """Atomik kayıt: geçici dosyaya yaz, sonra rename — veri bozulmasını önler."""
+    """Thread-safe atomik kayıt. Lock + tmp dosya → veri bozulmasını önler."""
     tmp = DB_FILE + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, DB_FILE)
-    except Exception as e:
-        print(f"KAYIT HATASI: {e}", flush=True)
-        # Fallback: direkt yaz
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=2)
+    with _DB_LOCK:
+        try:
+            # Mevcut dosyayı backup al
+            if os.path.exists(DB_FILE):
+                try:
+                    os.replace(DB_FILE, DB_FILE + ".bak")
+                except:
+                    pass
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, DB_FILE)
+            print(f"DB kaydedildi: {len(d.get('expenses',[]))} fiş", flush=True)
+        except Exception as e:
+            print(f"KAYIT HATASI: {e}", flush=True)
+            try:
+                with open(DB_FILE, "w", encoding="utf-8") as f:
+                    json.dump(d, f, ensure_ascii=False, indent=2)
+            except Exception as e2:
+                print(f"FALLBACK KAYIT HATASI: {e2}", flush=True)
+
+def load_data_safe() -> dict:
+    """Thread-safe okuma. Bozuk JSON'a karşı .bak dosyasından restore."""
+    with _DB_LOCK:
+        # Önce ana dosyayı dene
+        for try_file in [DB_FILE, DB_FILE + ".bak"]:
+            if os.path.exists(try_file):
+                try:
+                    with open(try_file, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except json.JSONDecodeError:
+                    print(f"JSON BOZUK: {try_file}", flush=True)
+                    continue
+        # Hiçbiri yoksa boş DB döndür
+        print("UYARI: DB dosyası bulunamadı, boş başlatılıyor", flush=True)
+        return {}
 
 
 def add_notification(target: str, message: str, notif_type: str = "info", data: dict = None):
@@ -753,10 +791,20 @@ def whatsapp_webhook():
                     else:
                         durum = "Onay Bekliyor"
 
-                    # Görseli base64 olarak encode et — dashboard gösterebilsin
+                    # Görseli THUMBNAIL olarak sıkıştır → max 50KB, JSON bozulmasın
                     import base64 as _b64mod
-                    gorsel_b64_str = _b64mod.b64encode(raw_bytes).decode("utf-8")
-                    gorsel_data_uri = f"data:image/jpeg;base64,{gorsel_b64_str}"
+                    try:
+                        _thumb_img = Image.open(BytesIO(raw_bytes)).convert("RGB")
+                        _thumb_img.thumbnail((400, 400), Image.LANCZOS)
+                        _thumb_buf = BytesIO()
+                        _thumb_img.save(_thumb_buf, format="JPEG", quality=55, optimize=True)
+                        _thumb_bytes = _thumb_buf.getvalue()
+                        gorsel_b64_str = _b64mod.b64encode(_thumb_bytes).decode("utf-8")
+                        gorsel_data_uri = f"data:image/jpeg;base64,{gorsel_b64_str}"
+                        print(f"Thumbnail boyutu: {len(_thumb_bytes)//1024}KB", flush=True)
+                    except Exception as _te:
+                        print(f"Thumbnail hatası: {_te}", flush=True)
+                        gorsel_data_uri = ""
 
                     new_expense = {
                         "ID"                 : datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -893,9 +941,12 @@ def whatsapp_webhook():
                 )
 
         import threading
+        # DB yazma kilidi — iki eş zamanlı fiş birbirini ezmesin
+        if not hasattr(analiz_et_gonder, '_lock'):
+            analiz_et_gonder._lock = threading.Lock()
         t = threading.Thread(target=analiz_et_gonder, daemon=True)
         t.start()
-        msg.body("⏳ Fişiniz analiz ediliyor, lütfen bekleyin...")
+        msg.body("⏳ Fişiniz analiz ediliyor, sonuç birkaç saniye içinde gelecek...")
         return str(resp)
 
     # ── VARSAYILAN
@@ -1034,6 +1085,115 @@ def haftalik_ozet():
         except Exception as e:
             print(f"Haftalık özet hatası ({user}): {e}", flush=True)
     return jsonify({"status": "ok", "gonderilen": len(PHONE_DIRECTORY)}), 200
+
+
+@app.route("/approve", methods=['POST'])
+def approve_endpoint():
+    """Dashboard onay/red işlemi. Body: {ID, action: 'approve'|'reject', approver}"""
+    try:
+        body     = request.get_json(force=True) or {}
+        fis_id   = str(body.get("ID", ""))
+        action   = body.get("action", "approve")
+        approver = body.get("approver", "admin")
+
+        if not fis_id:
+            return jsonify({"error": "ID gerekli"}), 400
+
+        data = load_data()
+        found = False
+        kullanici = ""
+        tutar = 0.0
+        firma = ""
+
+        for e in data.get("expenses", []):
+            if str(e.get("ID", "")) == fis_id:
+                found = True
+                kullanici = e.get("Kullanıcı", "")
+                tutar     = float(e.get("Tutar", 0))
+                firma     = e.get("Firma", "?")
+                if action == "approve":
+                    e["Durum"] = "Onaylandı"
+                    e["Onaylayan"] = approver
+                else:
+                    e["Durum"] = "Reddedildi"
+                    e["Reddeden"] = approver
+                break
+
+        if not found:
+            return jsonify({"error": "Fiş bulunamadı", "ID": fis_id}), 404
+
+        if action == "approve":
+            # Cüzdandan düş
+            mevcut = data.get("wallets", {}).get(kullanici, 0)
+            data.setdefault("wallets", {})[kullanici] = max(0, mevcut - tutar)
+            # XP ekle
+            add_xp(kullanici, 25, "Fiş onaylandı", data=data)
+            # Bildirim
+            add_notification(kullanici,
+                f"✅ {firma} (₺{tutar:,.0f}) onaylandı",
+                "success", data=data)
+        else:
+            add_notification(kullanici,
+                f"❌ {firma} harcamanız reddedildi",
+                "warning", data=data)
+
+        save_data(data)
+        print(f"Fiş {action}: ID={fis_id}, kullanıcı={kullanici}", flush=True)
+        return jsonify({"ok": True, "ID": fis_id, "action": action}), 200
+
+    except Exception as e:
+        import traceback
+        print(f"/approve HATA: {traceback.format_exc()}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/transfer", methods=['POST'])
+def transfer_endpoint():
+    """Dashboard harcırah transferi. Body: {hedef, miktar, aciklama, gonderen}"""
+    try:
+        body      = request.get_json(force=True) or {}
+        hedef     = body.get("hedef", "")
+        miktar    = float(body.get("miktar", 0))
+        aciklama  = body.get("aciklama", "Harcırah")
+        gonderen  = body.get("gonderen", "admin")
+
+        if not hedef or miktar <= 0:
+            return jsonify({"error": "Hedef ve miktar gerekli"}), 400
+
+        data = load_data()
+        data.setdefault("wallets", {})[hedef] = data["wallets"].get(hedef, 0) + miktar
+        data.setdefault("ledger", []).append({
+            "Tarih":  datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "Kaynak": gonderen,
+            "Hedef":  hedef,
+            "İşlem":  aciklama,
+            "Miktar": miktar
+        })
+        add_notification(hedef,
+            f"💰 Hesabınıza ₺{miktar:,.0f} transfer yapıldı. ({aciklama})",
+            "success", data=data)
+        add_xp(hedef, 10, "Transfer alındı", data=data)
+        save_data(data)
+        return jsonify({"ok": True, "hedef": hedef, "miktar": miktar}), 200
+
+    except Exception as e:
+        import traceback
+        print(f"/transfer HATA: {traceback.format_exc()}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/gorsel/<fis_id>", methods=['GET'])
+def gorsel_endpoint(fis_id):
+    """Fiş görselini döndür. Base64 data URI veya 404."""
+    data = load_data()
+    for e in data.get("expenses", []):
+        if str(e.get("ID", "")) == str(fis_id):
+            b64 = e.get("Gorsel_B64", "")
+            if b64:
+                return jsonify({"ok": True, "gorsel": b64}), 200
+            return jsonify({"ok": False, "error": "Görsel yok"}), 404
+    return jsonify({"ok": False, "error": "Fiş bulunamadı"}), 404
+
 
 
 if __name__ == "__main__":

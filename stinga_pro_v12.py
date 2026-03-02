@@ -643,86 +643,94 @@ def configure_ai():
         st.error(f"AI Hatası: {e}")
         return None
 
-# ─── VERİTABANI ───────────────────────────────────────────────
-DB_FILE = "stinga_v13_db.json"
+# ─── RAILWAY API BAĞLANTISI ──────────────────────────────────
+# Bot Railway'de çalışıyor. Dashboard oradan okur/yazar.
+import requests as _req
+
+RAILWAY_URL = st.secrets.get("BOT_API_URL", "https://stingafinans-production.up.railway.app")
+_API_TIMEOUT = 12
 
 def init_db():
-    default_budgets = {
-        "Maden Sahası":   {"limit": 100000, "spent": 0},
-        "Aktif Karbon":   {"limit":  80000, "spent": 0},
-        "Enerji Hatları": {"limit":  60000, "spent": 0},
-        "Genel Merkez":   {"limit":  40000, "spent": 0}
-    }
-    if not os.path.exists(DB_FILE):
-        data = {
-            "expenses": [],
-            "wallets":          {"Zeynep": 50000, "Serkan": 25000, "Okan": 5000, "Şenol": 30000},
-            "ledger": [],
-            "notifications": [],
-            "budgets":          default_budgets,
-            "ai_insights": [],
-            "mood_log": [],
-            "badges":           {"Zeynep": [], "Serkan": [], "Okan": [], "Şenol": []},
-            "xp":               {"Zeynep": 1250, "Serkan": 890, "Okan": 430, "Şenol": 600},
-            "fis_sayaci":       {"Zeynep": 0, "Serkan": 0, "Okan": 0, "Şenol": 0},
-            "duplicate_hashes": [],
-            "anomaly_log":      [],
-            "karakter_modu":    {}
-        }
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-    else:
-        d = load_data()
-        changed = False
-        # Eksik üst-level alanları ekle
-        for field, default in [
-            ("ai_insights", []), ("mood_log", []), ("notifications", []),
-            ("ledger", []), ("duplicate_hashes", []), ("anomaly_log", []),
-            ("karakter_modu", {})
-        ]:
-            if field not in d:
-                d[field] = default
-                changed = True
-        for field in ["badges", "xp", "wallets", "budgets", "fis_sayaci"]:
-            if field not in d:
-                d[field] = {}
-                changed = True
-        # budgets: eski flat format {isim: tutar} → proje formatına migrate et
-        if d["budgets"] and isinstance(list(d["budgets"].values())[0], (int, float)):
-            d["budgets"] = default_budgets
-            changed = True
-        # Şenol'u dict'lere ekle
-        for name, field, default in [
-            ("Şenol","wallets",30000), ("Şenol","xp",600), ("Şenol","fis_sayaci",0)
-        ]:
-            if name not in d.get(field, {}):
-                d.setdefault(field, {})[name] = default
-                changed = True
-        if "Şenol" not in d.get("badges", {}):
-            d.setdefault("badges", {})["Şenol"] = []
-            changed = True
-        if changed:
-            save_data(d)
+    """API hazır mı kontrol et, session_state'i hazırla."""
+    pass  # Veri Railway'den geliyor, lokal init gerekmiyor
 
+
+@st.cache_data(ttl=15)
 def load_data():
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    """Railway API'den tüm veriyi çek. 15 sn cache."""
+    try:
+        r = _req.get(f"{RAILWAY_URL}/all-data", timeout=_API_TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.error(f"⚠️ Railway bağlantı hatası: {e}")
+        return {
+            "expenses": [], "wallets": {}, "budgets": {}, "ledger": [],
+            "notifications": [], "xp": {}, "fis_sayaci": {}, "badges": [],
+            "ai_insights": [], "anomaly_log": []
+        }
+
 
 def save_data(d):
-    """Atomik kayıt: .tmp → rename — yazma ortasında crash'e karşı."""
-    tmp = DB_FILE + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=4)
-        os.replace(tmp, DB_FILE)
-    except Exception as e:
-        print(f"KAYIT HATASI: {e}")
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=4)
+    """Lokal kayıt yok — Railway API üzerinden yazılıyor. Bu fonksiyon artık kullanılmıyor."""
+    pass
 
-def add_notify(target, message, notif_type="info"):
-    d = load_data()
-    d["notifications"].append({
+
+def _api_post(endpoint: str, payload: dict) -> dict:
+    """Railway API'ye POST atar, sonucu döndürür."""
+    try:
+        r = _req.post(f"{RAILWAY_URL}{endpoint}", json=payload, timeout=_API_TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.error(f"API Hatası ({endpoint}): {e}")
+        return {"ok": False, "error": str(e)}
+
+
+def api_approve(fis_id: str, action: str, approver: str) -> bool:
+    """Fişi onayla veya reddet."""
+    res = _api_post("/approve", {"ID": fis_id, "action": action, "approver": approver})
+    if res.get("ok"):
+        st.cache_data.clear()
+        return True
+    return False
+
+
+def api_transfer(hedef: str, miktar: float, aciklama: str, gonderen: str) -> bool:
+    """Harcırah transferi."""
+    res = _api_post("/transfer", {"hedef": hedef, "miktar": miktar,
+                                   "aciklama": aciklama, "gonderen": gonderen})
+    if res.get("ok"):
+        st.cache_data.clear()
+        return True
+    return False
+
+
+def api_add_expense(expense: dict) -> bool:
+    """Dashboard'dan fiş ekle."""
+    res = _api_post("/add-expense", expense)
+    if res.get("ok"):
+        st.cache_data.clear()
+        return True
+    return False
+
+
+def add_notify(target, message, notif_type="info", d=None):
+    """Eski uyumluluk shim — artık API üzerinden çalışıyor."""
+    pass
+
+
+def add_xp(user_name, amount, reason="", d=None):
+    """Eski uyumluluk shim — artık API üzerinden çalışıyor."""
+    pass
+
+
+
+    """d verilirse kaydetmez, sadece objeye yazar (atomic save için)."""
+    _own = d is None
+    if _own:
+        d = load_data()
+    d.setdefault("notifications", []).append({
         "user": target,
         "msg": message,
         "type": notif_type,
@@ -730,15 +738,17 @@ def add_notify(target, message, notif_type="info"):
         "date": datetime.now().strftime("%Y-%m-%d"),
         "read": False
     })
-    save_data(d)
+    if _own:
+        save_data(d)
 
-def add_xp(user_name, amount, reason=""):
-    d = load_data()
-    if "xp" not in d:
-        d["xp"] = {}
-    d["xp"][user_name] = d["xp"].get(user_name, 0) + amount
+def add_xp(user_name, amount, reason="", d=None):
+    """d verilirse kaydetmez, sadece objeye yazar (atomic save için)."""
+    _own = d is None
+    if _own:
+        d = load_data()
+    d.setdefault("xp", {})[user_name] = d["xp"].get(user_name, 0) + amount
     if reason:
-        d["notifications"].append({
+        d.setdefault("notifications", []).append({
             "user": user_name,
             "msg": f"🏆 +{amount} XP kazandın! ({reason})",
             "type": "xp",
@@ -746,7 +756,8 @@ def add_xp(user_name, amount, reason=""):
             "date": datetime.now().strftime("%Y-%m-%d"),
             "read": False
         })
-    save_data(d)
+    if _own:
+        save_data(d)
 
 # ─── YARDIMCI ─────────────────────────────────────────────────
 def extract_json(text):
@@ -1739,39 +1750,21 @@ else:
                                         "Notlar": notlar
                                     }
                                     
-                                    data_store["expenses"].append(new_e)
+                                    # ── Railway API'ye gönder ──────────────────
+                                    with st.spinner("Railway'e gönderiliyor..."):
+                                        ok = api_add_expense(new_e)
                                     
-                                    # Update budget
-                                    if proje in data_store.get("budgets", {}):
-                                        data_store["budgets"][proje]["spent"] = data_store["budgets"][proje].get("spent", 0) + float(data_ai.get("toplam_tutar", 0))
-                                    
-                                    save_data(data_store)
-                                    
-                                    # XP reward
-                                    add_xp(user_name, 50, "Fiş tarama")
-                                    
-                                    # Tüm admin kullanıcılarına bildirim gönder
-                                    if role != "admin":
-                                        for _admin_key, _admin_info in USERS.items():
-                                            if _admin_info.get("role") == "admin":
-                                                add_notify(
-                                                    _admin_info["name"],
-                                                    f"📋 {user_name} → {proje}: {data_ai.get('firma','?')} ₺{float(data_ai.get('toplam_tutar',0)):,.0f} — Onay bekliyor",
-                                                    "info"
-                                                )
-                                    
-                                    # Show result
-                                    risk = int(data_ai.get("risk_skoru", 0))
-                                    anomali = data_ai.get("anomali", False)
-                                    
-                                    if role != "admin":
-                                        st.success("✅ Fiş sisteme eklendi! +50 XP · ⏳ Onay için yönetici bildirildi.")
+                                    if not ok:
+                                        st.error("❌ Fiş API'ye gönderilemedi. Railway bağlantısını kontrol edin.")
                                     else:
-                                        st.success("✅ Fiş başarıyla işlendi ve onaylandı! +50 XP kazandın!")
-                                        # Admin kendi fişini direkt onaylayabilir
-                                        new_e["Durum"] = "Onaylandı"
-                                        data_store["expenses"][-1]["Durum"] = "Onaylandı"
-                                        save_data(data_store)
+                                        # Show result
+                                        risk = int(data_ai.get("risk_skoru", 0))
+                                        anomali = data_ai.get("anomali", False)
+                                        
+                                        if role != "admin":
+                                            st.success("✅ Fiş sisteme eklendi! +50 XP · ⏳ Onay için yönetici bildirildi.")
+                                        else:
+                                            st.success("✅ Fiş başarıyla işlendi! +50 XP kazandın!")
                                     
                                     # İş kuralı uyarıları
                                     for uyari in uyarilar:
@@ -1904,24 +1897,22 @@ else:
 
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"omcent_on_{row['ID']}", use_container_width=True):
-                                for e in data_store["expenses"]:
-                                    if e["ID"] == row["ID"]:
-                                        e["Durum"] = "Onaylandı"
-                                        # Cüzdandan düş
-                                        kullanici = e.get("Kullanıcı","")
-                                        if kullanici in data_store.get("wallets",{}):
-                                            data_store["wallets"][kullanici] = max(0, data_store["wallets"].get(kullanici,0) - float(e.get("Tutar",0)))
-                                save_data(data_store)
-                                add_notify(row['Kullanıcı'], f"✅ {row.get('Firma','?')} (₺{float(row.get('Tutar',0)):,.0f}) ONAYLANDI", "success")
-                                add_xp(row['Kullanıcı'], 25, "Fiş onaylandı")
-                                st.success("✅ Onaylandı!"); st.rerun()
+                                with st.spinner("Onaylanıyor..."):
+                                    if api_approve(str(row['ID']), "approve", user_name):
+                                        st.success("✅ Onaylandı!")
+                                        time.sleep(0.5)
+                                        st.rerun()
+                                    else:
+                                        st.error("API hatası, tekrar deneyin")
 
                             if btn2.button("❌ Reddet", key=f"omcent_ret_{row['ID']}", use_container_width=True):
-                                for e in data_store["expenses"]:
-                                    if e["ID"] == row["ID"]: e["Durum"] = "Reddedildi"
-                                save_data(data_store)
-                                add_notify(row['Kullanıcı'], f"❌ {row.get('Firma','?')} harcamanız REDDEDİLDİ", "warning")
-                                st.warning("❌ Reddedildi!"); st.rerun()
+                                with st.spinner("Reddediliyor..."):
+                                    if api_approve(str(row['ID']), "reject", user_name):
+                                        st.warning("❌ Reddedildi!")
+                                        time.sleep(0.5)
+                                        st.rerun()
+                                    else:
+                                        st.error("API hatası, tekrar deneyin")
 
                         with cb:
                             dosya   = row.get('Dosya_Yolu', '')
@@ -2008,19 +1999,13 @@ else:
                     aciklama = st.text_input("Açıklama", value="Aylık harcırah")
                     
                     if st.form_submit_button("⚡ Transfer Et", use_container_width=True):
-                        data_store["wallets"][target] += amt
-                        data_store["ledger"].append({
-                            "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            "Kaynak": user_name,
-                            "Hedef": target,
-                            "İşlem": aciklama,
-                            "Miktar": amt
-                        })
-                        save_data(data_store)
-                        add_notify(target, f"💰 Hesabınıza ₺{amt:,.0f} transfer yapıldı. ({aciklama})", "success")
-                        add_xp(target, 10, "Transfer alındı")
-                        st.success(f"✅ {target}'e ₺{amt:,.0f} transfer edildi!")
-                        st.rerun()
+                        with st.spinner("Transfer yapılıyor..."):
+                            if api_transfer(target, amt, aciklama, user_name):
+                                st.success(f"✅ {target}'e ₺{amt:,.0f} transfer edildi!")
+                                time.sleep(0.5)
+                                st.rerun()
+                            else:
+                                st.error("Transfer başarısız, tekrar deneyin")
             else:
                 my_bal = data_store['wallets'].get(user_name, 0)
                 st.markdown(f"""
@@ -2096,20 +2081,18 @@ else:
                             
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"on_{row['ID']}", use_container_width=True):
-                                data_store["wallets"][row['Kullanıcı']] -= row['Tutar']
-                                for e in data_store["expenses"]:
-                                    if e["ID"] == row["ID"]: e["Durum"] = "Onaylandı"
-                                save_data(data_store)
-                                add_notify(row['Kullanıcı'], f"✅ {row['Firma']} (₺{row['Tutar']:,.0f}) ONAYLANDI", "success")
-                                add_xp(row['Kullanıcı'], 25, "Fiş onaylandı")
-                                st.success("Onaylandı!"); st.rerun()
+                                with st.spinner("Onaylanıyor..."):
+                                    if api_approve(str(row['ID']), "approve", user_name):
+                                        st.success("✅ Onaylandı!")
+                                        time.sleep(0.5)
+                                        st.rerun()
                             
                             if btn2.button("❌ Reddet", key=f"ret_{row['ID']}", use_container_width=True):
-                                for e in data_store["expenses"]:
-                                    if e["ID"] == row["ID"]: e["Durum"] = "Reddedildi"
-                                save_data(data_store)
-                                add_notify(row['Kullanıcı'], f"❌ {row['Firma']} harcamanız REDDEDİLDİ", "warning")
-                                st.warning("Reddedildi!"); st.rerun()
+                                with st.spinner("Reddediliyor..."):
+                                    if api_approve(str(row['ID']), "reject", user_name):
+                                        st.warning("❌ Reddedildi!")
+                                        time.sleep(0.5)
+                                        st.rerun()
                         
                         with cb:
                             # Önce lokal dosyayı dene, sonra base64 (WhatsApp fişleri için)
@@ -2204,13 +2187,14 @@ else:
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # Save insight
-                        data_store["ai_insights"].append({
+                        # AI insight sadece session'da tut (Railway'e yazmıyoruz)
+                        if "ai_insights" not in st.session_state:
+                            st.session_state.ai_insights = []
+                        st.session_state.ai_insights.append({
                             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
                             "type": "anomaly_scan",
                             "content": response.text
                         })
-                        save_data(data_store)
                     except Exception as e:
                         st.error(f"AI yanıt veremedi: {e}")
             
