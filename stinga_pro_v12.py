@@ -1,345 +1,1578 @@
 # -*- coding: utf-8 -*-
-"""
-STINGA FİNANS — Streamlit Dashboard v13
-Giriş ekranı + rol bazlı erişim + Railway API entegrasyonu
-"""
-
+# ╔══════════════════════════════════════════════════════════════╗
+# ║ STINGA PRO v13.0 - ULTRA EDITION                           ║
+# ║ Geliştiren: AI ile birlikte - Gemini 2.5 Flash Destekli   ║
+# ╚══════════════════════════════════════════════════════════════╝
 import streamlit as st
-import requests
 import pandas as pd
-from datetime import datetime
+import google.generativeai as genai
+from datetime import datetime, timedelta
+import os
+import json
+import re
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from PIL import Image
+from fpdf import FPDF
+import hashlib
+import time
+import random
+import base64
+from io import BytesIO
 
+# ─── SAYFA YAPISI ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Stinga Finans",
-    page_icon="💰",
+    page_title="Stinga Pro v13 ⚡",
     layout="wide",
-    initial_sidebar_state="expanded",
+    page_icon="⚡",
+    initial_sidebar_state="expanded"
 )
 
-BOT_API_URL = st.secrets.get("BOT_API_URL", "https://stingafinans-production.up.railway.app")
-
-KULLANICILAR = {
-    "serkan": {"sifre": "123",  "ad": "Serkan", "rol": "İşletme Müdürü",         "emoji": "📊", "limit": 10000, "yetki": "yonetici"},
-    "zeynep": {"sifre": "789",  "ad": "Zeynep", "rol": "Yönetim Kurulu Başkanı", "emoji": "👑", "limit": 50000, "yetki": "yonetici"},
-    "okan":   {"sifre": "321",  "ad": "Okan",   "rol": "Saha Personeli",          "emoji": "🔧", "limit": 5000,  "yetki": "personel"},
-    "senol":  {"sifre": "456",  "ad": "Şenol",  "rol": "Genel Müdür",             "emoji": "🏢", "limit": 30000, "yetki": "yonetici"},
-}
-
-ROZETLER = {
-    "ilk_fis":       {"emoji": "🎯", "ad": "İlk Adım"},
-    "tasarruf_5":    {"emoji": "💚", "ad": "Tutumlu"},
-    "hizli_giris":   {"emoji": "⚡", "ad": "Flaş Muhasebeci"},
-    "risk_avcisi":   {"emoji": "🕵️", "ad": "Risk Avcısı"},
-    "hafiza_ustasi": {"emoji": "🧠", "ad": "Hafıza Ustası"},
-    "dovec_kral":    {"emoji": "💱", "ad": "Döviz Kralı"},
-    "dedektif":      {"emoji": "🔍", "ad": "Sahte Avcısı"},
-    "ekonomist":     {"emoji": "📈", "ad": "Ekonomist"},
-}
-
+# ─── ULTRA DARK THEME CSS ─────────────────────────────────────
 st.markdown("""
 <style>
-.login-title { text-align:center; font-size:2rem; font-weight:700; margin-bottom:4px; }
-.login-sub   { text-align:center; color:#888; font-size:0.95rem; margin-bottom:24px; }
-div[data-testid="stMetricValue"] { font-size:1.8rem; }
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Bebas+Neue&family=JetBrains+Mono:wght@400;700&display=swap');
+
+:root {
+    --bg-primary: #050810;
+    --bg-secondary: #0a0f1e;
+    --bg-card: #0d1526;
+    --bg-hover: #111d35;
+    --accent-blue: #00d4ff;
+    --accent-green: #00ff88;
+    --accent-orange: #ff6b35;
+    --accent-purple: #8b5cf6;
+    --accent-red: #ff3b5c;
+    --text-primary: #e8f4fd;
+    --text-secondary: #7a9bbf;
+    --text-muted: #3d5a7a;
+    --border: #1a2d4a;
+    --border-glow: rgba(0, 212, 255, 0.3);
+    --shadow-glow: 0 0 30px rgba(0, 212, 255, 0.15);
+}
+* { box-sizing: border-box; }
+html, body, [class*="css"] {
+    font-family: 'Space Grotesk', sans-serif !important;
+    background-color: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+}
+.stApp {
+    background: 
+        radial-gradient(ellipse at 10% 20%, rgba(0, 212, 255, 0.04) 0%, transparent 50%),
+        radial-gradient(ellipse at 90% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
+        var(--bg-primary) !important;
+}
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #080d1a 0%, #050810 100%) !important;
+    border-right: 1px solid var(--border) !important;
+}
+.ultra-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    margin: 12px 0;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+.ultra-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple), var(--accent-green));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.ultra-card:hover::before { opacity: 1; }
+.ultra-card:hover {
+    border-color: rgba(0, 212, 255, 0.3);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-2px);
+}
+.metric-card {
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-hover) 100%);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.metric-card:hover {
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: 0 20px 60px rgba(0, 212, 255, 0.15);
+    border-color: var(--accent-blue);
+}
+.metric-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 3rem;
+    color: var(--accent-blue);
+    line-height: 1;
+    margin: 8px 0;
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+}
+.metric-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+}
+.risk-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+.risk-low  { background: rgba(0,255,136,0.15); color:#00ff88; border:1px solid rgba(0,255,136,0.3); }
+.risk-mid  { background: rgba(255,171,0,0.15); color:#ffab00; border:1px solid rgba(255,171,0,0.3); }
+.risk-high { background: rgba(255,59,92,0.15); color:#ff3b5c; border:1px solid rgba(255,59,92,0.3); }
+.stButton > button {
+    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%) !important;
+    color: #050810 !important;
+    border: none !important;
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    font-family: 'Space Grotesk', sans-serif !important;
+    letter-spacing: 0.5px !important;
+    transition: all 0.3s ease !important;
+    padding: 0.6rem 1.2rem !important;
+}
+.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 25px rgba(0, 212, 255, 0.4) !important;
+    background: linear-gradient(135deg, #33ddff 0%, #00aadd 100%) !important;
+}
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+}
+.page-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.8rem;
+    letter-spacing: 3px;
+    line-height: 1;
+    background: linear-gradient(135deg, #e8f4fd, #00d4ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+.stTextInput > div > div > input,
+.stSelectbox > div > div > div,
+.stNumberInput > div > div > input,
+.stTextArea > div > div > textarea {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    color: var(--text-primary) !important;
+    font-family: 'Space Grotesk', sans-serif !important;
+}
+.stTabs [data-baseweb="tab-list"] {
+    background: var(--bg-secondary) !important;
+    border-radius: 12px !important;
+    padding: 4px !important;
+    border: 1px solid var(--border) !important;
+}
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    border-radius: 8px !important;
+    color: var(--text-secondary) !important;
+    font-family: 'Space Grotesk', sans-serif !important;
+    font-weight: 600 !important;
+}
+.stTabs [aria-selected="true"] {
+    background: var(--bg-card) !important;
+    color: var(--accent-blue) !important;
+}
+.stSuccess { background: rgba(0,255,136,0.1) !important; border-left: 3px solid #00ff88 !important; }
+.stError   { background: rgba(255,59,92,0.1) !important; border-left: 3px solid #ff3b5c !important; }
+.stWarning { background: rgba(255,171,0,0.1) !important; border-left: 3px solid #ffab00 !important; }
+.stInfo    { background: rgba(0,212,255,0.1) !important; border-left: 3px solid #00d4ff !important; }
+.stProgress > div > div { background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)) !important; }
+hr { border-color: var(--border) !important; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-blue); }
+.anomaly-alert {
+    background: linear-gradient(135deg, rgba(255,59,92,0.1), rgba(255,107,53,0.1));
+    border: 1px solid rgba(255,59,92,0.3);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 8px 0;
+}
+.budget-track {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    height: 8px;
+    overflow: hidden;
+    margin: 6px 0;
+}
+.budget-fill {
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.8s ease;
+}
+.lb-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin: 4px 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+}
+.lb-item:hover { border-color: var(--accent-blue); }
+.lb-rank { font-family: 'Bebas Neue'; font-size: 1.5rem; color: var(--text-muted); width: 30px; }
+.lb-rank.gold   { color: #ffd700; }
+.lb-rank.silver { color: #c0c0c0; }
+.lb-rank.bronze { color: #cd7f32; }
+.feed-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+.status-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.pill-approved { background: rgba(0,255,136,0.15); color: #00ff88; }
+.pill-pending  { background: rgba(255,171,0,0.15); color: #ffab00; }
+.pill-rejected { background: rgba(255,59,92,0.15); color: #ff3b5c; }
+.ai-bubble {
+    background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(0,212,255,0.1));
+    border: 1px solid rgba(139,92,246,0.3);
+    border-radius: 16px;
+    padding: 20px;
+    margin: 12px 0;
+    position: relative;
+}
+.ai-bubble::before {
+    content: '⚡ AI';
+    position: absolute;
+    top: -10px; left: 16px;
+    background: linear-gradient(135deg, #8b5cf6, #00d4ff);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 1px;
+}
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+.empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(0, 212, 255, 0.6); }
+}
+.floating { animation: float 4s ease-in-out infinite; }
+.pulsing  { animation: pulse-glow 2s ease-in-out infinite; }
 </style>
 """, unsafe_allow_html=True)
 
-if "giris_yapildi" not in st.session_state:
-    st.session_state.giris_yapildi = False
-if "aktif_kullanici" not in st.session_state:
-    st.session_state.aktif_kullanici = None
+# ─── KULLANICI SİSTEMİ ────────────────────────────────────────
+# YETKİ YAPISI:
+#   admin   → tüm verileri görür + onaylayabilir (Serkan, Zeynep)
+#   user    → sadece kendi fişlerini görür, onaylayamaz (Okan, Şenol)
 
+def hash_password(pwd):
+    return hashlib.sha256(pwd.encode()).hexdigest()
 
-def giris_ekrani():
-    _, col, _ = st.columns([1, 1.1, 1])
-    with col:
-        try:
-            st.image("logo.png", width=140)
-        except:
-            pass
-        st.markdown('<div class="login-title">💰 Stinga Finans</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-sub">Harcama Yönetim Paneli</div>', unsafe_allow_html=True)
-        st.markdown("---")
-        kullanici_adi = st.text_input("👤 Kullanıcı Adı", placeholder="kullanıcı adınızı girin").strip().lower()
-        sifre = st.text_input("🔒 Şifre", type="password", placeholder="şifrenizi girin")
-        if st.button("🚀 Giriş Yap", use_container_width=True, type="primary"):
-            if kullanici_adi in KULLANICILAR and sifre == KULLANICILAR[kullanici_adi]["sifre"]:
-                st.session_state.giris_yapildi = True
-                st.session_state.aktif_kullanici = kullanici_adi
-                st.rerun()
-            else:
-                st.error("❌ Kullanıcı adı veya şifre hatalı!")
-        st.markdown("---")
-        st.caption("© 2026 Stinga Finans · Tüm hakları saklıdır")
+USERS = {
+    "zeynep": {
+        "name": "Zeynep",
+        "password": hash_password("789"),
+        "role": "admin",       # ← onay yetkisi VAR, tüm verileri görür
+        "avatar": "👑",
+        "department": "Yönetim Kurulu",
+        "monthly_limit": 50000,
+        "xp": 1250
+    },
+    "serkan": {
+        "name": "Serkan",
+        "password": hash_password("123"),
+        "role": "admin",       # ← onay yetkisi VAR, tüm verileri görür
+        "avatar": "⚡",
+        "department": "İşletme Müdürü",
+        "monthly_limit": 25000,
+        "xp": 890
+    },
+    "okan": {
+        "name": "Okan",
+        "password": hash_password("321"),
+        "role": "user",        # ← sadece kendi fişlerini görür
+        "avatar": "🔧",
+        "department": "Saha Personeli",
+        "monthly_limit": 5000,
+        "xp": 430
+    },
+    "senol": {
+        "name": "Şenol",
+        "password": hash_password("456"),
+        "role": "user",        # ← sadece kendi fişlerini görür
+        "avatar": "🏢",
+        "department": "Genel Müdür",
+        "monthly_limit": 30000,
+        "xp": 600
+    },
+}
 
+# ─── SESSION STATE ────────────────────────────────────────────
+defaults = {
+    'authenticated': False,
+    'user_info': None,
+    'current_key_idx': 0,
+    'chat_history': [],
+    'dark_mode': True,
+    'last_ai_insight': None,
+    'tour_done': False,
+    'realtime_alerts': [],
+    'selected_page': '🏠 Dashboard'
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-@st.cache_data(ttl=30)
-def fetch_data():
+# ─── API ──────────────────────────────────────────────────────
+API_KEYS = [
+    "AIzaSyDVP0ki4yOaEKq1B_kEmMR8M0vuDeEpVsY",
+    "AIzaSyCyJNBT-3-K1P_Ylebj4rCSzqwOkF31KLg"
+]
+
+def configure_ai():
     try:
-        r = requests.get(f"{BOT_API_URL}/all-data", timeout=10)
-        r.raise_for_status()
-        return r.json()
+        k = API_KEYS[st.session_state.current_key_idx]
+        genai.configure(api_key=k)
+        return genai.GenerativeModel('models/gemini-2.5-flash')
     except Exception as e:
-        st.error(f"❌ API bağlantı hatası: {e}")
+        st.error(f"AI Hatası: {e}")
         return None
 
+# ─── VERİTABANI ───────────────────────────────────────────────
+DB_FILE = "stinga_v13_db.json"
 
-def risk_emoji(score):
+def init_db():
+    if not os.path.exists(DB_FILE):
+        data = {
+            "expenses": [],
+            "wallets": {"Zeynep": 50000, "Serkan": 25000, "Okan": 5000, "Şenol": 30000},
+            "ledger": [],
+            "notifications": [],
+            "budgets": {
+                "Maden Sahası":  {"limit": 100000, "spent": 0},
+                "Aktif Karbon":  {"limit": 80000,  "spent": 0},
+                "Enerji Hatları":{"limit": 60000,  "spent": 0},
+                "Genel Merkez":  {"limit": 40000,  "spent": 0}
+            },
+            "ai_insights": [],
+            "mood_log": [],
+            "badges": {"Zeynep": [], "Serkan": [], "Okan": [], "Şenol": []},
+            "xp": {"Zeynep": 1250, "Serkan": 890, "Okan": 430, "Şenol": 600}
+        }
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    else:
+        d = load_data()
+        changed = False
+        for field in ["budgets", "ai_insights", "mood_log", "badges", "xp", "notifications"]:
+            if field not in d:
+                d[field] = {} if field in ["budgets","badges","xp"] else []
+                changed = True
+        # Şenol için wallet yoksa ekle
+        if "Şenol" not in d.get("wallets", {}):
+            d["wallets"]["Şenol"] = 30000
+            changed = True
+        if "Şenol" not in d.get("xp", {}):
+            d["xp"]["Şenol"] = 600
+            changed = True
+        if changed:
+            save_data(d)
+
+def load_data():
+    with open(DB_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_data(d):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=4)
+
+def add_notify(target, message, notif_type="info"):
+    d = load_data()
+    d["notifications"].append({
+        "user": target,
+        "msg": message,
+        "type": notif_type,
+        "time": datetime.now().strftime("%H:%M"),
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "read": False
+    })
+    save_data(d)
+
+def add_xp(user_name, amount, reason=""):
+    d = load_data()
+    if "xp" not in d:
+        d["xp"] = {}
+    d["xp"][user_name] = d["xp"].get(user_name, 0) + amount
+    if reason:
+        d["notifications"].append({
+            "user": user_name,
+            "msg": f"🏆 +{amount} XP kazandın! ({reason})",
+            "type": "xp",
+            "time": datetime.now().strftime("%H:%M"),
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "read": False
+        })
+    save_data(d)
+
+# ─── YARDIMCI ─────────────────────────────────────────────────
+def extract_json(text):
     try:
-        score = float(score)
-        if score >= 70: return f"🔴 {int(score)}"
-        if score >= 30: return f"🟡 {int(score)}"
-        return f"🟢 {int(score)}"
+        text = text.replace("```json", "").replace("```", "").strip()
+        m = re.search(r'\{.*\}', text, re.DOTALL)
+        return json.loads(m.group()) if m else json.loads(text)
     except:
-        return str(score)
+        return None
 
+def tr_fix(text):
+    if not isinstance(text, str): return str(text)
+    chars = {"İ":"I","ı":"i","Ş":"S","ş":"s","Ğ":"G","ğ":"g","Ç":"C","ç":"c","Ö":"O","ö":"o","Ü":"U","ü":"u"}
+    for t, e in chars.items(): text = text.replace(t, e)
+    return text
 
-def dashboard():
-    kkey     = st.session_state.aktif_kullanici
-    kinfo    = KULLANICILAR[kkey]
-    yetki    = kinfo["yetki"]
-    aktif_ad = kinfo["ad"]
+def get_risk_html(score):
+    try:
+        score = int(score)
+    except:
+        score = 0
+    if score < 30:
+        return f'<span class="risk-badge risk-low">✓ {score}% DÜŞÜK</span>'
+    elif score < 70:
+        return f'<span class="risk-badge risk-mid">⚠ {score}% ORTA</span>'
+    else:
+        return f'<span class="risk-badge risk-high">🔴 {score}% KRİTİK</span>'
 
-    # ── SIDEBAR ──────────────────────────────────────────────────────────
-    with st.sidebar:
+def get_status_html(status):
+    mapping = {
+        "Onaylandı":     ("pill-approved", "✓ ONAYLANDI"),
+        "Onay Bekliyor": ("pill-pending",  "⏳ BEKLİYOR"),
+        "Reddedildi":    ("pill-rejected", "✗ REDDEDİLDİ")
+    }
+    cls, label = mapping.get(status, ("pill-pending", status))
+    return f'<span class="status-pill {cls}">{label}</span>'
+
+def export_pdf_advanced(df_export, title="Mali Rapor", ay_bilgisi="Tüm Zamanlar"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_fill_color(5, 8, 16)
+    pdf.rect(0, 0, 210, 40, 'F')
+    pdf.set_font("Arial", "B", 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(190, 15, "", ln=True)
+    pdf.cell(190, 10, tr_fix(f"STINGA - {title.upper()} ({ay_bilgisi})"), align='C', ln=True)
+    pdf.set_font("Arial", "", 9)
+    pdf.set_text_color(120, 160, 200)
+    pdf.cell(190, 8, tr_fix(f"Uretim: {datetime.now().strftime('%d.%m.%Y %H:%M')} | Stinga Pro v13"), align='C', ln=True)
+    pdf.ln(12)
+    if df_export.empty:
+        pdf.set_text_color(100, 100, 100)
+        pdf.set_font("Arial", "", 11)
+        pdf.cell(190, 10, tr_fix("Bu doneme ait veri bulunmamaktadir."), ln=True)
+        return bytes(pdf.output())
+    total    = df_export['Tutar'].sum() if 'Tutar' in df_export.columns else 0
+    approved = df_export[df_export['Durum']=='Onaylandı']['Tutar'].sum() if 'Durum' in df_export.columns else 0
+    pending  = df_export[df_export['Durum']=='Onay Bekliyor']['Tutar'].sum() if 'Durum' in df_export.columns else 0
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(190, 8, tr_fix("OZET"), ln=True)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(190, 6, tr_fix(f"Toplam: {total:,.2f} TL | Onaylanan: {approved:,.2f} TL | Bekleyen: {pending:,.2f} TL"), ln=True)
+    pdf.ln(6)
+    pdf.set_fill_color(10, 15, 30)
+    pdf.set_text_color(0, 212, 255)
+    pdf.set_font("Arial", "B", 9)
+    cols = [("ID",25),("Tarih",25),("Firma",45),("Tutar",25),("Proje",35),("Durum",30),("Risk%",15)]
+    for col, w in cols:
+        pdf.cell(w, 8, tr_fix(col), border=1, fill=True, align='C')
+    pdf.ln()
+    for i, (_, row) in enumerate(df_export.iterrows()):
+        fill = i % 2 == 0
+        pdf.set_fill_color(240, 245, 255) if fill else pdf.set_fill_color(255, 255, 255)
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("Arial", "", 8)
+        risk = row.get('Risk_Skoru', 0)
+        values = [
+            (str(row.get('ID', ''))[:12], 25),
+            (str(row.get('Tarih', '')), 25),
+            (str(row.get('Firma', ''))[:20], 45),
+            (f"{float(row.get('Tutar',0)):,.0f} TL", 25),
+            (str(row.get('Proje', ''))[:18], 35),
+            (str(row.get('Durum', '')), 30),
+            (f"%{risk}", 15)
+        ]
+        for val, w in values:
+            pdf.cell(w, 7, tr_fix(val), border=1, fill=fill, align='C')
+        pdf.ln()
+    pdf.ln(10)
+    pdf.set_font("Arial", "I", 8)
+    pdf.set_text_color(150, 150, 150)
+    pdf.cell(190, 6, tr_fix("Bu rapor Stinga Pro v13 AI Finans Sistemi tarafindan otomatik uretilmistir."), ln=True)
+    return bytes(pdf.output())
+
+# ─── AI FONKSİYONLARI ─────────────────────────────────────────
+def analyze_receipt_pro(image, model):
+    prompt = """Sen Stinga Enerji Baş Denetçisisin. Fişi tara. SADECE aşağıdaki JSON formatında yanıt ver:
+{
+  "firma": "Firma Adı",
+  "tarih": "YYYY-MM-DD",
+  "toplam_tutar": 0.0,
+  "kategori": "Yemek/Yakıt/Konaklama/Ekipman/Diğer",
+  "risk_skoru": 10,
+  "audit_ozeti": "1 cümlelik denetim özeti",
+  "kalemler": ["kalem1", "kalem2"],
+  "kdv_tutari": 0.0,
+  "odeme_turu": "Nakit/Kredi Kartı/Havale",
+  "anomali": false,
+  "anomali_aciklamasi": ""
+}"""
+    try:
+        response = model.generate_content([prompt, image])
+        return response.text
+    except Exception as e:
+        if "429" in str(e).lower() or "quota" in str(e).lower():
+            st.session_state.current_key_idx = (st.session_state.current_key_idx + 1) % len(API_KEYS)
+            return "ANAHTAR_DEGISIMI"
+        return f"HATA: {str(e)}"
+
+def detect_anomalies(df, model):
+    if df.empty or len(df) < 3:
+        return []
+    anomalies = []
+    if 'Firma' in df.columns and 'Tutar' in df.columns:
+        dups = df[df.duplicated(subset=['Firma', 'Tutar'], keep=False)]
+        if not dups.empty:
+            anomalies.append({"type":"duplicate","severity":"high",
+                "message":f"⚠️ Mükerrer fiş: {dups['Firma'].iloc[0]} - {dups['Tutar'].iloc[0]:,.0f} ₺","count":len(dups)})
+    if 'Tarih' in df.columns:
         try:
-            st.image("logo.png", width=160)
-        except:
-            st.markdown("## 💰 Stinga Finans")
-        st.markdown("---")
-        st.markdown(f"### {kinfo['emoji']} {aktif_ad}")
-        st.caption(kinfo["rol"])
-        st.markdown("---")
+            df_temp = df.copy()
+            df_temp['dt'] = pd.to_datetime(df_temp['Tarih'], errors='coerce')
+            weekend = df_temp[df_temp['dt'].dt.dayofweek >= 5]
+            if not weekend.empty:
+                anomalies.append({"type":"weekend","severity":"medium",
+                    "message":f"📅 Hafta sonu harcaması: {len(weekend)} adet işlem","count":len(weekend)})
+        except: pass
+    if 'Risk_Skoru' in df.columns:
+        high_risk = df[df['Risk_Skoru'] > 70]
+        if not high_risk.empty:
+            anomalies.append({"type":"high_risk","severity":"high",
+                "message":f"🔴 {len(high_risk)} adet kritik riskli işlem","count":len(high_risk)})
+    if 'Tutar' in df.columns and len(df) > 3:
+        mean = df['Tutar'].mean()
+        std  = df['Tutar'].std()
+        outliers = df[df['Tutar'] > mean + 2 * std]
+        if not outliers.empty:
+            anomalies.append({"type":"outlier","severity":"medium",
+                "message":f"📊 Ortalamadan 2σ sapan {len(outliers)} anormal tutar","count":len(outliers)})
+    return anomalies
 
-        if yetki == "yonetici":
-            tum_adlar = ["Tümü"] + [v["ad"] for v in KULLANICILAR.values()]
-            filtre_kullanici = st.selectbox("👤 Kullanıcı Filtresi", tum_adlar)
-        else:
-            filtre_kullanici = aktif_ad
-            st.info("👤 Sadece kendi fişlerinizi görüyorsunuz.")
+def generate_ai_insight(df, model, question=None):
+    if df.empty:
+        return "Henüz analiz edilecek veri yok."
+    data_summary = {
+        "toplam_islem": len(df),
+        "toplam_tutar": df['Tutar'].sum() if 'Tutar' in df.columns else 0,
+        "ortalama_tutar": df['Tutar'].mean() if 'Tutar' in df.columns else 0,
+        "en_yuksek": df['Tutar'].max() if 'Tutar' in df.columns else 0,
+        "projeler": df['Proje'].value_counts().to_dict() if 'Proje' in df.columns else {},
+        "kategoriler": df['Kategori'].value_counts().to_dict() if 'Kategori' in df.columns else {},
+        "durum_ozeti": df['Durum'].value_counts().to_dict() if 'Durum' in df.columns else {},
+        "ortalama_risk": df['Risk_Skoru'].mean() if 'Risk_Skoru' in df.columns else 0
+    }
+    if question:
+        prompt = f"""Sen Stinga Enerji'nin üst düzey finansal analistinin yapay zekasısın.
+Veriler: {json.dumps(data_summary, ensure_ascii=False)}
+Tüm veriler: {df.to_dict(orient='records')}
+Soru: {question}
+Türkçe, kısa ve profesyonel yanıt ver. Sayısal analizler ekle."""
+    else:
+        prompt = f"""Sen Stinga Enerji'nin yapay zeka finansal analistinin.
+Veriler: {json.dumps(data_summary, ensure_ascii=False)}
+3-4 cümleyle en önemli finansal içgörüyü ver. Türkçe, net, analitik."""
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"AI şu an yanıt veremiyor: {str(e)}"
 
-        filtre_kategori = st.selectbox("🏷️ Kategori",
-            ["Tümü", "yemek", "ulasim", "ofis", "konaklama", "eglence", "saglik", "diger"])
-        filtre_ay = st.text_input("📅 Ay (YYYY-MM)", value=datetime.now().strftime("%Y-%m"))
+def predict_monthly_spend(df, model):
+    if df.empty: return None
+    try:
+        df_temp = df.copy()
+        df_temp['dt'] = pd.to_datetime(df_temp['Tarih'], errors='coerce')
+        monthly = df_temp.groupby(df_temp['dt'].dt.strftime('%Y-%m'))['Tutar'].sum()
+        if len(monthly) < 2: return None
+        vals = monthly.values.tolist()
+        prompt = f"Aylık harcama verileri: {vals}. Bir sonraki ay için tahmini harcama tutarını TL olarak tek sayı olarak ver. Sadece sayı yaz."
+        response = model.generate_content(prompt)
+        pred_text = re.sub(r'[^\d.,]', '', response.text.strip()).replace(',', '.')
+        return float(pred_text.split('.')[0]) if pred_text else None
+    except: return None
 
-        st.markdown("---")
-        if st.button("🔄 Yenile", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
-        if st.button("🚪 Çıkış Yap", use_container_width=True):
-            st.session_state.giris_yapildi = False
-            st.session_state.aktif_kullanici = None
-            st.rerun()
-        st.caption(f"Son güncelleme: {datetime.now().strftime('%H:%M:%S')}")
+# ─── GİRİŞ EKRANI ────────────────────────────────────────────
+def login():
+    st.markdown("""
+    <div style="text-align:center; padding: 40px 0 20px 0;">
+        <div style="font-size:4rem; margin-bottom:8px;" class="floating">⚡</div>
+        <h1 style="font-family:'Bebas Neue',sans-serif; font-size:3.5rem; letter-spacing:6px;
+                   background:linear-gradient(135deg,#00d4ff,#8b5cf6);
+                   -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+                   margin:0;">STINGA PRO</h1>
+        <p style="color:#3d5a7a; font-size:0.85rem; letter-spacing:4px; text-transform:uppercase; margin-top:8px;">
+            v13.0 · AI Finans Platformu
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # ── VERİ ─────────────────────────────────────────────────────────────
-    data = fetch_data()
-    if not data:
-        st.stop()
-
-    expenses   = data.get("expenses", [])
-    budgets    = data.get("budgets", {})
-    rozetler   = data.get("rozetler", {})
-    fis_sayac  = data.get("fis_sayaci", {})
-    anomaliler = data.get("anomaly_log", [])
-
-    df_full = pd.DataFrame(expenses) if expenses else pd.DataFrame()
-    df = df_full.copy()
-
-    if not df.empty:
-        if yetki == "personel":
-            df = df[df["Kullanıcı"] == aktif_ad]
-        elif filtre_kullanici != "Tümü":
-            df = df[df["Kullanıcı"] == filtre_kullanici]
-        if filtre_kategori != "Tümü" and "Kategori" in df.columns:
-            df = df[df["Kategori"] == filtre_kategori]
-        if filtre_ay and "Tarih" in df.columns:
-            df = df[df["Tarih"].str.startswith(filtre_ay)]
-
-    # ── BAŞLIK ───────────────────────────────────────────────────────────
-    st.title("💰 Stinga Finans Dashboard")
-    st.markdown(f"**{filtre_ay}** dönemi · {len(df)} fiş")
-    st.markdown("---")
-
-    # ── SEKME YAPISI ─────────────────────────────────────────────────────
-    tabs = ["📊 Genel Bakış", "🧾 Fişler", "📈 Grafikler", "👥 Ekip & Rozetler"]
-    if yetki == "yonetici":
-        tabs.append("⚠️ Anomaliler")
-    tab_list = st.tabs(tabs)
-
-    # ════════════════════════════════════════════
-    # SEKME 1 — GENEL BAKIŞ
-    # ════════════════════════════════════════════
-    with tab_list[0]:
-        toplam_tutar = df["Tutar"].sum() if not df.empty else 0
-        ortalama     = df["Tutar"].mean() if not df.empty else 0
-        yuksek_risk  = len(df[df["Risk_Skoru"] >= 70]) if not df.empty and "Risk_Skoru" in df.columns else 0
-        anomali_say  = len(anomaliler)
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("💰 Toplam Harcama", f"{toplam_tutar:,.0f} ₺")
-        col2.metric("📊 Ortalama Fiş",   f"{ortalama:,.0f} ₺")
-        col3.metric("🔴 Yüksek Riskli",  f"{yuksek_risk} fiş")
-        col4.metric("⚠️ Anomali",        f"{anomali_say} adet")
-
-        st.markdown("---")
-        st.subheader("📊 Bütçe Durumu")
-
-        goster_kullanicilar = (
-            list(KULLANICILAR.values()) if yetki == "yonetici" else [kinfo]
-        )
-        budget_cols = st.columns(len(goster_kullanicilar))
-
-        for i, uinfo in enumerate(goster_kullanicilar):
-            with budget_cols[i]:
-                uad = uinfo["ad"]
-                if not df_full.empty and "Kullanıcı" in df_full.columns and "Tarih" in df_full.columns:
-                    u_df = df_full[
-                        (df_full["Kullanıcı"] == uad) &
-                        (df_full["Tarih"].str.startswith(filtre_ay))
-                    ]
-                    harcanan = u_df["Tutar"].sum()
+    col1, col2, col3 = st.columns([1, 1.2, 1])
+    with col2:
+        st.markdown('<div class="ultra-card pulsing">', unsafe_allow_html=True)
+        with st.form("login_form"):
+            st.markdown("<p style='color:#7a9bbf; font-size:0.85rem; text-transform:uppercase; letter-spacing:2px; margin-bottom:16px;'>🔐 Güvenli Giriş</p>", unsafe_allow_html=True)
+            username = st.text_input("Kullanıcı Adı", placeholder="kullanıcı adınız").lower().strip()
+            password = st.text_input("Şifre", type="password", placeholder="••••••••")
+            st.markdown("<br>", unsafe_allow_html=True)
+            submit = st.form_submit_button("⚡ GİRİŞ YAP", use_container_width=True)
+            if submit:
+                if username in USERS and USERS[username]["password"] == hash_password(password):
+                    st.session_state.authenticated = True
+                    st.session_state.user_info = dict(USERS[username])
+                    st.session_state.user_info['username'] = username
+                    st.rerun()
                 else:
-                    harcanan = 0
+                    st.error("⚠️ Hatalı kullanıcı adı veya şifre")
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="text-align:center; margin-top:24px; color:#3d5a7a; font-size:0.75rem;">
+            🔒 256-bit AES · Gemini 2.5 Flash AI
+        </div>
+        """, unsafe_allow_html=True)
 
-                butce = budgets.get(uad, uinfo.get("limit", 0))
-                oran  = (harcanan / butce * 100) if butce > 0 else 0
-                fis   = fis_sayac.get(uad, 0)
+def logout():
+    for key in ['authenticated','user_info','chat_history']:
+        if key == 'authenticated': st.session_state[key] = False
+        elif key == 'user_info':   st.session_state[key] = None
+        else:                      st.session_state[key] = []
+    st.rerun()
 
-                st.markdown(f"### {uinfo['emoji']} {uad}")
-                st.markdown(f"*{uinfo['rol']}*")
-                st.metric("Harcanan", f"{harcanan:,.0f} ₺", f"%{oran:.1f} bütçe")
-                st.progress(min(oran / 100, 1.0))
-                st.caption(f"Bütçe: {butce:,.0f} ₺ · {fis} fiş")
+# ─── ANA UYGULAMA ─────────────────────────────────────────────
+init_db()
 
-                user_rozetler = rozetler.get(uad, [])
-                if user_rozetler:
-                    rozet_str = " ".join(ROZETLER[r]["emoji"] for r in user_rozetler if r in ROZETLER)
-                    st.markdown(f"**Rozetler:** {rozet_str}")
-
-    # ════════════════════════════════════════════
-    # SEKME 2 — FİŞLER
-    # ════════════════════════════════════════════
-    with tab_list[1]:
-        st.subheader("🧾 Fiş Listesi")
-        if df.empty:
-            st.info("Bu dönemde fiş bulunamadı.")
-        else:
-            display_df = df.copy()
-            cols_order = ["Tarih", "Kullanıcı", "Firma", "Tutar", "Kategori", "OdemeTipi", "Risk_Skoru", "Durum"]
-            cols_exist = [c for c in cols_order if c in display_df.columns]
-            display_df = display_df[cols_exist].sort_values("Tarih", ascending=False)
-            if "Risk_Skoru" in display_df.columns:
-                display_df["Risk_Skoru"] = display_df["Risk_Skoru"].apply(risk_emoji)
-
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("⬇️ CSV İndir", data=csv,
-                file_name=f"stinga_{filtre_ay}.csv", mime="text/csv")
-
-            # Yüksek riskli fişler ayrıca göster
-            if "Risk_Skoru" in df.columns:
-                riskli = df[pd.to_numeric(df["Risk_Skoru"], errors="coerce") >= 70]
-                if not riskli.empty:
-                    st.markdown("---")
-                    st.subheader("🚨 Yüksek Riskli Fişler")
-                    st.dataframe(riskli[cols_exist].sort_values("Tarih", ascending=False),
-                        use_container_width=True, hide_index=True)
-
-    # ════════════════════════════════════════════
-    # SEKME 3 — GRAFİKLER
-    # ════════════════════════════════════════════
-    with tab_list[2]:
-        if df.empty:
-            st.info("Grafik için yeterli veri yok.")
-        else:
-            chart_col1, chart_col2 = st.columns(2)
-            with chart_col1:
-                st.subheader("🏷️ Kategoriye Göre")
-                if "Kategori" in df.columns:
-                    kat_data = df.groupby("Kategori")["Tutar"].sum().sort_values(ascending=False)
-                    st.bar_chart(kat_data)
-            with chart_col2:
-                st.subheader("👤 Kişiye Göre")
-                if "Kullanıcı" in df.columns:
-                    kisi_data = df.groupby("Kullanıcı")["Tutar"].sum().sort_values(ascending=False)
-                    st.bar_chart(kisi_data)
-
-            if "Tarih" in df.columns:
-                st.subheader("📈 Günlük Harcama Trendi")
-                trend = df.groupby("Tarih")["Tutar"].sum()
-                st.line_chart(trend)
-
-            if "OdemeTipi" in df.columns:
-                st.subheader("💳 Ödeme Yöntemine Göre")
-                odeme_data = df.groupby("OdemeTipi")["Tutar"].sum().sort_values(ascending=False)
-                st.bar_chart(odeme_data)
-
-    # ════════════════════════════════════════════
-    # SEKME 4 — EKİP & ROZETLER
-    # ════════════════════════════════════════════
-    with tab_list[3]:
-        st.subheader("👥 Ekip Sıralaması")
-
-        siralama = []
-        for uinfo in KULLANICILAR.values():
-            uad = uinfo["ad"]
-            if not df_full.empty and "Kullanıcı" in df_full.columns:
-                u_df = df_full[
-                    (df_full["Kullanıcı"] == uad) &
-                    (df_full["Tarih"].str.startswith(filtre_ay))
-                ]
-                harcanan = u_df["Tutar"].sum()
-                fis_say  = len(u_df)
-            else:
-                harcanan = 0
-                fis_say  = 0
-            butce = budgets.get(uad, uinfo.get("limit", 1))
-            oran  = (harcanan / butce * 100) if butce > 0 else 0
-            siralama.append({"ad": uad, "rol": uinfo["rol"], "emoji": uinfo["emoji"],
-                             "harcanan": harcanan, "butce": butce, "oran": oran, "fis": fis_say})
-
-        siralama.sort(key=lambda x: x["harcanan"], reverse=True)
-        madalyalar = ["🥇", "🥈", "🥉", "4️⃣"]
-
-        for i, s in enumerate(siralama):
-            madalya = madalyalar[i] if i < len(madalyalar) else "•"
-            col_a, col_b, col_c = st.columns([0.1, 0.5, 0.4])
-            with col_a:
-                st.markdown(f"## {madalya}")
-            with col_b:
-                st.markdown(f"**{s['emoji']} {s['ad']}** — *{s['rol']}*")
-                st.progress(min(s["oran"] / 100, 1.0))
-                st.caption(f"{s['harcanan']:,.0f} ₺ / {s['butce']:,.0f} ₺  •  {s['fis']} fiş")
-            with col_c:
-                user_rozetler = rozetler.get(s["ad"], [])
-                if user_rozetler:
-                    for r in user_rozetler:
-                        if r in ROZETLER:
-                            st.markdown(f"{ROZETLER[r]['emoji']} {ROZETLER[r]['ad']}")
-                else:
-                    st.caption("Henüz rozet yok")
-            st.markdown("---")
-
-    # ════════════════════════════════════════════
-    # SEKME 5 — ANOMALİLER (sadece yönetici)
-    # ════════════════════════════════════════════
-    if yetki == "yonetici":
-        with tab_list[4]:
-            st.subheader("⚠️ Anomali Geçmişi")
-            if anomaliler:
-                anom_df = pd.DataFrame(anomaliler)
-                st.dataframe(anom_df, use_container_width=True, hide_index=True)
-            else:
-                st.success("✅ Henüz anomali kaydı yok.")
-
-    st.markdown("---")
-    st.caption("Stinga Finans Pro · WhatsApp + AI Harcama Takip Sistemi")
-
-
-# ── ROUTER ───────────────────────────────────────────────────────────────────
-if not st.session_state.giris_yapildi:
-    giris_ekrani()
+if not st.session_state.authenticated:
+    login()
 else:
-    dashboard()
+    data_store = load_data()
+    model      = configure_ai()
+    user_info  = st.session_state.user_info
+    user_name  = user_info["name"]
+    role       = user_info["role"]   # "admin" veya "user"
+
+    df_full = pd.DataFrame(data_store.get("expenses", []))
+
+    # ── ROL BAZLI VERİ FİLTRESİ ──────────────────────────────
+    # admin → tüm verileri görür
+    # user  → sadece kendi fişlerini görür
+    if role == "user" and not df_full.empty and 'Kullanıcı' in df_full.columns:
+        df = df_full[df_full['Kullanıcı'] == user_name].copy()
+    else:
+        df = df_full.copy()
+
+    # ── SIDEBAR ──────────────────────────────────────────────
+    with st.sidebar:
+        user_xp  = data_store.get("xp", {}).get(user_name, 0)
+        level    = user_xp // 500 + 1
+        xp_progress = (user_xp % 500) / 500
+
+        st.markdown(f"""
+        <div style="padding:20px 16px; background:var(--bg-card); border-radius:16px;
+                    border:1px solid var(--border); margin-bottom:16px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div style="font-size:2.2rem;">{user_info['avatar']}</div>
+                <div>
+                    <div style="font-weight:700; font-size:1rem; color:var(--text-primary);">{user_name}</div>
+                    <div style="font-size:0.7rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px;">
+                        {role.upper()} · Lv.{level}
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top:12px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-muted);">
+                    <span>XP: {user_xp}</span><span>Sonraki: {level*500} XP</span>
+                </div>
+                <div class="budget-track">
+                    <div class="budget-fill" style="width:{xp_progress*100:.0f}%; background:linear-gradient(90deg,#8b5cf6,#00d4ff);"></div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Rol etiketi
+        if role == "admin":
+            st.markdown("""<div style="background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.3);
+                border-radius:8px; padding:6px 12px; font-size:0.75rem; color:#00d4ff; text-align:center; margin-bottom:12px;">
+                ✅ YÖNETİCİ · Tüm veriler + Onay yetkisi</div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""<div style="background:rgba(255,171,0,0.1); border:1px solid rgba(255,171,0,0.3);
+                border-radius:8px; padding:6px 12px; font-size:0.75rem; color:#ffab00; text-align:center; margin-bottom:12px;">
+                👤 PERSONEL · Sadece kendi fişlerin</div>""", unsafe_allow_html=True)
+
+        # Bildirimler
+        my_notifs = [n for n in data_store.get("notifications", [])
+                     if (n["user"] == user_name or n["user"] == "Hepsi") and not n.get("read")]
+        notif_count = len(my_notifs)
+        if notif_count > 0:
+            st.markdown(f"""<div style="background:rgba(255,59,92,0.1); border:1px solid rgba(255,59,92,0.3);
+                border-radius:10px; padding:10px 14px; margin-bottom:12px;">
+                <span style="color:#ff3b5c; font-weight:700; font-size:0.8rem;">🔔 {notif_count} yeni bildirim</span>
+                </div>""", unsafe_allow_html=True)
+            with st.expander("Bildirimleri Gör"):
+                for n in reversed(my_notifs[-5:]):
+                    icon = {"xp":"🏆","info":"ℹ️","warning":"⚠️","success":"✅"}.get(n.get("type","info"),"📌")
+                    st.markdown(f"""<div class="feed-item">
+                        <div style="color:var(--accent-blue);">{icon}</div>
+                        <div>
+                            <div style="font-size:0.8rem; color:var(--text-primary);">{n['msg']}</div>
+                            <div style="font-size:0.7rem; color:var(--text-muted);">{n.get('date','')} {n.get('time','')}</div>
+                        </div></div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # Navigasyon — role göre sayfa listesi
+        if role == "admin":
+            pages = [
+                "🏠 Dashboard",
+                "📷 Fiş Tarama",
+                "💰 Finans & Kasa",
+                "🔍 Anomali Dedektörü",
+                "📊 Analitik Merkezi",
+                "🤖 AI Asistan",
+                "🏆 Leaderboard",
+                "📁 Arşiv & Rapor"
+            ]
+        else:
+            # Personel → onay merkezi ve tam finans yok
+            pages = [
+                "🏠 Dashboard",
+                "📷 Fiş Tarama",
+                "💰 Bakiyem",
+                "🏆 Leaderboard",
+                "📁 Fişlerim"
+            ]
+
+        selected = st.radio("", pages,
+            index=pages.index(st.session_state.selected_page)
+                  if st.session_state.selected_page in pages else 0,
+            label_visibility="collapsed")
+        st.session_state.selected_page = selected
+
+        st.markdown("---")
+
+        # Mini limit göstergesi
+        if not df.empty and 'Tutar' in df.columns:
+            my_total      = df['Tutar'].sum()
+            monthly_limit = user_info.get('monthly_limit', 15000)
+            usage_pct     = min(my_total / monthly_limit * 100, 100) if monthly_limit > 0 else 0
+            color = "#00ff88" if usage_pct < 60 else ("#ffab00" if usage_pct < 85 else "#ff3b5c")
+            st.markdown(f"""<div style="padding:12px; background:var(--bg-card); border-radius:10px; border:1px solid var(--border);">
+                <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase;">Aylık Limit</div>
+                <div style="font-size:1.4rem; font-weight:700; color:{color};">{usage_pct:.0f}%</div>
+                <div class="budget-track">
+                    <div class="budget-fill" style="width:{usage_pct:.0f}%; background:{color};"></div>
+                </div>
+                <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">{my_total:,.0f} / {monthly_limit:,.0f} ₺</div>
+                </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🚪 Çıkış", use_container_width=True):
+            logout()
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: DASHBOARD (admin ve user için ortak ama farklı içerik)
+    # ══════════════════════════════════════════════════════════
+    if selected == "🏠 Dashboard":
+        st.markdown('<div class="page-header"><div class="page-title">OPERASYON MERKEZİ</div></div>', unsafe_allow_html=True)
+
+        if role == "user":
+            st.info(f"👤 **{user_name}**, sadece kendi harcamalarını görüyorsun.")
+
+        total_approved = df[df['Durum']=='Onaylandı']['Tutar'].sum() if not df.empty and 'Durum' in df.columns else 0
+        total_pending  = df[df['Durum']=='Onay Bekliyor']['Tutar'].sum() if not df.empty and 'Durum' in df.columns else 0
+        crit_risks     = len(df[df['Risk_Skoru'] > 70]) if not df.empty and 'Risk_Skoru' in df.columns else 0
+        my_wallet      = data_store['wallets'].get(user_name, 0)
+        total_tx       = len(df) if not df.empty else 0
+        avg_risk       = df['Risk_Skoru'].mean() if not df.empty and 'Risk_Skoru' in df.columns else 0
+
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        metrics = [
+            (c1, "Onaylı Harcama",  f"₺{total_approved:,.0f}", "✓",  "#00ff88"),
+            (c2, "Onay Bekleyen",   f"₺{total_pending:,.0f}",  "⏳", "#ffab00"),
+            (c3, "Kritik Risk",     str(crit_risks),            "🔴", "#ff3b5c"),
+            (c4, "Kasa Bakiye",     f"₺{my_wallet:,.0f}",      "💰", "#00d4ff"),
+            (c5, "Toplam İşlem",    str(total_tx),              "📋", "#8b5cf6"),
+            (c6, "Ort. Risk %",     f"{avg_risk:.0f}",          "🎯", "#ff6b35"),
+        ]
+        for col, label, value, icon, color in metrics:
+            with col:
+                st.markdown(f"""<div class="metric-card">
+                    <div style="font-size:1.5rem;">{icon}</div>
+                    <div style="font-family:'Bebas Neue'; font-size:2rem; color:{color};
+                                text-shadow:0 0 20px {color}66; line-height:1.1;">{value}</div>
+                    <div style="font-size:0.65rem; color:var(--text-muted); text-transform:uppercase;
+                                letter-spacing:1.5px; margin-top:4px;">{label}</div>
+                    </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Likidite uyarısı (sadece admin)
+        if role == "admin":
+            total_wallet = sum(data_store['wallets'].values())
+            if total_wallet < total_pending:
+                st.markdown(f"""<div class="anomaly-alert">
+                    <strong style="color:#ff3b5c;">⚠️ LİKİDİTE UYARISI</strong>
+                    <p style="margin:4px 0 0 0; font-size:0.85rem; color:#ffb3c0;">
+                    Toplam kasa ({total_wallet:,.0f} ₺) onay bekleyen tutarın ({total_pending:,.0f} ₺) altında.
+                    </p></div>""", unsafe_allow_html=True)
+
+        if not df.empty:
+            col_l, col_r = st.columns([3, 2])
+            with col_l:
+                if 'Tarih' in df.columns and 'Tutar' in df.columns:
+                    df_temp = df.copy()
+                    df_temp['dt'] = pd.to_datetime(df_temp['Tarih'], errors='coerce')
+                    df_temp = df_temp.sort_values('dt')
+                    df_temp['cumulative'] = df_temp['Tutar'].cumsum()
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=df_temp['dt'], y=df_temp['cumulative'],
+                        fill='tozeroy', fillcolor='rgba(0,212,255,0.08)',
+                        line=dict(color='#00d4ff', width=2), name='Kümülatif'))
+                    fig.add_trace(go.Bar(x=df_temp['dt'], y=df_temp['Tutar'],
+                        marker_color='rgba(139,92,246,0.4)', name='Günlük', yaxis='y2'))
+                    fig.update_layout(title="📈 Kümülatif & Günlük Harcama",
+                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#7a9bbf'), height=320,
+                        yaxis2=dict(overlaying='y', side='right', showgrid=False),
+                        legend=dict(bgcolor='rgba(0,0,0,0)'), hovermode='x unified')
+                    st.plotly_chart(fig, use_container_width=True)
+
+            with col_r:
+                if 'Proje' in df.columns:
+                    proj_data = df.groupby('Proje')['Tutar'].sum().reset_index()
+                    fig2 = go.Figure(go.Pie(
+                        labels=proj_data['Proje'], values=proj_data['Tutar'], hole=0.6,
+                        marker=dict(colors=['#00d4ff','#8b5cf6','#00ff88','#ff6b35'])))
+                    fig2.update_layout(title="🗂️ Proje Dağılımı",
+                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#7a9bbf'), height=320)
+                    st.plotly_chart(fig2, use_container_width=True)
+
+            # Risk bubble + kategori
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if 'Risk_Skoru' in df.columns:
+                    fig3 = px.scatter(df, x='Tarih', y='Tutar', size='Risk_Skoru',
+                        color='Risk_Skoru', hover_name='Firma',
+                        color_continuous_scale='RdYlGn_r',
+                        title='🎯 Risk Analizi', size_max=35)
+                    fig3.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#7a9bbf'), height=280)
+                    st.plotly_chart(fig3, use_container_width=True)
+            with col_b:
+                if 'Kategori' in df.columns:
+                    cat_data = df.groupby('Kategori')['Tutar'].sum().sort_values().reset_index()
+                    fig4 = go.Figure(go.Bar(x=cat_data['Tutar'], y=cat_data['Kategori'],
+                        orientation='h',
+                        marker=dict(color=cat_data['Tutar'],
+                            colorscale=[[0,'#1a2d4a'],[0.5,'#00d4ff'],[1,'#8b5cf6']]),
+                        text=[f"₺{v:,.0f}" for v in cat_data['Tutar']], textposition='outside'))
+                    fig4.update_layout(title='🏷️ Kategoriler',
+                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#7a9bbf'), height=280)
+                    st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.markdown("""<div class="empty-state">
+                <div class="empty-icon">📊</div>
+                <div>Henüz harcama verisi yok. Fiş taraması ile başla!</div>
+                </div>""", unsafe_allow_html=True)
+
+        # AI Günlük Brifing (admin için)
+        if role == "admin" and model and not df.empty:
+            with st.expander("🤖 Günlük AI Finansal Brifingi", expanded=False):
+                if st.button("⚡ Günlük Analizi Oluştur"):
+                    with st.spinner("Gemini AI verilerini işliyor..."):
+                        insight = generate_ai_insight(df, model)
+                        st.session_state.last_ai_insight = insight
+                if st.session_state.last_ai_insight:
+                    st.markdown(f"""<div class="ai-bubble">
+                        <p style="margin:0; line-height:1.7; color:var(--text-primary);">
+                        {st.session_state.last_ai_insight}</p></div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: FİŞ TARAMA (tüm kullanıcılar)
+    # ══════════════════════════════════════════════════════════
+    elif selected == "📷 Fiş Tarama":
+        st.markdown('<div class="page-header"><div class="page-title">AKILLI FİŞ TARAMA</div></div>', unsafe_allow_html=True)
+
+        col_form, col_list = st.columns([1.2, 1])
+
+        with col_form:
+            st.markdown('<div class="ultra-card">', unsafe_allow_html=True)
+            st.markdown("### 📷 Fiş Yükle & AI Analiz")
+            with st.form("pro_entry", clear_on_submit=True):
+                f = st.file_uploader("Fiş / Fatura Fotoğrafı", type=['jpg','png','jpeg','webp'],
+                    help="Net, iyi aydınlatılmış fotoğraflar için en iyi sonuç")
+                col_p, col_o = st.columns(2)
+                with col_p:
+                    proje = st.selectbox("Proje", ["Maden Sahası","Aktif Karbon","Enerji Hatları","Genel Merkez"])
+                with col_o:
+                    oncelik = st.selectbox("Öncelik", ["Normal","Acil","Düşük"])
+                notlar = st.text_area("Ek Not", height=80, placeholder="Harcama hakkında not...")
+                submitted = st.form_submit_button("🤖 AI ile Tara ve Gönder", use_container_width=True)
+
+                if submitted and f:
+                    with st.spinner("🤖 Gemini AI fişi analiz ediyor..."):
+                        progress = st.progress(0)
+                        for i in range(70):
+                            time.sleep(0.01)
+                            progress.progress(i+1)
+                        img = Image.open(f)
+                        res_raw = analyze_receipt_pro(img, model)
+                        progress.progress(100)
+
+                    if res_raw == "ANAHTAR_DEGISIMI":
+                        st.warning("API kotası doldu, yedek anahtara geçildi. Tekrar deneyin.")
+                    elif res_raw.startswith("HATA"):
+                        st.error(f"Hata: {res_raw}")
+                    else:
+                        data_ai = extract_json(res_raw)
+                        if data_ai:
+                            is_dup = any(
+                                e for e in data_store["expenses"]
+                                if e.get("Firma") == data_ai.get("firma")
+                                and abs(float(e.get("Tutar",0)) - float(data_ai.get("toplam_tutar",0))) < 1
+                            )
+                            if is_dup:
+                                st.error("⚠️ MÜKERRER FİŞ: Bu fiş daha önce sisteme yüklendi!")
+                            else:
+                                path = f"arsiv/{datetime.now().strftime('%Y_%m')}"
+                                os.makedirs(path, exist_ok=True)
+                                f_path = os.path.join(path, f"{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg")
+                                with open(f_path, "wb") as fp:
+                                    fp.write(f.getbuffer())
+
+                                new_e = {
+                                    "ID": datetime.now().strftime("%Y%m%d%H%M%S"),
+                                    "Tarih": data_ai.get("tarih", datetime.now().strftime("%Y-%m-%d")),
+                                    "Kullanıcı": user_name,
+                                    "Firma": data_ai.get("firma","Bilinmiyor"),
+                                    "Kategori": data_ai.get("kategori","Diğer"),
+                                    "Tutar": float(data_ai.get("toplam_tutar",0)),
+                                    "KDV": float(data_ai.get("kdv_tutari",0)),
+                                    "Odeme_Turu": data_ai.get("odeme_turu","Bilinmiyor"),
+                                    "Kalemler": data_ai.get("kalemler",[]),
+                                    "Durum": "Onay Bekliyor",
+                                    "Dosya_Yolu": f_path,
+                                    "Risk_Skoru": int(data_ai.get("risk_skoru",0)),
+                                    "AI_Audit": data_ai.get("audit_ozeti",""),
+                                    "AI_Anomali": data_ai.get("anomali",False),
+                                    "AI_Anomali_Aciklama": data_ai.get("anomali_aciklamasi",""),
+                                    "Proje": proje,
+                                    "Oncelik": oncelik,
+                                    "Notlar": notlar
+                                }
+                                data_store["expenses"].append(new_e)
+                                if proje in data_store.get("budgets",{}):
+                                    data_store["budgets"][proje]["spent"] = data_store["budgets"][proje].get("spent",0) + new_e["Tutar"]
+                                save_data(data_store)
+                                add_xp(user_name, 50, "Fiş tarama")
+
+                                # Yöneticilere bildirim gönder
+                                for ukey, udata in USERS.items():
+                                    if udata["role"] == "admin" and udata["name"] != user_name:
+                                        add_notify(udata["name"],
+                                            f"📋 {user_name} → {proje}: {data_ai.get('firma','?')} ₺{float(data_ai.get('toplam_tutar',0)):,.0f}",
+                                            "info")
+
+                                risk = int(data_ai.get("risk_skoru",0))
+                                st.success("✅ Fiş başarıyla işlendi! +50 XP kazandın!")
+                                st.markdown(f"""<div class="ultra-card">
+                                    <div style="display:flex; justify-content:space-between; align-items:start;">
+                                        <div>
+                                            <div style="font-size:1.3rem; font-weight:700;">{data_ai.get('firma','?')}</div>
+                                            <div style="font-size:2rem; font-family:'Bebas Neue'; color:var(--accent-blue);">
+                                                ₺{float(data_ai.get('toplam_tutar',0)):,.2f}</div>
+                                            <div style="font-size:0.8rem; color:var(--text-muted);">
+                                                {data_ai.get('kategori','?')} · {data_ai.get('odeme_turu','?')}</div>
+                                        </div>
+                                        <div style="text-align:right;">{get_risk_html(risk)}</div>
+                                    </div>
+                                    <div class="ai-bubble" style="margin-top:12px;">
+                                        <p style="margin:0; font-size:0.85rem;">{data_ai.get('audit_ozeti','')}</p>
+                                    </div>
+                                    </div>""", unsafe_allow_html=True)
+                                st.rerun()
+                        else:
+                            st.error("AI fişi okuyamadı. Daha net bir fotoğraf deneyin.")
+                elif submitted and not f:
+                    st.warning("Lütfen bir fiş fotoğrafı yükleyin.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with col_list:
+            st.markdown("### 📋 Harcamalarım")
+            my_exp = df[df['Kullanıcı'] == user_name] if not df.empty and 'Kullanıcı' in df.columns else pd.DataFrame()
+            if not my_exp.empty:
+                for _, row in my_exp.sort_values('Tarih', ascending=False).head(8).iterrows():
+                    risk = row.get('Risk_Skoru', 0)
+                    st.markdown(f"""<div class="ultra-card" style="padding:16px; margin:6px 0;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="flex:1;">
+                                <div style="font-weight:600; font-size:0.9rem;">{row.get('Firma','?')} — ₺{float(row.get('Tutar',0)):,.0f}</div>
+                                <div style="font-size:0.75rem; color:var(--text-muted);">{row.get('Tarih','?')} · {row.get('Proje','?')}</div>
+                                <div style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">
+                                    {str(row.get('AI_Audit',''))[:80]}{'...' if len(str(row.get('AI_Audit',''))) > 80 else ''}</div>
+                            </div>
+                            <div style="text-align:right; margin-left:12px;">
+                                {get_status_html(row.get('Durum','?'))}
+                                <div style="margin-top:4px;">{get_risk_html(risk)}</div>
+                            </div>
+                        </div></div>""", unsafe_allow_html=True)
+            else:
+                st.markdown("""<div class="empty-state"><div class="empty-icon">📋</div>
+                    <div>Henüz harcama kaydın yok.</div></div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: FİNANS & KASA (sadece admin)
+    # ══════════════════════════════════════════════════════════
+    elif selected == "💰 Finans & Kasa":
+        st.markdown('<div class="page-header"><div class="page-title">FİNANS MERKEZİ</div></div>', unsafe_allow_html=True)
+
+        # Proje bütçeleri
+        st.markdown("### 📊 Proje Bütçe Durumu")
+        budgets = data_store.get("budgets", {})
+        b_cols = st.columns(4)
+        for i, (proj, bdata) in enumerate(budgets.items()):
+            limit = bdata.get("limit",0)
+            spent = bdata.get("spent",0)
+            pct   = min(spent/limit*100, 100) if limit > 0 else 0
+            color = "#00ff88" if pct < 60 else ("#ffab00" if pct < 85 else "#ff3b5c")
+            with b_cols[i % 4]:
+                st.markdown(f"""<div class="metric-card">
+                    <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase;">{proj}</div>
+                    <div style="font-size:1.8rem; font-family:'Bebas Neue'; color:{color};">{pct:.0f}%</div>
+                    <div class="budget-track">
+                        <div class="budget-fill" style="width:{pct:.0f}%; background:{color};"></div>
+                    </div>
+                    <div style="font-size:0.7rem; color:var(--text-muted);">₺{spent:,.0f} / ₺{limit:,.0f}</div>
+                    </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_c, col_d = st.columns([1.2, 1])
+
+        with col_c:
+            st.markdown("### 👥 Personel Kasa Durumları")
+            wallets = data_store["wallets"]
+            for person, bal in wallets.items():
+                u_key = next((k for k,v in USERS.items() if v["name"]==person), None)
+                avatar = USERS[u_key]["avatar"] if u_key else "👤"
+                person_limit = USERS[u_key]["monthly_limit"] if u_key else 15000
+                st.markdown(f"""<div class="ultra-card" style="padding:16px; margin:8px 0;">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:1.5rem;">{avatar}</span>
+                            <div>
+                                <div style="font-weight:600;">{person}</div>
+                                <div style="font-size:0.7rem; color:var(--text-muted);">Limit: ₺{person_limit:,.0f}</div>
+                            </div>
+                        </div>
+                        <div style="font-family:'Bebas Neue'; font-size:1.8rem; color:var(--accent-green);">₺{bal:,.0f}</div>
+                    </div></div>""", unsafe_allow_html=True)
+
+            st.markdown("### 💸 Harcırah Transfer")
+            with st.form("harcirah_form"):
+                col_t1, col_t2 = st.columns(2)
+                with col_t1:
+                    target = st.selectbox("Personel", list(wallets.keys()))
+                with col_t2:
+                    amt = st.number_input("Tutar (₺)", min_value=0, step=500, value=1000)
+                aciklama = st.text_input("Açıklama", value="Aylık harcırah")
+                if st.form_submit_button("⚡ Transfer Et", use_container_width=True):
+                    data_store["wallets"][target] += amt
+                    data_store["ledger"].append({
+                        "Tarih": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "Kaynak": user_name, "Hedef": target,
+                        "İşlem": aciklama, "Miktar": amt
+                    })
+                    save_data(data_store)
+                    add_notify(target, f"💰 ₺{amt:,.0f} hesabınıza transfer edildi. ({aciklama})", "success")
+                    add_xp(target, 10, "Transfer alındı")
+                    st.success(f"✅ {target}'e ₺{amt:,.0f} transfer edildi!")
+                    st.rerun()
+
+        with col_d:
+            st.markdown("### 📋 Son Hareketler")
+            ledger = data_store.get("ledger", [])
+            if ledger:
+                for entry in reversed(ledger[-8:]):
+                    st.markdown(f"""<div style="padding:10px 0; border-bottom:1px solid var(--border);">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="font-size:0.8rem; color:var(--text-secondary);">{entry.get('Hedef','?')} ← {entry.get('Kaynak','?')}</span>
+                            <span style="font-family:'JetBrains Mono'; color:var(--accent-blue);">+₺{entry.get('Miktar',0):,.0f}</span>
+                        </div>
+                        <div style="font-size:0.7rem; color:var(--text-muted);">{entry.get('Tarih','?')} · {entry.get('İşlem','')}</div>
+                        </div>""", unsafe_allow_html=True)
+            else:
+                st.info("Henüz hareket yok.")
+
+        # Onay merkezi (admin)
+        st.markdown("---")
+        st.markdown("### ⚖️ Onay Merkezi")
+        pending = df_full[df_full["Durum"] == "Onay Bekliyor"] if not df_full.empty and 'Durum' in df_full.columns else pd.DataFrame()
+        if pending.empty:
+            st.success("✅ Onay bekleyen işlem yok!")
+        else:
+            for idx, row in pending.iterrows():
+                risk = row.get('Risk_Skoru', 0)
+                with st.expander(f"{'🔴' if risk>70 else '🟡'} {row['Kullanıcı']} · {row.get('Firma','?')} · ₺{float(row.get('Tutar',0)):,.0f}"):
+                    ca, cb = st.columns([2, 1])
+                    with ca:
+                        st.markdown(f"""<div class="ultra-card">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                                <div>
+                                    <div style="font-size:1.1rem; font-weight:700;">{row.get('Firma','?')}</div>
+                                    <div style="font-size:0.8rem; color:var(--text-muted);">{row.get('Tarih','?')} · {row.get('Kategori','?')}</div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-family:'Bebas Neue'; font-size:2rem; color:var(--accent-blue);">₺{float(row.get('Tutar',0)):,.0f}</div>
+                                    {get_risk_html(risk)}
+                                </div>
+                            </div>
+                            <div class="ai-bubble">{row.get('AI_Audit','')}</div>
+                            <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
+                                Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','?')}
+                            </div></div>""", unsafe_allow_html=True)
+                        btn1, btn2 = st.columns(2)
+                        if btn1.button("✅ Onayla", key=f"on_{row['ID']}", use_container_width=True):
+                            data_store["wallets"][row['Kullanıcı']] = data_store["wallets"].get(row['Kullanıcı'],0) - row['Tutar']
+                            for e in data_store["expenses"]:
+                                if e["ID"] == row["ID"]: e["Durum"] = "Onaylandı"
+                            save_data(data_store)
+                            add_notify(row['Kullanıcı'], f"✅ {row.get('Firma','?')} fişin onaylandı!", "success")
+                            add_xp(row['Kullanıcı'], 25, "Fiş onaylandı")
+                            st.success("Onaylandı!"); st.rerun()
+                        if btn2.button("❌ Reddet", key=f"ret_{row['ID']}", use_container_width=True):
+                            for e in data_store["expenses"]:
+                                if e["ID"] == row["ID"]: e["Durum"] = "Reddedildi"
+                            save_data(data_store)
+                            add_notify(row['Kullanıcı'], f"❌ {row.get('Firma','?')} fişin reddedildi.", "warning")
+                            st.warning("Reddedildi!"); st.rerun()
+                    with cb:
+                        dosya = row.get('Dosya_Yolu','')
+                        if dosya and os.path.exists(dosya):
+                            st.image(dosya, caption="Orijinal Fiş", use_container_width=True)
+                        else:
+                            st.markdown("""<div style="height:150px; background:var(--bg-secondary); border-radius:8px;
+                                display:flex; align-items:center; justify-content:center; color:var(--text-muted);">
+                                📷 Görsel Yok</div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: BAKİYEM (sadece user / personel)
+    # ══════════════════════════════════════════════════════════
+    elif selected == "💰 Bakiyem":
+        st.markdown('<div class="page-header"><div class="page-title">BAKİYEM</div></div>', unsafe_allow_html=True)
+        my_bal = data_store['wallets'].get(user_name, 0)
+        monthly_limit = user_info.get('monthly_limit', 5000)
+        my_spend = df['Tutar'].sum() if not df.empty else 0
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"""<div class="metric-card">
+                <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Mevcut Bakiye</div>
+                <div style="font-family:'Bebas Neue'; font-size:3rem; color:var(--accent-green);">₺{my_bal:,.0f}</div>
+                </div>""", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""<div class="metric-card">
+                <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Toplam Harcamam</div>
+                <div style="font-family:'Bebas Neue'; font-size:3rem; color:var(--accent-blue);">₺{my_spend:,.0f}</div>
+                </div>""", unsafe_allow_html=True)
+        with col3:
+            kalan = monthly_limit - my_spend
+            color = "#00ff88" if kalan > 0 else "#ff3b5c"
+            st.markdown(f"""<div class="metric-card">
+                <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Kalan Limit</div>
+                <div style="font-family:'Bebas Neue'; font-size:3rem; color:{color};">₺{kalan:,.0f}</div>
+                </div>""", unsafe_allow_html=True)
+
+        if not df.empty:
+            st.markdown("### 📋 Son Harcamalarım")
+            display_cols = [c for c in ['Tarih','Firma','Tutar','Kategori','Proje','Durum','Risk_Skoru'] if c in df.columns]
+            st.dataframe(df[display_cols].sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
+            csv = df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("⬇️ CSV İndir", data=csv, file_name=f"fisllerim_{user_name}.csv", mime="text/csv")
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: ANOMALİ DEDEKTÖRÜ (sadece admin)
+    # ══════════════════════════════════════════════════════════
+    elif selected == "🔍 Anomali Dedektörü":
+        st.markdown('<div class="page-header"><div class="page-title">ANOMALİ DEDEKTÖRÜ</div></div>', unsafe_allow_html=True)
+        if not df_full.empty:
+            anomalies = detect_anomalies(df_full, model)
+            if anomalies:
+                st.markdown(f"### 🔴 {len(anomalies)} Anomali Tespit Edildi")
+                for a in anomalies:
+                    sev_color = {"high":"#ff3b5c","medium":"#ffab00","low":"#00d4ff"}.get(a['severity'],"#00d4ff")
+                    st.markdown(f"""<div class="ultra-card" style="border-left:4px solid {sev_color};">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div>
+                                <div style="font-weight:600;">{a['message']}</div>
+                                <div style="font-size:0.75rem; color:{sev_color}; text-transform:uppercase;">
+                                    {a['severity'].upper()} SEVİYE · {a['count']} işlem</div>
+                            </div></div></div>""", unsafe_allow_html=True)
+            else:
+                st.markdown("""<div class="ultra-card" style="border-left:4px solid #00ff88; text-align:center;">
+                    <div style="font-size:3rem;">✅</div>
+                    <div style="color:#00ff88; font-size:1.2rem; font-weight:600;">Anomali Tespit Edilmedi</div>
+                    </div>""", unsafe_allow_html=True)
+
+            st.markdown("### 🤖 AI Derin Analiz")
+            if st.button("🔍 Kapsamlı AI Denetimi Başlat"):
+                with st.spinner("Gemini AI tüm verileri tarıyor..."):
+                    prompt = f"""Sen bir adli mali denetçisin. Bu harcama verilerini incele:
+{df_full.to_dict(orient='records')}
+Türkçe olarak: 1. En riskli 3 işlem ve neden 2. Olağandışı patternler 3. Önerilen aksiyonlar. Kısa ve net ol."""
+                    try:
+                        response = model.generate_content(prompt)
+                        st.markdown(f"""<div class="ai-bubble">
+                            <p style="margin:0; line-height:1.8; white-space:pre-wrap;">{response.text}</p>
+                            </div>""", unsafe_allow_html=True)
+                        data_store["ai_insights"].append({"date":datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "type":"anomaly_scan","content":response.text})
+                        save_data(data_store)
+                    except Exception as e:
+                        st.error(f"AI yanıt veremedi: {e}")
+
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                if 'Tutar' in df_full.columns and 'Proje' in df_full.columns:
+                    fig = px.box(df_full, x='Proje', y='Tutar', color='Proje',
+                        title='Proje Bazlı Tutar Dağılımı',
+                        color_discrete_sequence=['#00d4ff','#8b5cf6','#00ff88','#ff6b35'])
+                    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#7a9bbf'), showlegend=False)
+                    st.plotly_chart(fig, use_container_width=True)
+            with col_s2:
+                if 'Risk_Skoru' in df_full.columns:
+                    fig2 = px.histogram(df_full, x='Risk_Skoru', nbins=10,
+                        title='Risk Skoru Dağılımı', color_discrete_sequence=['#ff3b5c'])
+                    fig2.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#7a9bbf'))
+                    st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("Anomali analizi için veri gerekli.")
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: ANALİTİK MERKEZİ (sadece admin)
+    # ══════════════════════════════════════════════════════════
+    elif selected == "📊 Analitik Merkezi":
+        st.markdown('<div class="page-header"><div class="page-title">ANALİTİK MERKEZİ</div></div>', unsafe_allow_html=True)
+        if not df_full.empty:
+            tab1, tab2, tab3 = st.tabs(["📈 Trend Analizi","🗓️ Isı Haritası","🔮 Tahmin"])
+            with tab1:
+                df_temp = df_full.copy()
+                df_temp['dt'] = pd.to_datetime(df_temp['Tarih'], errors='coerce')
+                monthly = df_temp.groupby(df_temp['dt'].dt.strftime('%Y-%m')).agg(
+                    Toplam=('Tutar','sum'), Adet=('Tutar','count')).reset_index()
+                monthly.columns = ['Ay','Toplam','Adet']
+                fig = make_subplots(rows=2, cols=1, subplot_titles=('Aylık Harcama','İşlem Adedi'), shared_xaxes=True)
+                fig.add_trace(go.Bar(x=monthly['Ay'], y=monthly['Toplam'], marker_color='#00d4ff', name='Harcama'), row=1, col=1)
+                fig.add_trace(go.Scatter(x=monthly['Ay'], y=monthly['Adet'],
+                    line=dict(color='#8b5cf6',width=2), fill='tozeroy', fillcolor='rgba(139,92,246,0.1)', name='Adet'), row=2, col=1)
+                fig.update_layout(height=450, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#7a9bbf'), showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+                if 'Kullanıcı' in df_full.columns:
+                    user_stats = df_full.groupby('Kullanıcı').agg(
+                        Toplam=('Tutar','sum'), Adet=('Tutar','count'), OrtRisk=('Risk_Skoru','mean')).reset_index()
+                    fig2 = px.bar(user_stats, x='Kullanıcı', y='Toplam', color='OrtRisk',
+                        color_continuous_scale='RdYlGn_r',
+                        title='Personel Bazlı Harcama', text=[f"₺{v:,.0f}" for v in user_stats['Toplam']])
+                    fig2.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#7a9bbf'))
+                    st.plotly_chart(fig2, use_container_width=True)
+
+            with tab2:
+                df_temp2 = df_full.copy()
+                df_temp2['dt'] = pd.to_datetime(df_temp2['Tarih'], errors='coerce')
+                df_temp2['Gun'] = df_temp2['dt'].dt.day_name()
+                df_temp2['Hafta'] = df_temp2['dt'].dt.isocalendar().week.astype(str)
+                pivot = df_temp2.pivot_table(values='Tutar', index='Gun', columns='Hafta', aggfunc='sum', fill_value=0)
+                gun_order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+                gun_tr    = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz']
+                pivot = pivot.reindex([g for g in gun_order if g in pivot.index])
+                fig3 = go.Figure(go.Heatmap(z=pivot.values, x=pivot.columns.tolist(),
+                    y=[gun_tr[gun_order.index(g)] for g in pivot.index if g in gun_order],
+                    colorscale=[[0,'#0a0f1e'],[0.5,'#00d4ff'],[1,'#8b5cf6']],
+                    text=[[f"₺{v:,.0f}" for v in row] for row in pivot.values],
+                    texttemplate='%{text}', textfont=dict(size=9)))
+                fig3.update_layout(title='Haftalık Harcama Yoğunluğu',
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#7a9bbf'), height=350)
+                st.plotly_chart(fig3, use_container_width=True)
+
+            with tab3:
+                if st.button("🔮 Tahmin Oluştur"):
+                    with st.spinner("AI pattern analizi..."):
+                        pred = predict_monthly_spend(df_full, model)
+                        if pred:
+                            current = df_full[
+                                pd.to_datetime(df_full['Tarih'], errors='coerce').dt.strftime('%Y-%m') == datetime.now().strftime('%Y-%m')
+                            ]['Tutar'].sum()
+                            col_x, col_y = st.columns(2)
+                            with col_x:
+                                st.markdown(f"""<div class="metric-card">
+                                    <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">Bu Ay</div>
+                                    <div style="font-family:'Bebas Neue'; font-size:2.5rem; color:var(--accent-blue);">₺{current:,.0f}</div>
+                                    </div>""", unsafe_allow_html=True)
+                            with col_y:
+                                st.markdown(f"""<div class="metric-card">
+                                    <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase;">AI Tahmini</div>
+                                    <div style="font-family:'Bebas Neue'; font-size:2.5rem; color:var(--accent-purple);">₺{pred:,.0f}</div>
+                                    </div>""", unsafe_allow_html=True)
+                        else:
+                            st.warning("Tahmin için en az 2 aylık veri gerekli.")
+        else:
+            st.info("Analitik için veri gerekli.")
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: AI ASISTAN (sadece admin)
+    # ══════════════════════════════════════════════════════════
+    elif selected == "🤖 AI Asistan":
+        st.markdown('<div class="page-header"><div class="page-title">AI FİNANS ASISTANI</div></div>', unsafe_allow_html=True)
+        quick_qs = ["En yüksek harcama hangi proje?","Bu ay risk durumu nasıl?",
+                    "Hangi personel en fazla harcıyor?","Bütçe aşımı var mı?",
+                    "En çok hangi kategoride harcama var?","Anomalileri özetle"]
+        st.markdown("**Hızlı Sorular:**")
+        q_cols = st.columns(3)
+        for i, q in enumerate(quick_qs):
+            with q_cols[i % 3]:
+                if st.button(q, key=f"qq_{i}", use_container_width=True):
+                    st.session_state.chat_history.append({"role":"user","content":q})
+        st.markdown("<br>", unsafe_allow_html=True)
+        for msg in st.session_state.chat_history:
+            if msg["role"] == "user":
+                st.markdown(f"""<div style="display:flex; justify-content:flex-end; margin:8px 0;">
+                    <div style="background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.2);
+                        border-radius:16px 16px 0 16px; padding:12px 16px; max-width:70%;
+                        color:var(--text-primary); font-size:0.9rem;">{msg['content']}</div>
+                    </div>""", unsafe_allow_html=True)
+            else:
+                st.markdown(f"""<div class="ai-bubble" style="max-width:85%;">
+                    <p style="margin:0; line-height:1.7; font-size:0.9rem; white-space:pre-wrap;">
+                    {msg['content']}</p></div>""", unsafe_allow_html=True)
+        if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
+            last_q = st.session_state.chat_history[-1]["content"]
+            if model:
+                with st.spinner("🤖 Stinga AI düşünüyor..."):
+                    answer = generate_ai_insight(df_full, model, last_q)
+                    st.session_state.chat_history.append({"role":"assistant","content":answer})
+                    st.rerun()
+        with st.form("chat_form", clear_on_submit=True):
+            col_i, col_b = st.columns([5,1])
+            with col_i:
+                user_q = st.text_input("", placeholder="Finansal veriler hakkında bir şey sor...", label_visibility="collapsed")
+            with col_b:
+                sent = st.form_submit_button("→", use_container_width=True)
+            if sent and user_q.strip():
+                st.session_state.chat_history.append({"role":"user","content":user_q})
+                st.rerun()
+        if st.session_state.chat_history:
+            if st.button("🗑️ Sohbeti Temizle"):
+                st.session_state.chat_history = []
+                st.rerun()
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: LEADERBOARD (tüm kullanıcılar)
+    # ══════════════════════════════════════════════════════════
+    elif selected == "🏆 Leaderboard":
+        st.markdown('<div class="page-header"><div class="page-title">PERFORMANS SIRALAMASI</div></div>', unsafe_allow_html=True)
+        xp_data = data_store.get("xp", {})
+        sorted_users = sorted(xp_data.items(), key=lambda x: x[1], reverse=True)
+        rank_icons = ["🥇","🥈","🥉","4️⃣"]
+        for i, (uname, xp) in enumerate(sorted_users):
+            u_key = next((k for k,v in USERS.items() if v["name"]==uname), None)
+            avatar = USERS[u_key]["avatar"] if u_key else "👤"
+            level  = xp // 500 + 1
+            u_exp  = df_full[df_full['Kullanıcı']==uname] if not df_full.empty and 'Kullanıcı' in df_full.columns else pd.DataFrame()
+            total_spend   = u_exp['Tutar'].sum() if not u_exp.empty else 0
+            approved_count= len(u_exp[u_exp['Durum']=='Onaylandı']) if not u_exp.empty and 'Durum' in u_exp.columns else 0
+            max_xp  = sorted_users[0][1] if sorted_users else 1
+            bar_pct = (xp / max_xp * 100) if max_xp > 0 else 0
+            rank_icon = rank_icons[i] if i < len(rank_icons) else "•"
+            rank_cls  = ["gold","silver","bronze",""][min(i,3)]
+            st.markdown(f"""<div class="lb-item">
+                <div class="lb-rank {rank_cls}">{rank_icon}</div>
+                <div style="font-size:1.8rem;">{avatar}</div>
+                <div style="flex:1;">
+                    <div style="font-weight:700;">{uname} <span style="font-size:0.75rem; color:var(--text-muted);">Lv.{level}</span></div>
+                    <div style="font-size:0.75rem; color:var(--text-secondary);">₺{total_spend:,.0f} · {approved_count} onaylı fiş</div>
+                    <div class="budget-track" style="margin-top:6px; width:200px;">
+                        <div class="budget-fill" style="width:{bar_pct:.0f}%; background:{'linear-gradient(90deg,#ffd700,#ffab00)' if i==0 else 'linear-gradient(90deg,#00d4ff,#8b5cf6)'};"></div>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-family:'Bebas Neue'; font-size:1.8rem; color:{'#ffd700' if i==0 else 'var(--accent-blue)'};">{xp}</div>
+                    <div style="font-size:0.7rem; color:var(--text-muted);">XP</div>
+                </div></div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>")
+        st.markdown("### 🏅 Başarı Rozetleri")
+        badge_defs = [("🚀","İlk Fiş","İlk fişini tara",1),
+                      ("💯","Seri Teyitçi","10 fiş tara",10),
+                      ("🎯","Risk Avcısı","5 yüksek riskli fiş",5),
+                      ("⚡","Hız Ustası","Aynı gün 3 fiş",3),
+                      ("🏆","Finans Gurusu","500 XP kazan",500),
+                      ("💎","Elit Operatör","1000 XP kazan",1000)]
+        badge_cols = st.columns(6)
+        user_xp_val    = xp_data.get(user_name, 0)
+        user_exp_count = len(df) if not df.empty else 0
+        for i, (icon, name, desc, req) in enumerate(badge_defs):
+            earned = (user_exp_count >= req) or (user_xp_val >= req)
+            with badge_cols[i]:
+                st.markdown(f"""<div style="text-align:center; padding:16px; background:var(--bg-card);
+                    border-radius:12px; border:1px solid {'var(--accent-blue)' if earned else 'var(--border)'};
+                    opacity:{'1' if earned else '0.4'};">
+                    <div style="font-size:2rem;">{icon}</div>
+                    <div style="font-size:0.75rem; font-weight:700; color:{'var(--accent-blue)' if earned else 'var(--text-muted)'};">{name}</div>
+                    <div style="font-size:0.65rem; color:var(--text-muted);">{desc}</div>
+                    {'<div style="font-size:0.65rem; color:var(--accent-green);">✓ KAZANILDI</div>' if earned else ''}
+                    </div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: ARŞİV & RAPOR (sadece admin)
+    # ══════════════════════════════════════════════════════════
+    elif selected in ("📁 Arşiv & Rapor", "📁 Fişlerim"):
+        is_admin = (selected == "📁 Arşiv & Rapor")
+        title_txt = "ARŞİV & RAPORLAMA" if is_admin else "FİŞLERİM"
+        st.markdown(f'<div class="page-header"><div class="page-title">{title_txt}</div></div>', unsafe_allow_html=True)
+
+        work_df = df_full.copy() if is_admin else df.copy()
+
+        tab_r, tab_a = st.tabs(["📊 Raporlama","🔍 Arşiv"])
+
+        with tab_r:
+            if not work_df.empty:
+                work_df['Tarih_DT'] = pd.to_datetime(work_df['Tarih'], errors='coerce')
+                work_df['Ay_Yil']   = work_df['Tarih_DT'].dt.strftime('%Y-%m')
+                aylar = ["Tüm Zamanlar"] + sorted(work_df['Ay_Yil'].dropna().unique().tolist(), reverse=True)
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    secilen_ay = st.selectbox("Dönem", aylar)
+                with col_f2:
+                    if is_admin and 'Proje' in work_df.columns:
+                        secilen_proje = st.selectbox("Proje", ["Tümü"] + work_df['Proje'].unique().tolist())
+                    else:
+                        secilen_proje = "Tümü"
+
+                filtered = work_df.copy()
+                if secilen_ay != "Tüm Zamanlar":
+                    filtered = filtered[filtered['Ay_Yil'] == secilen_ay]
+                if secilen_proje != "Tümü" and 'Proje' in filtered.columns:
+                    filtered = filtered[filtered['Proje'] == secilen_proje]
+
+                if not filtered.empty:
+                    fc1, fc2, fc3, fc4 = st.columns(4)
+                    fc1.metric("Toplam İşlem", len(filtered))
+                    fc2.metric("Toplam Tutar",  f"₺{filtered['Tutar'].sum():,.0f}")
+                    fc3.metric("Ort. Risk",      f"{filtered['Risk_Skoru'].mean():.0f}%" if 'Risk_Skoru' in filtered.columns else "—")
+                    fc4.metric("Onay Oranı",     f"%{len(filtered[filtered['Durum']=='Onaylandı'])/len(filtered)*100:.0f}" if 'Durum' in filtered.columns else "—")
+
+                    clean_df = filtered.drop(columns=['Tarih_DT','Ay_Yil'], errors='ignore')
+                    d1, d2 = st.columns(2)
+                    d1.download_button("📥 CSV İndir", clean_df.to_csv(index=False).encode('utf-8-sig'),
+                        f"Stinga_{secilen_ay}.csv", "text/csv", use_container_width=True)
+                    d2.download_button("📄 PDF Raporu", export_pdf_advanced(clean_df,"Mali Rapor",secilen_ay),
+                        f"Stinga_PDF_{secilen_ay}.pdf", "application/pdf", use_container_width=True)
+                    st.dataframe(clean_df.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Bu kriterlere ait veri yok.")
+            else:
+                st.info("Raporlanacak veri yok.")
+
+        with tab_a:
+            if not work_df.empty:
+                search = st.text_input("🔍 Ara", placeholder="firma, proje, personel...")
+                display_df = work_df.copy()
+                if search:
+                    mask = display_df.apply(lambda row: search.lower() in str(row).lower(), axis=1)
+                    display_df = display_df[mask]
+                if not display_df.empty:
+                    islem_listesi = ["Seçim yapın..."] + display_df.apply(
+                        lambda x: f"{x['ID']} | {x.get('Tarih','')} | {x.get('Firma','')} — ₺{float(x.get('Tutar',0)):,.0f}", axis=1).tolist()
+                    secilen = st.selectbox("İşlem seç:", islem_listesi)
+                    if secilen != "Seçim yapın...":
+                        islem_id = secilen.split(" | ")[0]
+                        satir = work_df[work_df['ID'] == islem_id].iloc[0]
+                        col_i, col_img = st.columns([1, 1.5])
+                        with col_i:
+                            st.markdown(f"""<div class="ultra-card">
+                                <div style="font-size:1.3rem; font-weight:700; margin-bottom:16px;">{satir.get('Firma','?')}</div>
+                                <div style="display:grid; gap:8px;">
+                                    <div><span style="color:var(--text-muted); font-size:0.75rem;">Tutar:</span> ₺{float(satir.get('Tutar',0)):,.2f}</div>
+                                    <div><span style="color:var(--text-muted); font-size:0.75rem;">Tarih:</span> {satir.get('Tarih','?')}</div>
+                                    <div><span style="color:var(--text-muted); font-size:0.75rem;">Kategori:</span> {satir.get('Kategori','?')}</div>
+                                    <div><span style="color:var(--text-muted); font-size:0.75rem;">Proje:</span> {satir.get('Proje','?')}</div>
+                                    <div><span style="color:var(--text-muted); font-size:0.75rem;">Durum:</span> {get_status_html(satir.get('Durum','?'))}</div>
+                                    <div><span style="color:var(--text-muted); font-size:0.75rem;">Risk:</span> {get_risk_html(satir.get('Risk_Skoru',0))}</div>
+                                </div>
+                                <div class="ai-bubble" style="margin-top:16px;">{satir.get('AI_Audit','Analiz mevcut değil.')}</div>
+                                </div>""", unsafe_allow_html=True)
+                        with col_img:
+                            dosya = satir.get('Dosya_Yolu','')
+                            if dosya and os.path.exists(dosya):
+                                st.image(dosya, caption=f"Orijinal Fiş", use_container_width=True)
+                            else:
+                                st.markdown("""<div style="height:300px; background:var(--bg-secondary); border-radius:8px;
+                                    display:flex; flex-direction:column; align-items:center; justify-content:center;
+                                    color:var(--text-muted); border:2px dashed var(--border);">
+                                    <div style="font-size:3rem; opacity:0.3;">📷</div>
+                                    <div>Görsel bulunamadı</div></div>""", unsafe_allow_html=True)
+            else:
+                st.info("Arşivde veri yok.")
+
