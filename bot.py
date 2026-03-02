@@ -18,7 +18,7 @@ from io import BytesIO
 from collections import defaultdict
 
 import requests
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from google import genai
 from PIL import Image
 from twilio.twiml.messaging_response import MessagingResponse
@@ -36,13 +36,28 @@ TWILIO_SID   = os.getenv("TWILIO_SID")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
 twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
 
-DB_FILE      = "stinga_v13_db.json"
+# DB_FILE mutlak yol — Railway'de çalışma dizini kaymaları için
+DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stinga_v13_db.json")
 DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
 
 PHONE_DIRECTORY = {
-    "whatsapp:+905350328406": {"ad": "Okan",   "rol": "Saha Müdürü",  "limit": 5000,  "emoji": "🔧"},
-    "whatsapp:+905322002337": {"ad": "Serkan", "rol": "Muhasebe",     "limit": 10000, "emoji": "📊"},
-    "whatsapp:+905547858627": {"ad": "Zeynep", "rol": "Genel Müdür",  "limit": 50000, "emoji": "👑"},
+    "whatsapp:+905350328406": {
+        "ad": "Okan",   "rol": "Saha Personeli",         "limit": 5000,
+        "emoji": "🔧",  "yetki": "user",  "dashboard_key": "okan"
+    },
+    "whatsapp:+905322002337": {
+        "ad": "Serkan", "rol": "İşletme Müdürü",         "limit": 10000,
+        "emoji": "⚡",  "yetki": "admin", "dashboard_key": "serkan"
+    },
+    "whatsapp:+905547858627": {
+        "ad": "Zeynep", "rol": "Yönetim Kurulu Başkanı", "limit": 50000,
+        "emoji": "👑",  "yetki": "admin", "dashboard_key": "zeynep"
+    },
+    "whatsapp:+905304305213": {
+        "ad": "Şenol", "rol": "Genel Müdür", "limit": 30000,
+        "emoji": "🏢",  "yetki": "user", "dashboard_key": "senol",
+        "dashboard_rol": "user", "dashboard_sifre": "456"
+    },
 }
 
 KATEGORILER = {
@@ -83,14 +98,27 @@ SEVIYELER = [
 def load_data() -> dict:
     default = {
         "expenses": [],
-        "wallets":  {"Zeynep": 0, "Serkan": 0, "Okan": 0},
-        "budgets":  {"Zeynep": 50000, "Serkan": 10000, "Okan": 5000},
+        # Harcırah bakiyeleri (dashboard Finans&Kasa bölümü)
+        "wallets":  {"Zeynep": 50000, "Serkan": 25000, "Okan": 5000, "Şenol": 30000},
+        # Proje bazlı bütçe (dashboard ultra-card göstergeleri)
+        "budgets": {
+            "Maden Sahası":   {"limit": 100000, "spent": 0},
+            "Aktif Karbon":   {"limit": 80000,  "spent": 0},
+            "Enerji Hatları": {"limit": 60000,  "spent": 0},
+            "Genel Merkez":   {"limit": 40000,  "spent": 0},
+        },
+        # WhatsApp uyarıları için kişi limitleri
+        "user_limits": {"Zeynep": 50000, "Serkan": 10000, "Okan": 5000, "Şenol": 30000},
         "anomaly_log": [],
         "duplicate_hashes": [],
         "user_states": {},
-        "rozetler": {"Zeynep": [], "Serkan": [], "Okan": []},
-        "fis_sayaci": {"Zeynep": 0, "Serkan": 0, "Okan": 0},
-        "karakter_modu": {},   # kullanıcı → aktif karakter
+        "rozetler": {"Zeynep": [], "Serkan": [], "Okan": [], "Şenol": []},
+        "fis_sayaci": {"Zeynep": 0, "Serkan": 0, "Okan": 0, "Şenol": 0},
+        "karakter_modu": {},
+        # Dashboard ek alanları
+        "xp": {"Zeynep": 0, "Serkan": 0, "Okan": 0, "Şenol": 0},
+        "notifications": [],
+        "ledger": [],
     }
     if not os.path.exists(DB_FILE):
         return default
@@ -98,11 +126,67 @@ def load_data() -> dict:
         data = json.load(f)
     for k, v in default.items():
         data.setdefault(k, v)
+    # Şenol'u eksik alt-alanlara ekle
+    for field in ["wallets", "user_limits", "rozetler", "fis_sayaci", "xp"]:
+        if "Şenol" not in data.get(field, {}):
+            data[field]["Şenol"] = default[field].get("Şenol", 0 if field != "rozetler" else [])
+    # budgets eski flat formattan ({"Zeynep":50000}) proje formatına migrate et
+    budgets = data.get("budgets", {})
+    if budgets and isinstance(list(budgets.values())[0], (int, float)):
+        data["budgets"] = default["budgets"]
     return data
 
 def save_data(d: dict):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=2)
+    """Atomik kayıt: geçici dosyaya yaz, sonra rename — veri bozulmasını önler."""
+    tmp = DB_FILE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, DB_FILE)
+    except Exception as e:
+        print(f"KAYIT HATASI: {e}", flush=True)
+        # Fallback: direkt yaz
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)
+
+
+def add_notification(target: str, message: str, notif_type: str = "info", data: dict = None):
+    """Dashboard bildirim kuyruğuna ekle. data verilirse mevcut objeye yazar (kaydetmez)."""
+    _own = data is None
+    if _own:
+        data = load_data()
+    data.setdefault("notifications", [])
+    data["notifications"].append({
+        "user":  target,
+        "msg":   message,
+        "type":  notif_type,
+        "time":  datetime.now().strftime("%H:%M"),
+        "date":  datetime.now().strftime("%Y-%m-%d"),
+        "read":  False,
+    })
+    if _own:
+        save_data(data)
+
+
+def add_xp(user_name: str, amount: int, reason: str = "", data: dict = None):
+    """Dashboard XP sistemine puan ekle. data verilirse mevcut objeye yazar (kaydetmez)."""
+    _own = data is None
+    if _own:
+        data = load_data()
+    data.setdefault("xp", {})
+    data["xp"][user_name] = data["xp"].get(user_name, 0) + amount
+    if reason:
+        data.setdefault("notifications", [])
+        data["notifications"].append({
+            "user":  user_name,
+            "msg":   f"🏆 +{amount} XP kazandın! ({reason})",
+            "type":  "xp",
+            "time":  datetime.now().strftime("%H:%M"),
+            "date":  datetime.now().strftime("%Y-%m-%d"),
+            "read":  False,
+        })
+    if _own:
+        save_data(data)
 
 # ─────────────────────────────────────────────
 #  YARDIMCI
@@ -244,7 +328,7 @@ def harcama_kehaneti(user_name: str, data: dict) -> str:
         return ""
 
     toplam  = sum(e["Tutar"] for e in ay_harcamalar)
-    butce   = data["budgets"].get(user_name, 0)
+    butce   = data.get("user_limits", {}).get(user_name, 0)
     if butce == 0:
         return ""
 
@@ -325,7 +409,7 @@ def ekip_siralaması(data: dict) -> str:
             e["Tutar"] for e in data["expenses"]
             if e["Kullanıcı"] == user and e.get("Tarih", "").startswith(bu_ay)
         )
-        butce = data["budgets"].get(user, 1)
+        butce = data.get("user_limits", {}).get(user, info.get("limit", 1))
         oran  = (toplam / butce) * 100
         fis   = data["fis_sayaci"].get(user, 0)
         siralama.append((user, toplam, oran, fis, info["emoji"]))
@@ -351,9 +435,9 @@ def anomali_tespit(user_name: str, tutar: float, data: dict) -> list[str]:
         e["Tutar"] for e in data["expenses"]
         if e["Kullanıcı"] == user_name and e["Tutar"] > 0
     ]
-    kullanici = next((v for k, v in PHONE_DIRECTORY.items() if v["ad"] == user_name), None)
-    if kullanici and tutar > kullanici["limit"]:
-        uyarilar.append(f"⚠️ Limit aşımı! ({tutar:.0f} ₺ > {kullanici['limit']:.0f} ₺)")
+    user_limit = data.get("user_limits", {}).get(user_name, 0)
+    if user_limit > 0 and tutar > user_limit:
+        uyarilar.append(f"⚠️ Limit aşımı! ({tutar:.0f} ₺ > {user_limit:.0f} ₺)")
     if len(kullanici_harcamalari) >= 5:
         ort = statistics.mean(kullanici_harcamalari)
         std = statistics.stdev(kullanici_harcamalari)
@@ -366,7 +450,7 @@ def anomali_tespit(user_name: str, tutar: float, data: dict) -> list[str]:
     return uyarilar
 
 
-def butce_durumu(user_name: str, data: dict) -> str:
+def butce_durumu_str(user_name: str, data: dict) -> str:
     bu_ay    = datetime.now().strftime("%Y-%m")
     ay_top   = sum(e["Tutar"] for e in data["expenses"]
                    if e["Kullanıcı"] == user_name and e.get("Tarih","").startswith(bu_ay))
@@ -403,8 +487,9 @@ def whatsapp_webhook():
     incoming_msg  = request.values.get('Body', '').strip()
     sender_phone  = request.values.get('From', '')
     num_media     = int(request.values.get('NumMedia', 0))
-    user_info     = PHONE_DIRECTORY.get(sender_phone, {"ad": "Bilinmeyen", "rol": "—", "limit": 0, "emoji": "👤"})
+    user_info     = PHONE_DIRECTORY.get(sender_phone, {"ad": "Bilinmeyen", "rol": "—", "limit": 0, "emoji": "👤", "yetki": "user"})
     user_name     = user_info["ad"]
+    is_admin      = user_info.get("yetki") == "admin"
 
     resp = MessagingResponse()
     msg  = resp.message()
@@ -418,9 +503,10 @@ def whatsapp_webhook():
         seviye = seviye_hesapla(data["fis_sayaci"].get(user_name, 0))
         rozetler = data["rozetler"].get(user_name, [])
         rozet_str = " ".join([ROZETLER[r]["emoji"] for r in rozetler]) if rozetler else "henüz yok"
+        yetki_str = "👑 Yönetici" if is_admin else "👤 Personel"
         msg.body(
             f"🤖 *STINGA PRO v13*\n"
-            f"{user_info['emoji']} {user_name} | {seviye}\n"
+            f"{user_info['emoji']} {user_name} | {yetki_str} | {seviye}\n"
             f"🏅 Rozetler: {rozet_str}\n"
             f"{'─'*28}\n"
             f"📷 Fiş fotoğrafı → AI analiz\n"
@@ -455,7 +541,7 @@ def whatsapp_webhook():
             f"💰 Toplam: *{toplam:,.0f} ₺*\n"
             f"🧾 Fiş: {len(ay_fis)}\n\n"
             f"📁 Kategoriler:\n{cat_str}\n\n"
-            f"📉 Bütçe: {butce_durumu(user_name, data)}\n\n"
+            f"📉 Bütçe: {butce_durumu_str(user_name, data)}\n\n"
             + (f"{kehane}" if kehane else "")
         )
         return str(resp)
@@ -509,7 +595,8 @@ def whatsapp_webhook():
     # BAKIYE
     if mesaj_lower == "bakiye":
         bakiye = data["wallets"].get(user_name, 0)
-        msg.body(f"💳 *Cüzdan*\nBakiye: *{bakiye:,.0f} ₺*\nLimit: {user_info['limit']:,.0f} ₺")
+        limit = data.get("user_limits", {}).get(user_name, user_info.get("limit", 0))
+        msg.body(f"💳 *Cüzdan*\nBakiye: *{bakiye:,.0f} ₺*\nLimit: {limit:,.0f} ₺")
         return str(resp)
 
     # SON 5
@@ -518,7 +605,7 @@ def whatsapp_webhook():
         if not son5:
             msg.body("Henüz harcama yok.")
         else:
-            satirlar = [f"🏢 {e['Firma']} — {e['Tutar']:,.0f} ₺ ({e['Tarih']})" for e in reversed(son5)]
+            satirlar = [f"🏢 {e['Firma']} — {e['Tutar']:,.0f} ₺ ({e['Tarih']}) [{e.get('Durum','?')}]" for e in reversed(son5)]
             msg.body("📋 *Son 5 Harcama:*\n" + "\n".join(satirlar))
         return str(resp)
 
@@ -548,7 +635,8 @@ def whatsapp_webhook():
     # ARAMA
     if mesaj_lower.startswith("ara "):
         kelime  = incoming_msg[4:].strip().lower()
-        sonuclar = [e for e in data["expenses"] if e["Kullanıcı"] == user_name and kelime in e.get("Firma","").lower()]
+        havuz = data["expenses"] if is_admin else [e for e in data["expenses"] if e["Kullanıcı"] == user_name]
+        sonuclar = [e for e in havuz if kelime in e.get("Firma","").lower()]
         if not sonuclar:
             msg.body(f"🔍 '{kelime}' için sonuç yok.")
         else:
@@ -563,6 +651,8 @@ def whatsapp_webhook():
 
         def analiz_et_gonder():
             try:
+                    # Thread içinde taze veri yükle — stale data sorununu önler
+                    data = load_data()
                     res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
                     if res.status_code in [301, 302, 307, 308]:
                         res = requests.get(res.headers.get('Location'), timeout=15)
@@ -601,8 +691,24 @@ def whatsapp_webhook():
 
                     ai_res    = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
                     print(f"Gemini yaniti: {ai_res.text[:200]}", flush=True)
-                    json_text = re.sub(r"```json?|```", "", ai_res.text).strip()
-                    fis       = json.loads(json_text)
+
+                    # Robust JSON parse — Gemini bazen açıklama metni ekleyebilir
+                    raw_text  = ai_res.text
+                    json_text = re.sub(r"```json?|```", "", raw_text).strip()
+                    # Sadece JSON objesini çıkar
+                    _m = re.search(r'\{.*\}', json_text, re.DOTALL)
+                    if _m:
+                        json_text = _m.group()
+                    try:
+                        fis = json.loads(json_text)
+                    except json.JSONDecodeError:
+                        # Son çare: Gemini'den tekrar iste
+                        print("JSON parse hatası, retry...", flush=True)
+                        retry_prompt = f"Sadece JSON döndür, başka hiçbir şey yazma:\n{prompt}"
+                        ai_res2   = client.models.generate_content(model=MODEL_NAME, contents=[retry_prompt, image])
+                        json_text2 = re.sub(r"```json?|```", "", ai_res2.text).strip()
+                        _m2 = re.search(r'\{.*\}', json_text2, re.DOTALL)
+                        fis = json.loads(_m2.group() if _m2 else json_text2)
 
                     # Para birimi dönüşümü
                     tutar_try   = float(fis.get("toplam_tutar", 0))
@@ -632,26 +738,46 @@ def whatsapp_webhook():
                     fis["kategori"] = kategori
                     yorum = yaratici_yorum(fis, user_name, karakter)
 
-                    # Fişi kaydet
+                    # Fişi kaydet — eksik key'leri güvenli ekle
+                    data.setdefault("fis_sayaci", {})
+                    data.setdefault("expenses", [])
+                    data.setdefault("duplicate_hashes", [])
+                    data.setdefault("anomaly_log", [])
+                    data.setdefault("xp", {})
+                    data.setdefault("notifications", [])
+                    data.setdefault("rozetler", {})
                     data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
+                    # Durum — dashboard ile uyumlu değerler
+                    if sahtelik["sahte_mi"] or sahtelik["guvensizlik_skoru"] >= 70:
+                        durum = "Sahte Şüphesi"
+                    else:
+                        durum = "Onay Bekliyor"
+
                     new_expense = {
-                        "ID"          : datetime.now().strftime("%Y%m%d%H%M%S"),
-                        "Tarih"       : fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
-                        "Kullanıcı"   : user_name,
-                        "Rol"         : user_info["rol"],
-                        "Firma"       : fis.get("firma", "Bilinmiyor"),
-                        "Tutar"       : tutar_try,
-                        "KDV"         : float(fis.get("kdv_tutari", 0)),
-                        "ParaBirimi"  : para_birimi,
-                        "OdemeTipi"   : fis.get("odeme_yontemi", "bilinmiyor"),
-                        "Kategori"    : kategori,
-                        "Durum"       : "⚠️ Sahte Şüphesi" if sahtelik["sahte_mi"] else "Onay Bekliyor",
-                        "Risk_Skoru"  : sahtelik["guvensizlik_skoru"],
-                        "AI_Audit"    : fis.get("audit_notu", ""),
-                        "Anomaliler"  : anomaliler,
-                        "Hash"        : img_hash,
-                        "Karakter"    : karakter,
-                        "IlgincDetay" : fis.get("ilginc_detay", ""),
+                        "ID"                 : datetime.now().strftime("%Y%m%d%H%M%S"),
+                        "Tarih"              : fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
+                        "Kullanıcı"          : user_name,
+                        "Rol"                : user_info["rol"],
+                        "Firma"              : fis.get("firma", "Bilinmiyor"),
+                        "Tutar"              : tutar_try,
+                        "KDV"                : float(fis.get("kdv_tutari", 0)),
+                        "ParaBirimi"         : para_birimi,
+                        "OdemeTipi"          : fis.get("odeme_yontemi", "bilinmiyor"),
+                        "Kategori"           : kategori,
+                        "Durum"              : durum,
+                        "Risk_Skoru"         : sahtelik["guvensizlik_skoru"],
+                        "AI_Audit"           : fis.get("audit_notu", ""),
+                        "AI_Anomali"         : fis.get("anomali", False),
+                        "AI_Anomali_Aciklama": fis.get("anomali_aciklamasi", ""),
+                        "Anomaliler"         : anomaliler,
+                        "Hash"               : img_hash,
+                        "Karakter"           : karakter,
+                        "IlgincDetay"        : fis.get("ilginc_detay", ""),
+                        # Proje/Öncelik WhatsApp'tan girilmez; dashboard'dan güncellenebilir
+                        "Proje"              : "Genel Merkez",
+                        "Oncelik"            : "Normal",
+                        "Notlar"             : "",
+                        "Dosya_Yolu"         : "",
                     }
 
                     data["expenses"].append(new_expense)
@@ -664,8 +790,30 @@ def whatsapp_webhook():
                             "uyarilar"  : anomaliler,
                         })
 
+                    # Proje bütçesini güncelle
+                    proje = new_expense["Proje"]
+                    if proje in data.get("budgets", {}):
+                        data["budgets"][proje]["spent"] = (
+                            data["budgets"][proje].get("spent", 0) + tutar_try
+                        )
+
                     # Rozet kontrolü
                     yeni_rozetler = rozet_kontrol(user_name, data, new_expense)
+
+                    # XP ve bildirimler — save_data'dan ÖNCE, aynı data objesi üzerinde
+                    add_xp(user_name, 50, "WhatsApp fiş tarama", data=data)
+
+                    # Admin'lere dashboard bildirimi (aynı data objesi)
+                    for ukey, udata_info in PHONE_DIRECTORY.items():
+                        if udata_info.get("dashboard_rol") == "admin" and udata_info["ad"] != user_name:
+                            add_notification(
+                                udata_info["ad"],
+                                f"📋 {user_name} → {new_expense['Proje']}: {new_expense['Firma']} ₺{tutar_try:,.0f}",
+                                "info",
+                                data=data
+                            )
+
+                    # Tek seferde kaydet — tüm değişiklikler (expenses, xp, notifications, rozetler)
                     save_data(data)
 
                     # Yanıt oluştur
@@ -708,7 +856,7 @@ def whatsapp_webhook():
                         + kalemler_str
                         + ilginc_str
                         + f"\n\n💬 *{karakter.upper()} YORUMU:*\n{yorum}"
-                        + f"\n\n📊 Bütçe: {butce_durumu(user_name, data)}"
+                        + f"\n\n📊 Bütçe: {butce_durumu_str(user_name, data)}"
                         + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
                         + sahte_str
                         + anomali_str
@@ -767,35 +915,66 @@ def rapor_endpoint():
     for e in ay_fis:
         k_bazli[e["Kullanıcı"]] += e["Tutar"]
         c_bazli[e.get("Kategori","diger")] += e["Tutar"]
-    return {
+    return jsonify({
         "ay": bu_ay, "toplam": toplam,
         "fis_sayisi": len(ay_fis),
         "anomali_sayisi": len(data.get("anomaly_log",[])),
         "kullanici_bazli": dict(k_bazli),
         "kategori_bazli": dict(c_bazli),
         "ekip_rozetleri": data.get("rozetler", {}),
-    }, 200
+    }), 200
 
 
 @app.route("/expenses", methods=['GET'])
 def expenses_endpoint():
     """Tüm fişleri döner — Streamlit dashboard bu endpoint'i kullanır."""
     data = load_data()
-    return {"expenses": data.get("expenses", [])}, 200
+    return jsonify({"expenses": data.get("expenses", [])}), 200
 
 
 @app.route("/all-data", methods=['GET'])
 def all_data_endpoint():
     """Streamlit için tam veri seti: fişler, bütçeler, rozetler, anomaliler."""
     data = load_data()
-    return {
-        "expenses":         data.get("expenses", []),
-        "budgets":          data.get("budgets", {}),
-        "wallets":          data.get("wallets", {}),
-        "rozetler":         data.get("rozetler", {}),
-        "fis_sayaci":       data.get("fis_sayaci", {}),
-        "anomaly_log":      data.get("anomaly_log", []),
-    }, 200
+    return jsonify({
+        "expenses":      data.get("expenses", []),
+        "budgets":       data.get("budgets", {}),
+        "wallets":       data.get("wallets", {}),
+        "rozetler":      data.get("rozetler", {}),
+        "fis_sayaci":    data.get("fis_sayaci", {}),
+        "anomaly_log":   data.get("anomaly_log", []),
+        "xp":            data.get("xp", {}),
+        "notifications": data.get("notifications", []),
+        "ledger":        data.get("ledger", []),
+    }), 200
+
+
+@app.route("/haftalik-ozet", methods=["GET"])
+def haftalik_ozet():
+    """Cron job: her Pazartesi 09:00 → curl https://domain.com/haftalik-ozet"""
+    data  = load_data()
+    bu_ay = datetime.now().strftime("%Y-%m")
+    for phone, info in PHONE_DIRECTORY.items():
+        user   = info["ad"]
+        ay_fis = [e for e in data["expenses"] if e["Kullanıcı"] == user and e.get("Tarih","").startswith(bu_ay)]
+        toplam = sum(e["Tutar"] for e in ay_fis)
+        butce  = data.get("user_limits", {}).get(user, info.get("limit", 0))
+        oran   = (toplam / butce * 100) if butce > 0 else 0
+        try:
+            twilio_client.messages.create(
+                body=(
+                    f"📊 *Haftalık Özet — {user}*\n"
+                    f"{'─'*28}\n"
+                    f"💰 Bu ay: {toplam:,.0f} ₺\n"
+                    f"📉 Bütçe: %{oran:.1f}\n"
+                    f"🧾 Fiş: {len(ay_fis)}\n"
+                    f"{butce_durumu_str(user, data)}"
+                ),
+                from_="whatsapp:+14155238886", to=phone
+            )
+        except Exception as e:
+            print(f"Haftalık özet hatası ({user}): {e}", flush=True)
+    return jsonify({"status": "ok", "gonderilen": len(PHONE_DIRECTORY)}), 200
 
 
 if __name__ == "__main__":
