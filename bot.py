@@ -691,25 +691,11 @@ def whatsapp_webhook():
             try:
                     # Thread içinde taze veri yükle — stale data sorununu önler
                     data = load_data()
-                    # Twilio medya indirme — auth ile redirect takip et
-                    session = requests.Session()
-                    session.auth = (TWILIO_SID, TWILIO_TOKEN)
-                    res = session.get(media_url, allow_redirects=True, timeout=20)
-                    
-                    # İçerik boş veya HTML ise hata ver
-                    content_type = res.headers.get('Content-Type', '')
-                    if res.status_code != 200:
-                        raise Exception(f"Medya indirilemedi: HTTP {res.status_code}")
-                    if 'text/html' in content_type or len(res.content) < 1000:
-                        # Fallback: auth olmadan dene (bazı Twilio URL'leri signed)
-                        res2 = requests.get(media_url, allow_redirects=True, timeout=20)
-                        if res2.status_code == 200 and len(res2.content) > 1000:
-                            res = res2
-                        else:
-                            raise Exception(f"Görsel indirilemedi (boyut: {len(res.content)} bytes, type: {content_type})")
-                    
+                    res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
+                    if res.status_code in [301, 302, 307, 308]:
+                        res = requests.get(res.headers.get('Location'), timeout=15)
+
                     raw_bytes = res.content
-                    print(f"Gorsel indirildi: {len(raw_bytes)} bytes, type: {content_type}", flush=True)
                     img_hash  = gorsel_hash(raw_bytes)
 
                     if img_hash in data["duplicate_hashes"]:
