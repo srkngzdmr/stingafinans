@@ -560,163 +560,186 @@ def whatsapp_webhook():
     # ── FİŞ ANALİZİ ─────────────────────────────────────────────
     if num_media > 0:
         media_url = request.values.get('MediaUrl0')
-        try:
-            res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
-            if res.status_code in [301, 302, 307, 308]:
-                res = requests.get(res.headers.get('Location'), timeout=15)
 
-            raw_bytes = res.content
-            img_hash  = gorsel_hash(raw_bytes)
+        def analiz_et_gonder():
+            try:
+                    res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
+                    if res.status_code in [301, 302, 307, 308]:
+                        res = requests.get(res.headers.get('Location'), timeout=15)
 
-            if img_hash in data["duplicate_hashes"]:
-                msg.body("⚠️ *Mükerrer Fiş!*\nBu fişi daha önce girdiniz. Farklı bir fiş gönderin.")
-                return str(resp)
+                    raw_bytes = res.content
+                    img_hash  = gorsel_hash(raw_bytes)
 
-            image = Image.open(BytesIO(raw_bytes))
+                    if img_hash in data["duplicate_hashes"]:
+                        msg.body("⚠️ *Mükerrer Fiş!*\nBu fişi daha önce girdiniz. Farklı bir fiş gönderin.")
+                        return str(resp)
 
-            # ── GEMINI: Ultra detaylı analiz promptu
-            prompt = """Sen hem mali denetçi hem adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür:
-{
-  "firma": "Firma adı",
-  "tarih": "YYYY-MM-DD",
-  "toplam_tutar": 0.0,
-  "kdv_tutari": 0.0,
-  "odeme_yontemi": "nakit|kredi_karti|havale",
-  "kalemler": [{"aciklama": "...", "tutar": 0.0}],
-  "para_birimi": "TRY",
-  "risk_skoru": 0,
-  "risk_nedenleri": ["neden1", "neden2"],
-  "audit_notu": "kısa özet",
-  "sahte_mi": false,
-  "sahtelik_nedeni": "",
-  "gorsel_kalitesi": "iyi|orta|kotu",
-  "fis_turu": "restoran|market|akaryakıt|otel|diger",
-  "ilginc_detay": "fişte dikkat çeken garip veya ilginç bir şey"
-}
-Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no, farklı yazı tipleri."""
+                    print(f"Gorsel indirildi: {len(raw_bytes)} bytes", flush=True)
+                    image = Image.open(BytesIO(raw_bytes))
+                    print("Gemini cagiriliyor...", flush=True)
 
-            ai_res    = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
-            json_text = re.sub(r"```json?|```", "", ai_res.text).strip()
-            fis       = json.loads(json_text)
+                    # ── GEMINI: Ultra detaylı analiz promptu
+                    prompt = """Sen hem mali denetçi hem adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür:
+        {
+          "firma": "Firma adı",
+          "tarih": "YYYY-MM-DD",
+          "toplam_tutar": 0.0,
+          "kdv_tutari": 0.0,
+          "odeme_yontemi": "nakit|kredi_karti|havale",
+          "kalemler": [{"aciklama": "...", "tutar": 0.0}],
+          "para_birimi": "TRY",
+          "risk_skoru": 0,
+          "risk_nedenleri": ["neden1", "neden2"],
+          "audit_notu": "kısa özet",
+          "sahte_mi": false,
+          "sahtelik_nedeni": "",
+          "gorsel_kalitesi": "iyi|orta|kotu",
+          "fis_turu": "restoran|market|akaryakıt|otel|diger",
+          "ilginc_detay": "fişte dikkat çeken garip veya ilginç bir şey"
+        }
+        Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no, farklı yazı tipleri."""
 
-            # Para birimi dönüşümü
-            tutar_try   = float(fis.get("toplam_tutar", 0))
-            para_birimi = fis.get("para_birimi", "TRY")
-            if para_birimi != "TRY":
-                try:
-                    r   = requests.get(DOVIZ_API_URL, timeout=5).json()
-                    kur = r["rates"].get(para_birimi)
-                    if kur:
-                        tutar_try = tutar_try / kur
-                except:
-                    pass
+                    ai_res    = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
+                    print(f"Gemini yaniti: {ai_res.text[:200]}", flush=True)
+                    json_text = re.sub(r"```json?|```", "", ai_res.text).strip()
+                    fis       = json.loads(json_text)
 
-            # Derinleştirilmiş sahtelik analizi
-            sahtelik = derin_sahtelik_analizi(fis, image)
+                    # Para birimi dönüşümü
+                    tutar_try   = float(fis.get("toplam_tutar", 0))
+                    para_birimi = fis.get("para_birimi", "TRY")
+                    if para_birimi != "TRY":
+                        try:
+                            r   = requests.get(DOVIZ_API_URL, timeout=5).json()
+                            kur = r["rates"].get(para_birimi)
+                            if kur:
+                                tutar_try = tutar_try / kur
+                        except:
+                            pass
 
-            # Anomali
-            anomaliler = anomali_tespit(user_name, tutar_try, data)
+                    # Derinleştirilmiş sahtelik analizi
+                    sahtelik = derin_sahtelik_analizi(fis, image)
 
-            # Kategori
-            kategori = kategori_tespit(fis.get("firma", ""))
+                    # Anomali
+                    anomaliler = anomali_tespit(user_name, tutar_try, data)
 
-            # Aktif karakter modu
-            karakter = data["karakter_modu"].get(user_name, random.choice(["koc", "dedektif", "muhaseci"]))
+                    # Kategori
+                    kategori = kategori_tespit(fis.get("firma", ""))
 
-            # Yaratıcı yorum
-            fis["kategori"] = kategori
-            yorum = yaratici_yorum(fis, user_name, karakter)
+                    # Aktif karakter modu
+                    karakter = data["karakter_modu"].get(user_name, random.choice(["koc", "dedektif", "muhaseci"]))
 
-            # Fişi kaydet
-            data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
-            new_expense = {
-                "ID"          : datetime.now().strftime("%Y%m%d%H%M%S"),
-                "Tarih"       : fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
-                "Kullanıcı"   : user_name,
-                "Rol"         : user_info["rol"],
-                "Firma"       : fis.get("firma", "Bilinmiyor"),
-                "Tutar"       : tutar_try,
-                "KDV"         : float(fis.get("kdv_tutari", 0)),
-                "ParaBirimi"  : para_birimi,
-                "OdemeTipi"   : fis.get("odeme_yontemi", "bilinmiyor"),
-                "Kategori"    : kategori,
-                "Durum"       : "⚠️ Sahte Şüphesi" if sahtelik["sahte_mi"] else "Onay Bekliyor",
-                "Risk_Skoru"  : sahtelik["guvensizlik_skoru"],
-                "AI_Audit"    : fis.get("audit_notu", ""),
-                "Anomaliler"  : anomaliler,
-                "Hash"        : img_hash,
-                "Karakter"    : karakter,
-                "IlgincDetay" : fis.get("ilginc_detay", ""),
-            }
+                    # Yaratıcı yorum
+                    fis["kategori"] = kategori
+                    yorum = yaratici_yorum(fis, user_name, karakter)
 
-            data["expenses"].append(new_expense)
-            data["duplicate_hashes"].append(img_hash)
-            if anomaliler:
-                data["anomaly_log"].append({
-                    "tarih"     : datetime.now().isoformat(),
-                    "kullanici" : user_name,
-                    "tutar"     : tutar_try,
-                    "uyarilar"  : anomaliler,
-                })
+                    # Fişi kaydet
+                    data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
+                    new_expense = {
+                        "ID"          : datetime.now().strftime("%Y%m%d%H%M%S"),
+                        "Tarih"       : fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
+                        "Kullanıcı"   : user_name,
+                        "Rol"         : user_info["rol"],
+                        "Firma"       : fis.get("firma", "Bilinmiyor"),
+                        "Tutar"       : tutar_try,
+                        "KDV"         : float(fis.get("kdv_tutari", 0)),
+                        "ParaBirimi"  : para_birimi,
+                        "OdemeTipi"   : fis.get("odeme_yontemi", "bilinmiyor"),
+                        "Kategori"    : kategori,
+                        "Durum"       : "⚠️ Sahte Şüphesi" if sahtelik["sahte_mi"] else "Onay Bekliyor",
+                        "Risk_Skoru"  : sahtelik["guvensizlik_skoru"],
+                        "AI_Audit"    : fis.get("audit_notu", ""),
+                        "Anomaliler"  : anomaliler,
+                        "Hash"        : img_hash,
+                        "Karakter"    : karakter,
+                        "IlgincDetay" : fis.get("ilginc_detay", ""),
+                    }
 
-            # Rozet kontrolü
-            yeni_rozetler = rozet_kontrol(user_name, data, new_expense)
-            save_data(data)
+                    data["expenses"].append(new_expense)
+                    data["duplicate_hashes"].append(img_hash)
+                    if anomaliler:
+                        data["anomaly_log"].append({
+                            "tarih"     : datetime.now().isoformat(),
+                            "kullanici" : user_name,
+                            "tutar"     : tutar_try,
+                            "uyarilar"  : anomaliler,
+                        })
 
-            # Yanıt oluştur
-            risk = sahtelik["guvensizlik_skoru"]
-            risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
+                    # Rozet kontrolü
+                    yeni_rozetler = rozet_kontrol(user_name, data, new_expense)
+                    save_data(data)
 
-            kalemler_str = ""
-            if fis.get("kalemler"):
-                satirlar = [f"  • {k['aciklama']}: {k['tutar']:.2f} ₺" for k in fis["kalemler"][:4]]
-                kalemler_str = "\n📝 *Kalemler:*\n" + "\n".join(satirlar)
+                    # Yanıt oluştur
+                    risk = sahtelik["guvensizlik_skoru"]
+                    risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
 
-            sahte_str = ""
-            if sahtelik["sahte_mi"] or sahtelik["guvensizlik_skoru"] >= 70:
-                bulgular = "\n".join(sahtelik["bulgular"][:3])
-                sahte_str = f"\n\n🚨 *SAHTE FİŞ ŞÜPHESİ!*\n{bulgular}"
+                    kalemler_str = ""
+                    if fis.get("kalemler"):
+                        satirlar = [f"  • {k['aciklama']}: {k['tutar']:.2f} ₺" for k in fis["kalemler"][:4]]
+                        kalemler_str = "\n📝 *Kalemler:*\n" + "\n".join(satirlar)
 
-            anomali_str = ("\n\n" + "\n".join(anomaliler)) if anomaliler else ""
+                    sahte_str = ""
+                    if sahtelik["sahte_mi"] or sahtelik["guvensizlik_skoru"] >= 70:
+                        bulgular = "\n".join(sahtelik["bulgular"][:3])
+                        sahte_str = f"\n\n🚨 *SAHTE FİŞ ŞÜPHESİ!*\n{bulgular}"
 
-            ilginc = fis.get("ilginc_detay", "")
-            ilginc_str = f"\n💡 _{ilginc}_" if ilginc and ilginc not in ["", "null", "None"] else ""
+                    anomali_str = ("\n\n" + "\n".join(anomaliler)) if anomaliler else ""
 
-            rozet_str = ""
-            if yeni_rozetler:
-                for r in yeni_rozetler:
-                    if r in ROZETLER:
-                        rozet_str += f"\n\n🎊 *YENİ ROZET: {ROZETLER[r]['emoji']} {ROZETLER[r]['ad']}!*\n{ROZETLER[r]['aciklama']}"
+                    ilginc = fis.get("ilginc_detay", "")
+                    ilginc_str = f"\n💡 _{ilginc}_" if ilginc and ilginc not in ["", "null", "None"] else ""
 
-            seviye = seviye_hesapla(data["fis_sayaci"].get(user_name, 0))
+                    rozet_str = ""
+                    if yeni_rozetler:
+                        for r in yeni_rozetler:
+                            if r in ROZETLER:
+                                rozet_str += f"\n\n🎊 *YENİ ROZET: {ROZETLER[r]['emoji']} {ROZETLER[r]['ad']}!*\n{ROZETLER[r]['aciklama']}"
 
-            yanit = (
-                f"✅ *FİŞ ALINDI*\n"
-                f"{'─'*28}\n"
-                f"🏢 {fis.get('firma','?')}\n"
-                f"💰 {tutar_try:,.2f} ₺"
-                + (f" ({fis['toplam_tutar']:.2f} {para_birimi})" if para_birimi != "TRY" else "")
-                + f"\n📅 {fis.get('tarih','—')}"
-                + f"\n💳 {fis.get('odeme_yontemi','—')}"
-                + f"\n🏷️ {kategori}"
-                + f"\n{risk_emoji} Risk: {risk}/100"
-                + kalemler_str
-                + ilginc_str
-                + f"\n\n💬 *{karakter.upper()} YORUMU:*\n{yorum}"
-                + f"\n\n📊 Bütçe: {butce_durumu(user_name, data)}"
-                + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
-                + sahte_str
-                + anomali_str
-                + rozet_str
-                + f"\n\n🔖 `{new_expense['ID']}`"
-            )
-            msg.body(yanit)
+                    seviye = seviye_hesapla(data["fis_sayaci"].get(user_name, 0))
 
-        except json.JSONDecodeError:
-            msg.body("❌ Fiş okunamadı. Daha net bir fotoğraf çekip tekrar deneyin.")
-        except Exception as e:
-            msg.body(f"❌ Hata: {str(e)}")
+                    yanit = (
+                        f"✅ *FİŞ ALINDI*\n"
+                        f"{'─'*28}\n"
+                        f"🏢 {fis.get('firma','?')}\n"
+                        f"💰 {tutar_try:,.2f} ₺"
+                        + (f" ({fis['toplam_tutar']:.2f} {para_birimi})" if para_birimi != "TRY" else "")
+                        + f"\n📅 {fis.get('tarih','—')}"
+                        + f"\n💳 {fis.get('odeme_yontemi','—')}"
+                        + f"\n🏷️ {kategori}"
+                        + f"\n{risk_emoji} Risk: {risk}/100"
+                        + kalemler_str
+                        + ilginc_str
+                        + f"\n\n💬 *{karakter.upper()} YORUMU:*\n{yorum}"
+                        + f"\n\n📊 Bütçe: {butce_durumu(user_name, data)}"
+                        + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
+                        + sahte_str
+                        + anomali_str
+                        + rozet_str
+                        + f"\n\n🔖 `{new_expense['ID']}`"
+                    )
+                    twilio_client.messages.create(
+                        body=yanit,
+                        from_="whatsapp:+14155238886",
+                        to=sender_phone
+                    )
+            except json.JSONDecodeError as e:
+                print(f"JSON HATA: {e}", flush=True)
+                twilio_client.messages.create(
+                    body="❌ Fiş okunamadı. Net fotoğraf çekip tekrar deneyin.",
+                    from_="whatsapp:+14155238886",
+                    to=sender_phone
+                )
+            except Exception as e:
+                import traceback
+                print(f"GENEL HATA: {traceback.format_exc()}", flush=True)
+                twilio_client.messages.create(
+                    body=f"❌ Hata: {str(e)}",
+                    from_="whatsapp:+14155238886",
+                    to=sender_phone
+                )
 
+        import threading
+        t = threading.Thread(target=analiz_et_gonder, daemon=True)
+        t.start()
+        msg.body("⏳ Fişiniz analiz ediliyor, lütfen bekleyin...")
         return str(resp)
 
     # ── VARSAYILAN
@@ -751,6 +774,27 @@ def rapor_endpoint():
         "kullanici_bazli": dict(k_bazli),
         "kategori_bazli": dict(c_bazli),
         "ekip_rozetleri": data.get("rozetler", {}),
+    }, 200
+
+
+@app.route("/expenses", methods=['GET'])
+def expenses_endpoint():
+    """Tüm fişleri döner — Streamlit dashboard bu endpoint'i kullanır."""
+    data = load_data()
+    return {"expenses": data.get("expenses", [])}, 200
+
+
+@app.route("/all-data", methods=['GET'])
+def all_data_endpoint():
+    """Streamlit için tam veri seti: fişler, bütçeler, rozetler, anomaliler."""
+    data = load_data()
+    return {
+        "expenses":         data.get("expenses", []),
+        "budgets":          data.get("budgets", {}),
+        "wallets":          data.get("wallets", {}),
+        "rozetler":         data.get("rozetler", {}),
+        "fis_sayaci":       data.get("fis_sayaci", {}),
+        "anomaly_log":      data.get("anomaly_log", []),
     }, 200
 
 
