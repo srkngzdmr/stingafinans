@@ -1,4 +1,4 @@
-Python
+
 
 # -*- coding: utf-8 -*-
 """
