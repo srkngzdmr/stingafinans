@@ -1414,10 +1414,6 @@ Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no."""
                 yeni_rozetler = rozet_kontrol(user_name, data, new_expense)
 
                 add_xp(user_name, 50, "WhatsApp fiş tarama", data=data)
-
-                # Admin'lere hem dashboard bildirimi hem WhatsApp mesajı gönder
-                risk_emoji_admin = "🔴" if toplam_risk >= 70 else "🟡" if toplam_risk >= 30 else "🟢"
-                durum_label = "🚨 SAHTE ŞÜPHESİ" if durum == "Sahte Şüphesi" else "📋 YENİ FİŞ — ONAY GEREKİYOR"
                 for ukey, udata_info in PHONE_DIRECTORY.items():
                     if udata_info.get("yetki") == "admin" and udata_info["ad"] != user_name:
                         add_notification(
@@ -1425,24 +1421,6 @@ Sahtelik: düzensiz font, tutarsız toplam, eksik vergi no."""
                             f"📋 {user_name} → {proje}: {new_expense['Firma']} ₺{tutar_try:,.0f}",
                             "info", data=data
                         )
-                        try:
-                            twilio_client.messages.create(
-                                body=(
-                                    f"{durum_label}\n{'─'*28}\n"
-                                    f"👤 Gönderen: *{user_name}*\n"
-                                    f"🏢 {new_expense['Firma']}\n"
-                                    f"💰 ₺{tutar_try:,.0f}\n"
-                                    f"📅 {fis_tarihi}\n"
-                                    f"🏷️ {kategori}\n"
-                                    f"{risk_emoji_admin} Risk: {toplam_risk}/100\n"
-                                    f"🔖 `{new_expense['ID']}`\n\n"
-                                    f"Dashboard'dan onaylayabilirsiniz."
-                                ),
-                                from_="whatsapp:+14155238886",
-                                to=ukey
-                            )
-                        except Exception as wa_admin_e:
-                            print(f"Admin WhatsApp bildirim hatası ({udata_info['ad']}): {wa_admin_e}", flush=True)
 
                 save_data(data)
 
@@ -1621,6 +1599,29 @@ def add_expense_endpoint():
         import traceback
         print(f"add-expense HATA: {traceback.format_exc()}", flush=True)
         return jsonify({"error": str(e)}), 500
+
+@app.route("/fix-audit", methods=['POST'])
+def fix_audit_endpoint():
+    """Mevcut tüm fişlerdeki AI_Audit alanındaki HTML tag'larını temizle."""
+    try:
+        data = load_data()
+        duzeltilen = 0
+        for e in data.get("expenses", []):
+            raw = str(e.get("AI_Audit", ""))
+            if "<" in raw or ">" in raw or raw.startswith("{"):
+                temiz = re.sub(r'<[^>]+>', '', raw).strip()
+                # JSON/dict kalıntısı varsa daha agresif temizle
+                temiz = re.sub(r'\{[^}]*\}', '', temiz).strip()
+                temiz = re.sub(r'\s+', ' ', temiz).strip()
+                e["AI_Audit"] = temiz if temiz else "Analiz tamamlandı."
+                duzeltilen += 1
+        save_data(data)
+        return jsonify({"ok": True, "duzeltilen": duzeltilen}), 200
+    except Exception as e:
+        import traceback
+        print(f"/fix-audit HATA: {traceback.format_exc()}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/all-data", methods=['GET'])
 def all_data_endpoint():

@@ -922,11 +922,18 @@ import re as _re
 import html as _html
 
 def clean_audit(text: str) -> str:
-    """AI_Audit metnindeki HTML tag'larını kaldır, tırnak işaretlerini escape et."""
+    """AI_Audit metnindeki HTML tag/CSS/JSON kalıntılarını kaldır."""
     if not text:
         return "Analiz tamamlandı."
+    text = str(text)
     # HTML tag'larını kaldır
-    text = _re.sub(r'<[^>]+>', '', str(text))
+    text = _re.sub(r'<[^>]+>', '', text)
+    # CSS style bloklarını kaldır (style="..." kalıntıları)
+    text = _re.sub(r'style=["\'][^"\']*["\']', '', text)
+    # div/span kalıntılarını kaldır
+    text = _re.sub(r'</?(?:div|span|p|br)[^>]*>', '', text, flags=_re.IGNORECASE)
+    # JSON/dict kalıntısı varsa temizle
+    text = _re.sub(r'\{[^}]{0,200}\}', '', text)
     # Birden fazla boşluğu tek boşluğa indir
     text = _re.sub(r'\s+', ' ', text).strip()
     # HTML escape (tırnak sorununu önler)
@@ -1477,6 +1484,15 @@ else:
     data_store = load_data()
     model = configure_ai()
     user_info = st.session_state.user_info
+
+    # ── Eski bozuk AI_Audit kayıtlarını sessizce onar (tek seferlik) ──
+    if not st.session_state.get("audit_fixed"):
+        try:
+            import requests as _req_fix
+            _req_fix.post(f"{RAILWAY_URL}/fix-audit", timeout=5)
+            st.session_state["audit_fixed"] = True
+        except Exception:
+            pass
     user_name = user_info["name"]
     role = user_info["role"]
 
