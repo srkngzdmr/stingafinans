@@ -42,19 +42,19 @@ DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
 
 PHONE_DIRECTORY = {
     "whatsapp:+905350328406": {
-        "ad": "Okan İlhan",   "rol": "Saha Personeli",         "limit": 5000,
+        "ad": "Okan İlhan",   "rol": "Saha Personeli",         "limit": 20000,
         "emoji": "🔧",  "yetki": "user",  "dashboard_key": "okan"
     },
     "whatsapp:+905322002337": {
-        "ad": "Serkan Güzdemir", "rol": "İşletme Müdürü",      "limit": 10000,
+        "ad": "Serkan Güzdemir", "rol": "İşletme Müdürü",      "limit": 50000,
         "emoji": "⚡",  "yetki": "admin", "dashboard_key": "serkan"
     },
     "whatsapp:+905547858627": {
-        "ad": "Zeynep Özyaman", "rol": "Yönetim Kurulu Başkanı", "limit": 50000,
+        "ad": "Zeynep Özyaman", "rol": "Yönetim Kurulu Başkanı", "limit": 100000,
         "emoji": "👑",  "yetki": "admin", "dashboard_key": "zeynep"
     },
     "whatsapp:+905304305213": {
-        "ad": "Şenol Özyaman", "rol": "Genel Müdür", "limit": 30000,
+        "ad": "Şenol Özyaman", "rol": "Genel Müdür", "limit": 80000,
         "emoji": "🏢",  "yetki": "user", "dashboard_key": "senol",
         "dashboard_rol": "user", "dashboard_sifre": "456"
     },
@@ -84,17 +84,17 @@ ROZETLER = {
 }
 
 SEVIYELER = [
-    (0,    "🥉 Stajyer Muhasebeci"),
-    (5,    "🥈 Junior Analist"),
-    (15,   "🥇 Kıdemli Analist"),
-    (30,   "💎 Finans Uzmanı"),
-    (60,   "🏆 CFO Adayı"),
-    (100,  "👑 Finans Efsanesi"),
+    (0,    "🥉 Toplam Yüklemelerin"),
+    (5,    "🥈 Toplam Yüklemelerin"),
+    (15,   "🥇 Toplam Yüklemelerin"),
+    (30,   "💎 Toplam Yüklemelerin"),
+    (60,   "🏆 Toplam Yüklemelerin"),
+    (100,  "👑 Toplam Yüklemelerin"),
 ]
 
-# ─────────────────────────────────────────────
+# ───────────────────────────────────
 #  VERİTABANI
-# ─────────────────────────────────────────────
+# ───────────────────────────────────
 def load_data() -> dict:
     default = {
         "expenses": [],
@@ -964,7 +964,7 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                     kasa_bakiye = data.get("wallets", {}).get(user_name, 0)
 
                     yanit = (
-                        f"✅ *FİŞ ALINDI — ONAYA GÖNDERİLDİ*\n"
+                        f"✅ *FİŞ SİSTEME KAYDEDİLDİ — ONAYA GÖNDERİLDİ.*\n"
                         f"{'─'*28}\n"
                         f"🏢 {fis.get('firma','?')}\n"
                         f"💰 {tutar_try:,.2f} ₺"
