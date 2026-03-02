@@ -1612,146 +1612,564 @@ else:
     
     # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
-        # Logo
         logo_b64 = get_logo_b64()
-        if logo_b64:
-            st.markdown(f"""
-            <div style="text-align:center; padding:24px 10px 10px 10px;">
-                <div class="sidebar-logo-wrap" style="display:inline-flex;">
-                    <img src="data:image/png;base64,{logo_b64}" 
-                         style="width:120px; height:120px; object-fit:contain; display:block;">
-                </div>
-                <div style="font-family:'Bebas Neue',sans-serif; font-size:1.2rem; 
-                            letter-spacing:4px; color:#ffffff; margin-top:12px;">
-                    STINGA PRO
-                </div>
-                <div style="font-size:0.65rem; color:rgba(255,255,255,0.5); 
-                            letter-spacing:2px; margin-top:3px;">
-                    STİNGA ENERJİ A.Ş.
-                </div>
-            </div>
-            <hr style="border-color:rgba(255,255,255,0.15); margin:10px 0;">
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="text-align:center; padding:16px 10px 8px 10px;">
-                <div style="font-family:'Bebas Neue',sans-serif; font-size:1.4rem; 
-                            letter-spacing:4px; color:#ffffff;">⚡ STINGA PRO</div>
-            </div>
-            """, unsafe_allow_html=True)
-        # User card
         user_xp = data_store.get("xp", {}).get(user_name, 0)
         level = user_xp // 500 + 1
         xp_progress = (user_xp % 500) / 500
-        
-        st.markdown(f"""
-        <div style="padding:16px; background:rgba(255,255,255,0.08); border-radius:16px; 
-                    border:1px solid rgba(255,255,255,0.15); margin-bottom:16px;">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div style="font-size:2.2rem;">{user_info['avatar']}</div>
-                <div>
-                    <div style="font-weight:700; font-size:1rem; color:#ffffff;">{user_name}</div>
-                    <div style="font-size:0.7rem; color:rgba(255,255,255,0.55); text-transform:uppercase; letter-spacing:1px;">
-                        {role.upper()} · Lv.{level}
-                    </div>
-                </div>
-            </div>
-            <div style="margin-top:12px;">
-                <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:rgba(255,255,255,0.45); margin-bottom:4px;">
-                    <span>XP: {user_xp}</span><span>Sonraki: {(level)*500} XP</span>
-                </div>
-                <div style="background:rgba(255,255,255,0.15); border-radius:8px; height:6px; overflow:hidden;">
-                    <div style="width:{xp_progress*100:.0f}%; height:100%; border-radius:8px;
-                                background:linear-gradient(90deg,#007850,#00b878);"></div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Notifications badge
         my_notifs = [n for n in data_store.get("notifications", []) 
                      if (n["user"] == user_name or n["user"] == "Hepsi") and not n.get("read", False)]
         notif_count = len(my_notifs)
-        
-        if notif_count > 0:
-            st.markdown(f"""
-            <div style="background:rgba(220,38,38,0.2); border:1px solid rgba(220,38,38,0.4); 
-                        border-radius:10px; padding:10px 14px; margin-bottom:12px; cursor:pointer;">
-                <span style="color:#ff6b6b; font-weight:700; font-size:0.8rem;">🔔 {notif_count} yeni bildirim</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            with st.expander("Bildirimleri Gör"):
-                for n in reversed(my_notifs[-5:]):
-                    icon = {"xp": "🏆", "info": "ℹ️", "warning": "⚠️", "success": "✅"}.get(n.get("type", "info"), "📌")
-                    st.markdown(f"""
-                    <div class="feed-item">
-                        <div style="color:var(--accent-blue); font-size:1rem;">{icon}</div>
-                        <div>
-                            <div style="font-size:0.8rem; color:var(--text-primary);">{n['msg']}</div>
-                            <div style="font-size:0.7rem; color:var(--text-muted);">{n.get('date','')} {n['time']}</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Navigation
-        # Admin → tüm sayfalar; user → Onay Merkezi yok
-        if role == "admin":
-            pages = [
-                ("🏠 Dashboard",        ""),
-                ("📑 Fiş Tarama",       ""),
-                ("💰 Finans & Kasa",    ""),
-                ("⚖️ Onay Merkezi",     ""),
-                ("🔬 Anomali Dedektörü",""),
-                ("📊 Analitik Merkezi", ""),
-                ("🤖 AI Asistan",       ""),
-                ("🏆 Leaderboard",      ""),
-                ("🗄️ Arşiv & Rapor",   "")
-            ]
-        else:
-            pages = [
-                ("🏠 Dashboard",        ""),
-                ("📑 Fiş Tarama",       ""),
-                ("💰 Finans & Kasa",    ""),
-                ("🤖 AI Asistan",       ""),
-                ("🏆 Leaderboard",      ""),
-                ("🗄️ Arşiv & Rapor",   "")
-            ]
-        
-        selected = st.radio("", [p[0] for p in pages], 
-                           index=[p[0] for p in pages].index(st.session_state.selected_page) 
-                           if st.session_state.selected_page in [p[0] for p in pages] else 0,
-                           label_visibility="collapsed")
-        st.session_state.selected_page = selected
-        
-        st.markdown("---")
-        
-        # Mini stats
+
         if not df_full.empty and 'Tutar' in df_full.columns:
             my_total = df_full[df_full['Kullanıcı'] == user_name]['Tutar'].sum() if 'Kullanıcı' in df_full.columns else 0
             monthly_limit = user_info.get('monthly_limit', 15000)
             usage_pct = min(my_total / monthly_limit * 100, 100) if monthly_limit > 0 else 0
-            color = "#00e090" if usage_pct < 60 else ("#ffcc55" if usage_pct < 85 else "#ff6b6b")
-            
-            st.markdown(f"""
-            <div style="padding:12px; background:rgba(255,255,255,0.08); border-radius:10px; border:1px solid rgba(255,255,255,0.15);">
-                <div style="font-size:0.7rem; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
-                    Aylık Limit Kullanımı
+            usage_color = "#00d97e" if usage_pct < 60 else ("#f59e0b" if usage_pct < 85 else "#ef4444")
+        else:
+            my_total = 0
+            monthly_limit = user_info.get('monthly_limit', 15000)
+            usage_pct = 0
+            usage_color = "#00d97e"
+
+        role_labels = {"admin": "YÖNETİCİ", "user": "PERSONEL"}
+        role_colors = {"admin": "#00d97e", "user": "#60a5fa"}
+        role_label = role_labels.get(role, role.upper())
+        role_color = role_colors.get(role, "#60a5fa")
+
+        logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="width:72px;height:72px;object-fit:contain;">' if logo_b64 else '<div style="font-size:2.5rem;">⚡</div>'
+
+        if role == "admin":
+            nav_pages = [
+                ("🏠", "Dashboard",         "🏠 Dashboard"),
+                ("📑", "Fiş Tarama",        "📑 Fiş Tarama"),
+                ("💰", "Finans & Kasa",     "💰 Finans & Kasa"),
+                ("⚖️", "Onay Merkezi",      "⚖️ Onay Merkezi"),
+                ("🔬", "Anomali Dedektörü", "🔬 Anomali Dedektörü"),
+                ("📊", "Analitik Merkezi",  "📊 Analitik Merkezi"),
+                ("🤖", "AI Asistan",        "🤖 AI Asistan"),
+                ("🏆", "Leaderboard",       "🏆 Leaderboard"),
+                ("🗄️", "Arşiv & Rapor",    "🗄️ Arşiv & Rapor"),
+            ]
+        else:
+            nav_pages = [
+                ("🏠", "Dashboard",        "🏠 Dashboard"),
+                ("📑", "Fiş Tarama",       "📑 Fiş Tarama"),
+                ("💰", "Finans & Kasa",    "💰 Finans & Kasa"),
+                ("🤖", "AI Asistan",       "🤖 AI Asistan"),
+                ("🏆", "Leaderboard",      "🏆 Leaderboard"),
+                ("🗄️", "Arşiv & Rapor",   "🗄️ Arşiv & Rapor"),
+            ]
+
+        nav_items_html = ""
+        for icon, label, key in nav_pages:
+            is_active = st.session_state.selected_page == key
+            nav_items_html += f"""
+            <div class="snav-item {'snav-active' if is_active else ''}" data-page="{key}" onclick="selectPage('{key}')">
+                <span class="snav-icon">{icon}</span>
+                <span class="snav-label">{label}</span>
+                {'<span class="snav-dot"></span>' if is_active else ''}
+            </div>"""
+
+        notif_html = f"""
+        <div class="snotif-badge">
+            <span class="snotif-bell">🔔</span>
+            <span class="snotif-text">{notif_count} yeni bildirim</span>
+            <span class="snotif-count">{notif_count}</span>
+        </div>""" if notif_count > 0 else ""
+
+        st.markdown(f"""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+        [data-testid="stSidebar"] > div:first-child {{
+            padding: 0 !important;
+        }}
+        [data-testid="stSidebar"] {{
+            background: linear-gradient(170deg, #0a0f1a 0%, #0d1520 40%, #091018 100%) !important;
+            border-right: 1px solid rgba(0,217,126,0.12) !important;
+        }}
+
+        .sidebar-shell {{
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 0;
+            font-family: 'Syne', sans-serif;
+            position: relative;
+            overflow: hidden;
+        }}
+
+        /* Ambient glow background */
+        .sidebar-shell::before {{
+            content: '';
+            position: absolute;
+            top: -80px; left: -80px;
+            width: 260px; height: 260px;
+            background: radial-gradient(circle, rgba(0,217,126,0.07) 0%, transparent 70%);
+            pointer-events: none;
+            animation: ambientPulse 6s ease-in-out infinite;
+        }}
+        .sidebar-shell::after {{
+            content: '';
+            position: absolute;
+            bottom: -60px; right: -60px;
+            width: 200px; height: 200px;
+            background: radial-gradient(circle, rgba(40,60,100,0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }}
+        @keyframes ambientPulse {{
+            0%,100% {{ opacity:0.6; transform:scale(1); }}
+            50% {{ opacity:1; transform:scale(1.1); }}
+        }}
+
+        /* ── LOGO SECTION ── */
+        .slogo-section {{
+            padding: 28px 20px 20px;
+            text-align: center;
+            position: relative;
+        }}
+        .slogo-frame {{
+            display: inline-block;
+            position: relative;
+            padding: 3px;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, #00d97e, #283c64, #00d97e);
+            animation: logoSpin 8s linear infinite;
+            transition: transform 0.4s ease;
+        }}
+        .slogo-frame:hover {{
+            transform: scale(1.06);
+            animation-play-state: paused;
+        }}
+        @keyframes logoSpin {{
+            from {{ filter: hue-rotate(0deg); }}
+            to   {{ filter: hue-rotate(360deg); }}
+        }}
+        .slogo-inner {{
+            background: #0d1520;
+            border-radius: 50%;
+            padding: 10px;
+            display: flex; align-items:center; justify-content:center;
+            width: 84px; height: 84px;
+        }}
+        .slogo-inner img {{ width:64px; height:64px; object-fit:contain; }}
+        .slogo-title {{
+            font-size: 1.05rem;
+            font-weight: 800;
+            letter-spacing: 0.35em;
+            color: #ffffff;
+            margin-top: 12px;
+            text-transform: uppercase;
+        }}
+        .slogo-sub {{
+            font-size: 0.58rem;
+            color: rgba(255,255,255,0.35);
+            letter-spacing: 0.2em;
+            margin-top: 2px;
+            font-family: 'DM Mono', monospace;
+        }}
+
+        /* ── DIVIDER ── */
+        .sdivider {{
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0,217,126,0.2), transparent);
+            margin: 0 16px 6px;
+        }}
+
+        /* ── USER CARD ── */
+        .suser-card {{
+            margin: 8px 14px 4px;
+            padding: 14px 16px;
+            background: linear-gradient(135deg, rgba(0,217,126,0.07) 0%, rgba(40,60,100,0.12) 100%);
+            border: 1px solid rgba(0,217,126,0.15);
+            border-radius: 14px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+            cursor: default;
+        }}
+        .suser-card::before {{
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(0,217,126,0.05), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+            border-radius: 14px;
+        }}
+        .suser-card:hover {{
+            border-color: rgba(0,217,126,0.35);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0,217,126,0.12);
+        }}
+        .suser-card:hover::before {{ opacity: 1; }}
+        .suser-top {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .suser-avatar {{
+            width: 44px; height: 44px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(0,217,126,0.15), rgba(40,60,100,0.3));
+            border: 1px solid rgba(0,217,126,0.2);
+            display: flex; align-items:center; justify-content:center;
+            font-size: 1.5rem;
+            transition: transform 0.3s ease;
+        }}
+        .suser-card:hover .suser-avatar {{ transform: rotate(-5deg) scale(1.1); }}
+        .suser-name {{
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 0.02em;
+        }}
+        .suser-role {{
+            font-family: 'DM Mono', monospace;
+            font-size: 0.58rem;
+            color: {role_color};
+            letter-spacing: 0.15em;
+            margin-top: 2px;
+        }}
+        .suser-level {{
+            font-family: 'DM Mono', monospace;
+            font-size: 0.58rem;
+            color: rgba(255,255,255,0.4);
+        }}
+        .sxp-bar-wrap {{
+            margin-top: 12px;
+        }}
+        .sxp-labels {{
+            display: flex;
+            justify-content: space-between;
+            font-family: 'DM Mono', monospace;
+            font-size: 0.58rem;
+            color: rgba(255,255,255,0.35);
+            margin-bottom: 5px;
+        }}
+        .sxp-track {{
+            height: 3px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 99px;
+            overflow: visible;
+            position: relative;
+        }}
+        .sxp-fill {{
+            height: 100%;
+            border-radius: 99px;
+            background: linear-gradient(90deg, #00d97e, #00b868);
+            position: relative;
+            transition: width 1s ease;
+        }}
+        .sxp-fill::after {{
+            content: '';
+            position: absolute;
+            right: -1px; top: 50%;
+            transform: translateY(-50%);
+            width: 7px; height: 7px;
+            background: #00d97e;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #00d97e;
+        }}
+        .suser-spend {{
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.62rem;
+            color: rgba(255,255,255,0.35);
+            font-family: 'DM Mono', monospace;
+        }}
+        .suser-spend-pct {{
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: {usage_color};
+        }}
+
+        /* ── NOTIFICATION BADGE ── */
+        .snotif-badge {{
+            margin: 8px 14px;
+            padding: 10px 14px;
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.2);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            animation: notifPulse 2.5s ease-in-out infinite;
+        }}
+        .snotif-badge:hover {{
+            background: rgba(239,68,68,0.15);
+            border-color: rgba(239,68,68,0.4);
+            transform: translateX(2px);
+        }}
+        @keyframes notifPulse {{
+            0%,100% {{ box-shadow: 0 0 0 0 rgba(239,68,68,0); }}
+            50% {{ box-shadow: 0 0 0 4px rgba(239,68,68,0.08); }}
+        }}
+        .snotif-bell {{ font-size: 0.85rem; }}
+        .snotif-text {{ font-size: 0.72rem; color: #fca5a5; font-weight: 600; flex:1; }}
+        .snotif-count {{
+            background: #ef4444;
+            color: #fff;
+            font-size: 0.6rem;
+            font-weight: 700;
+            font-family: 'DM Mono', monospace;
+            padding: 2px 6px;
+            border-radius: 99px;
+            min-width: 20px;
+            text-align: center;
+        }}
+
+        /* ── NAVIGATION ── */
+        .snav-section {{
+            flex: 1;
+            padding: 8px 10px;
+            overflow-y: auto;
+        }}
+        .snav-section::-webkit-scrollbar {{ width: 3px; }}
+        .snav-section::-webkit-scrollbar-track {{ background: transparent; }}
+        .snav-section::-webkit-scrollbar-thumb {{ background: rgba(0,217,126,0.2); border-radius: 99px; }}
+
+        .snav-label-group {{
+            font-family: 'DM Mono', monospace;
+            font-size: 0.55rem;
+            color: rgba(255,255,255,0.2);
+            letter-spacing: 0.18em;
+            padding: 6px 8px 4px;
+            text-transform: uppercase;
+        }}
+
+        .snav-item {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            margin: 2px 0;
+            cursor: pointer;
+            transition: all 0.22s cubic-bezier(0.34,1.56,0.64,1);
+            position: relative;
+            overflow: hidden;
+            border: 1px solid transparent;
+        }}
+        .snav-item::before {{
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: #00d97e;
+            border-radius: 0 3px 3px 0;
+            transform: scaleY(0);
+            transition: transform 0.2s ease;
+        }}
+        .snav-item:hover {{
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.06);
+            transform: translateX(4px);
+        }}
+        .snav-item:hover::before {{ transform: scaleY(0.6); }}
+        .snav-item:hover .snav-icon {{ transform: scale(1.15); filter: brightness(1.3); }}
+        .snav-item:hover .snav-label {{ color: rgba(255,255,255,0.9); }}
+
+        .snav-active {{
+            background: linear-gradient(90deg, rgba(0,217,126,0.12), rgba(0,217,126,0.04)) !important;
+            border-color: rgba(0,217,126,0.2) !important;
+        }}
+        .snav-active::before {{ transform: scaleY(1) !important; }}
+        .snav-active .snav-label {{ color: #00d97e !important; font-weight: 700; }}
+
+        .snav-icon {{
+            font-size: 1rem;
+            width: 24px;
+            text-align: center;
+            transition: transform 0.2s ease, filter 0.2s ease;
+            flex-shrink: 0;
+        }}
+        .snav-label {{
+            font-size: 0.78rem;
+            color: rgba(255,255,255,0.55);
+            font-weight: 500;
+            letter-spacing: 0.01em;
+            transition: color 0.2s ease;
+            flex: 1;
+        }}
+        .snav-dot {{
+            width: 5px; height: 5px;
+            background: #00d97e;
+            border-radius: 50%;
+            box-shadow: 0 0 6px #00d97e;
+            animation: dotBlink 2s ease-in-out infinite;
+        }}
+        @keyframes dotBlink {{
+            0%,100% {{ opacity:1; }}
+            50% {{ opacity:0.3; }}
+        }}
+
+        /* ── BOTTOM LIMIT BAR ── */
+        .slimit-section {{
+            margin: 6px 14px 10px;
+            padding: 12px 14px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            transition: all 0.25s ease;
+        }}
+        .slimit-section:hover {{
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+        }}
+        .slimit-title {{
+            font-family: 'DM Mono', monospace;
+            font-size: 0.56rem;
+            color: rgba(255,255,255,0.3);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }}
+        .slimit-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 6px;
+        }}
+        .slimit-pct {{
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: {usage_color};
+            font-family: 'Syne', sans-serif;
+        }}
+        .slimit-vals {{
+            font-family: 'DM Mono', monospace;
+            font-size: 0.58rem;
+            color: rgba(255,255,255,0.25);
+        }}
+        .slimit-track {{
+            height: 4px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 99px;
+            overflow: hidden;
+        }}
+        .slimit-fill {{
+            height: 100%;
+            border-radius: 99px;
+            background: {usage_color};
+            box-shadow: 0 0 8px {usage_color}88;
+            transition: width 1s ease;
+        }}
+
+        /* ── LOGOUT BUTTON ── */
+        .slogout-wrap {{
+            padding: 6px 14px 20px;
+        }}
+        .slogout-btn {{
+            width: 100%;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            color: rgba(255,255,255,0.35);
+            font-family: 'DM Mono', monospace;
+            font-size: 0.7rem;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            text-transform: uppercase;
+        }}
+        .slogout-btn:hover {{
+            background: rgba(239,68,68,0.08);
+            border-color: rgba(239,68,68,0.25);
+            color: #fca5a5;
+            transform: translateY(-1px);
+        }}
+        </style>
+
+        <div class="sidebar-shell">
+            <!-- LOGO -->
+            <div class="slogo-section">
+                <div class="slogo-frame">
+                    <div class="slogo-inner">{logo_html}</div>
                 </div>
-                <div style="font-size:1.4rem; font-weight:700; color:{color};">{usage_pct:.0f}%</div>
-                <div style="background:rgba(255,255,255,0.15); border-radius:8px; height:6px; overflow:hidden; margin-top:6px;">
-                    <div style="width:{usage_pct:.0f}%; height:100%; border-radius:8px; background:{color};"></div>
+                <div class="slogo-title">Stinga Pro</div>
+                <div class="slogo-sub">STİNGA ENERJİ A.Ş.</div>
+            </div>
+
+            <div class="sdivider"></div>
+
+            <!-- USER CARD -->
+            <div class="suser-card">
+                <div class="suser-top">
+                    <div class="suser-avatar">{user_info['avatar']}</div>
+                    <div>
+                        <div class="suser-name">{user_name}</div>
+                        <div class="suser-role">{role_label} · LV.{level}</div>
+                    </div>
                 </div>
-                <div style="font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:4px;">
-                    {my_total:,.0f} / {monthly_limit:,.0f} ₺
+                <div class="sxp-bar-wrap">
+                    <div class="sxp-labels">
+                        <span>⚡ {user_xp} XP</span>
+                        <span>→ {level * 500} XP</span>
+                    </div>
+                    <div class="sxp-track">
+                        <div class="sxp-fill" style="width:{xp_progress*100:.1f}%;"></div>
+                    </div>
+                </div>
+                <div class="suser-spend">
+                    <span>{user_info.get('department','—')}</span>
+                    <span class="suser-spend-pct">%{usage_pct:.0f} limit</span>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🚪 Çıkış", use_container_width=True):
+
+            <!-- NOTIFICATION -->
+            {notif_html}
+
+            <div class="sdivider" style="margin-top:8px;"></div>
+
+            <!-- NAVIGATION -->
+            <div class="snav-section">
+                <div class="snav-label-group">Navigasyon</div>
+                {nav_items_html}
+            </div>
+
+            <!-- LIMIT BAR -->
+            <div class="slimit-section">
+                <div class="slimit-title">Aylık Limit</div>
+                <div class="slimit-row">
+                    <span class="slimit-pct">{usage_pct:.0f}%</span>
+                    <span class="slimit-vals">{my_total:,.0f} / {monthly_limit:,.0f} ₺</span>
+                </div>
+                <div class="slimit-track">
+                    <div class="slimit-fill" style="width:{usage_pct:.0f}%;"></div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Hidden radio for navigation state (Streamlit requires native widget for state)
+        pages_keys = [p[2] for p in nav_pages]
+        selected = st.radio("", pages_keys,
+                           index=pages_keys.index(st.session_state.selected_page)
+                           if st.session_state.selected_page in pages_keys else 0,
+                           label_visibility="collapsed")
+        st.session_state.selected_page = selected
+
+        # Notifications expander
+        if notif_count > 0:
+            with st.expander("🔔 Bildirimleri Gör"):
+                for n in reversed(my_notifs[-5:]):
+                    icon = {"xp": "🏆", "info": "ℹ️", "warning": "⚠️", "success": "✅"}.get(n.get("type", "info"), "📌")
+                    st.markdown(f"""
+                    <div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; gap:10px;">
+                        <span style="font-size:0.9rem;">{icon}</span>
+                        <div>
+                            <div style="font-size:0.78rem; color:rgba(255,255,255,0.7);">{n['msg']}</div>
+                            <div style="font-size:0.65rem; color:rgba(255,255,255,0.3); font-family:'DM Mono',monospace; margin-top:2px;">{n.get('date','')} {n['time']}</div>
+                        </div>
+                    </div>""", unsafe_allow_html=True)
+
+        if st.button("⏻  Oturumu Kapat", use_container_width=True):
             logout()
 
     # ══════════════════════════════════════════════════════════
