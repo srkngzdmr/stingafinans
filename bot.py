@@ -36,7 +36,8 @@ TWILIO_SID   = os.getenv("TWILIO_SID")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
 twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
 
-DB_FILE      = "stinga_v13_db.json"
+# DB_FILE mutlak yol — Railway'de çalışma dizini kaymaları için
+DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stinga_v13_db.json")
 DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
 
 PHONE_DIRECTORY = {
@@ -136,13 +137,25 @@ def load_data() -> dict:
     return data
 
 def save_data(d: dict):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=2)
+    """Atomik kayıt: geçici dosyaya yaz, sonra rename — veri bozulmasını önler."""
+    tmp = DB_FILE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, DB_FILE)
+    except Exception as e:
+        print(f"KAYIT HATASI: {e}", flush=True)
+        # Fallback: direkt yaz
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)
 
 
-def add_notification(target: str, message: str, notif_type: str = "info"):
-    """Dashboard bildirim kuyruğuna ekle."""
-    data = load_data()
+def add_notification(target: str, message: str, notif_type: str = "info", data: dict = None):
+    """Dashboard bildirim kuyruğuna ekle. data verilirse mevcut objeye yazar (kaydetmez)."""
+    _own = data is None
+    if _own:
+        data = load_data()
+    data.setdefault("notifications", [])
     data["notifications"].append({
         "user":  target,
         "msg":   message,
@@ -151,16 +164,19 @@ def add_notification(target: str, message: str, notif_type: str = "info"):
         "date":  datetime.now().strftime("%Y-%m-%d"),
         "read":  False,
     })
-    save_data(data)
+    if _own:
+        save_data(data)
 
 
-def add_xp(user_name: str, amount: int, reason: str = ""):
-    """Dashboard XP sistemine puan ekle."""
-    data = load_data()
-    if "xp" not in data:
-        data["xp"] = {}
+def add_xp(user_name: str, amount: int, reason: str = "", data: dict = None):
+    """Dashboard XP sistemine puan ekle. data verilirse mevcut objeye yazar (kaydetmez)."""
+    _own = data is None
+    if _own:
+        data = load_data()
+    data.setdefault("xp", {})
     data["xp"][user_name] = data["xp"].get(user_name, 0) + amount
     if reason:
+        data.setdefault("notifications", [])
         data["notifications"].append({
             "user":  user_name,
             "msg":   f"🏆 +{amount} XP kazandın! ({reason})",
@@ -169,7 +185,8 @@ def add_xp(user_name: str, amount: int, reason: str = ""):
             "date":  datetime.now().strftime("%Y-%m-%d"),
             "read":  False,
         })
-    save_data(data)
+    if _own:
+        save_data(data)
 
 # ─────────────────────────────────────────────
 #  YARDIMCI
@@ -634,6 +651,8 @@ def whatsapp_webhook():
 
         def analiz_et_gonder():
             try:
+                    # Thread içinde taze veri yükle — stale data sorununu önler
+                    data = load_data()
                     res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
                     if res.status_code in [301, 302, 307, 308]:
                         res = requests.get(res.headers.get('Location'), timeout=15)
@@ -672,8 +691,24 @@ def whatsapp_webhook():
 
                     ai_res    = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
                     print(f"Gemini yaniti: {ai_res.text[:200]}", flush=True)
-                    json_text = re.sub(r"```json?|```", "", ai_res.text).strip()
-                    fis       = json.loads(json_text)
+
+                    # Robust JSON parse — Gemini bazen açıklama metni ekleyebilir
+                    raw_text  = ai_res.text
+                    json_text = re.sub(r"```json?|```", "", raw_text).strip()
+                    # Sadece JSON objesini çıkar
+                    _m = re.search(r'\{.*\}', json_text, re.DOTALL)
+                    if _m:
+                        json_text = _m.group()
+                    try:
+                        fis = json.loads(json_text)
+                    except json.JSONDecodeError:
+                        # Son çare: Gemini'den tekrar iste
+                        print("JSON parse hatası, retry...", flush=True)
+                        retry_prompt = f"Sadece JSON döndür, başka hiçbir şey yazma:\n{prompt}"
+                        ai_res2   = client.models.generate_content(model=MODEL_NAME, contents=[retry_prompt, image])
+                        json_text2 = re.sub(r"```json?|```", "", ai_res2.text).strip()
+                        _m2 = re.search(r'\{.*\}', json_text2, re.DOTALL)
+                        fis = json.loads(_m2.group() if _m2 else json_text2)
 
                     # Para birimi dönüşümü
                     tutar_try   = float(fis.get("toplam_tutar", 0))
@@ -703,7 +738,14 @@ def whatsapp_webhook():
                     fis["kategori"] = kategori
                     yorum = yaratici_yorum(fis, user_name, karakter)
 
-                    # Fişi kaydet
+                    # Fişi kaydet — eksik key'leri güvenli ekle
+                    data.setdefault("fis_sayaci", {})
+                    data.setdefault("expenses", [])
+                    data.setdefault("duplicate_hashes", [])
+                    data.setdefault("anomaly_log", [])
+                    data.setdefault("xp", {})
+                    data.setdefault("notifications", [])
+                    data.setdefault("rozetler", {})
                     data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
                     # Durum — dashboard ile uyumlu değerler
                     if sahtelik["sahte_mi"] or sahtelik["guvensizlik_skoru"] >= 70:
@@ -711,9 +753,15 @@ def whatsapp_webhook():
                     else:
                         durum = "Onay Bekliyor"
 
+                    # Görseli base64 olarak encode et — dashboard gösterebilsin
+                    import base64 as _b64mod
+                    gorsel_b64_str = _b64mod.b64encode(raw_bytes).decode("utf-8")
+                    gorsel_data_uri = f"data:image/jpeg;base64,{gorsel_b64_str}"
+
                     new_expense = {
                         "ID"                 : datetime.now().strftime("%Y%m%d%H%M%S"),
                         "Tarih"              : fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
+                        "Yukleme_Zamani"     : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "Kullanıcı"          : user_name,
                         "Rol"                : user_info["rol"],
                         "Firma"              : fis.get("firma", "Bilinmiyor"),
@@ -721,6 +769,7 @@ def whatsapp_webhook():
                         "KDV"                : float(fis.get("kdv_tutari", 0)),
                         "ParaBirimi"         : para_birimi,
                         "OdemeTipi"          : fis.get("odeme_yontemi", "bilinmiyor"),
+                        "Odeme_Turu"         : fis.get("odeme_yontemi", "bilinmiyor"),
                         "Kategori"           : kategori,
                         "Durum"              : durum,
                         "Risk_Skoru"         : sahtelik["guvensizlik_skoru"],
@@ -731,11 +780,12 @@ def whatsapp_webhook():
                         "Hash"               : img_hash,
                         "Karakter"           : karakter,
                         "IlgincDetay"        : fis.get("ilginc_detay", ""),
-                        # Proje/Öncelik WhatsApp'tan girilmez; dashboard'dan güncellenebilir
                         "Proje"              : "Genel Merkez",
                         "Oncelik"            : "Normal",
                         "Notlar"             : "",
+                        "Kaynak"             : "WhatsApp",
                         "Dosya_Yolu"         : "",
+                        "Gorsel_B64"         : gorsel_data_uri,
                     }
 
                     data["expenses"].append(new_expense)
@@ -757,17 +807,22 @@ def whatsapp_webhook():
 
                     # Rozet kontrolü
                     yeni_rozetler = rozet_kontrol(user_name, data, new_expense)
-                    save_data(data)
-                    add_xp(user_name, 50, "WhatsApp fiş tarama")
 
-                    # Admin'lere dashboard bildirimi gönder
+                    # XP ve bildirimler — save_data'dan ÖNCE, aynı data objesi üzerinde
+                    add_xp(user_name, 50, "WhatsApp fiş tarama", data=data)
+
+                    # Admin'lere dashboard bildirimi (aynı data objesi)
                     for ukey, udata_info in PHONE_DIRECTORY.items():
-                        if udata_info.get("yetki") == "admin" and udata_info["ad"] != user_name:
+                        if udata_info.get("dashboard_rol") == "admin" and udata_info["ad"] != user_name:
                             add_notification(
                                 udata_info["ad"],
-                                f"📋 {user_name} → {proje}: {fis.get('firma','?')} ₺{tutar_try:,.0f}",
-                                "info"
+                                f"📋 {user_name} → {new_expense['Proje']}: {new_expense['Firma']} ₺{tutar_try:,.0f}",
+                                "info",
+                                data=data
                             )
+
+                    # Tek seferde kaydet — tüm değişiklikler (expenses, xp, notifications, rozetler)
+                    save_data(data)
 
                     # Yanıt oluştur
                     risk = sahtelik["guvensizlik_skoru"]
@@ -883,6 +938,57 @@ def expenses_endpoint():
     """Tüm fişleri döner — Streamlit dashboard bu endpoint'i kullanır."""
     data = load_data()
     return jsonify({"expenses": data.get("expenses", [])}), 200
+
+
+@app.route("/add-expense", methods=['POST'])
+def add_expense_endpoint():
+    """
+    Streamlit dashboard'dan manuel fiş ekle.
+    Dashboard'un AI analizi yapıp buraya gönderdiği fişleri DB'ye yazar.
+    """
+    try:
+        new_e = request.get_json(force=True)
+        if not new_e:
+            return jsonify({"error": "Boş veri"}), 400
+
+        data = load_data()
+
+        # Zorunlu alanlar yoksa varsayılan ekle
+        if not new_e.get("ID"):
+            new_e["ID"] = datetime.now().strftime("%Y%m%d%H%M%S")
+        if not new_e.get("Tarih"):
+            new_e["Tarih"] = datetime.now().strftime("%Y-%m-%d")
+        if not new_e.get("Durum"):
+            new_e["Durum"] = "Onay Bekliyor"
+
+        # Mükerrer kontrolü
+        for e in data["expenses"]:
+            if (e.get("Firma") == new_e.get("Firma") and
+                abs(float(e.get("Tutar", 0)) - float(new_e.get("Tutar", 0))) < 1 and
+                e.get("Tarih") == new_e.get("Tarih")):
+                return jsonify({"error": "Mükerrer fiş", "duplicate": True}), 409
+
+        data["expenses"].append(new_e)
+
+        # XP ekle
+        add_xp(new_e.get("Kullanıcı", ""), 50, "Dashboard fiş tarama", data=data)
+
+        # Admin bildirimi
+        for ukey, uinfo in PHONE_DIRECTORY.items():
+            if uinfo.get("dashboard_rol") == "admin" and uinfo["ad"] != new_e.get("Kullanıcı", ""):
+                add_notification(
+                    uinfo["ad"],
+                    f"📋 {new_e.get('Kullanıcı','?')} → {new_e.get('Proje','?')}: {new_e.get('Firma','?')} ₺{float(new_e.get('Tutar',0)):,.0f}",
+                    "info",
+                    data=data
+                )
+
+        save_data(data)
+        return jsonify({"ok": True, "ID": new_e["ID"]}), 200
+    except Exception as e:
+        import traceback
+        print(f"add-expense HATA: {traceback.format_exc()}", flush=True)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/all-data", methods=['GET'])
