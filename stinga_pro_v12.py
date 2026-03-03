@@ -2444,7 +2444,7 @@ else:
             </div>
             <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:0.88rem; font-weight:900;
                         letter-spacing:0.3em; color:#0f1923; margin-top:13px; text-transform:uppercase;">
-                STINGA PRO PRIME v17.0
+                STINGA PRO
             </div>
             <div style="font-family:'JetBrains Mono',monospace; font-size:0.51rem; color:#a0b8ae;
                         letter-spacing:0.18em; margin-top:4px; text-transform:uppercase;">
@@ -3139,12 +3139,12 @@ tick();setInterval(tick,1000);
                         _kalan_bakiye  = _mevcut_bakiye - _row_tutar
                         _kalan_renk    = "#dc2626" if _kalan_bakiye < 0 else "#007850"
                         _harcirah_html = (
-                            f"<div style='margin-top:8px; padding:8px 12px; border-radius:8px; "
-                            f"background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); font-size:0.8rem;'>"
-                            f"💵 <strong>{_row_kullanici}</strong> bu ödemeyi <strong>kendi nakdi / şahsi kartıyla</strong> yapmıştır. "
-                            f"Mevcut harcırah bakiyesi: <strong>₺{_mevcut_bakiye:,.0f}</strong> &nbsp;·&nbsp; "
-                            f"Onaylanırsa kalan bakiye: <strong style='color:{_kalan_renk}'>₺{_kalan_bakiye:,.0f}</strong>"
-                            f"</div>"
+                            f'<div style="margin-top:8px; padding:8px 12px; border-radius:8px; '
+                            f'background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); font-size:0.8rem;">'
+                            f'💵 <strong>{_row_kullanici}</strong> bu ödemeyi <strong>kendi nakdi / şahsi kartıyla</strong> yapmıştır. '
+                            f'Mevcut harcırah bakiyesi: <strong>₺{_mevcut_bakiye:,.0f}</strong> &nbsp;·&nbsp; '
+                            f'Onaylanırsa kalan bakiye: <strong style="color:{_kalan_renk}">₺{_kalan_bakiye:,.0f}</strong>'
+                            f'</div>'
                         )
                     else:
                         _harcirah_html = ""
@@ -3195,7 +3195,7 @@ tick();setInterval(tick,1000);
   if(bt)bt.textContent='🎉 ONAYLANDI! Harika!';
   if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},4800);}
 })();
-</script>''', height=0, scrolling=False)
+</script>''', height=1, scrolling=False)
                                 with st.spinner("Onaylanıyor..."):
                                     if api_approve(str(row['ID']), "approve", user_name):
                                         st.success("✅ Onaylandı!")
@@ -3217,7 +3217,7 @@ tick();setInterval(tick,1000);
   if(bt)bt.textContent='😢 Fiş reddedildi...';
   if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},4800);}
 })();
-</script>''', height=0, scrolling=False)
+</script>''', height=1, scrolling=False)
                                 with st.spinner("Reddediliyor..."):
                                     if api_approve(str(row['ID']), "reject", user_name):
                                         st.warning("❌ Reddedildi!")
@@ -3385,12 +3385,12 @@ tick();setInterval(tick,1000);
                         _kalan_bakiye2  = _mevcut_bakiye2 - _row_tutar2
                         _kalan_renk2    = "#dc2626" if _kalan_bakiye2 < 0 else "#007850"
                         _harcirah_html2 = (
-                            f"<div style='margin-top:8px; padding:8px 12px; border-radius:8px; "
-                            f"background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); font-size:0.8rem;'>"
-                            f"💵 <strong>{_row_kullanici2}</strong> bu ödemeyi <strong>kendi nakdi / şahsi kartıyla</strong> yapmıştır. "
-                            f"Mevcut harcırah bakiyesi: <strong>₺{_mevcut_bakiye2:,.0f}</strong> &nbsp;·&nbsp; "
-                            f"Onaylanırsa kalan bakiye: <strong style='color:{_kalan_renk2}'>₺{_kalan_bakiye2:,.0f}</strong>"
-                            f"</div>"
+                            f'<div style="margin-top:8px; padding:8px 12px; border-radius:8px; '
+                            f'background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); font-size:0.8rem;">'
+                            f'💵 <strong>{_row_kullanici2}</strong> bu ödemeyi <strong>kendi nakdi / şahsi kartıyla</strong> yapmıştır. '
+                            f'Mevcut harcırah bakiyesi: <strong>₺{_mevcut_bakiye2:,.0f}</strong> &nbsp;·&nbsp; '
+                            f'Onaylanırsa kalan bakiye: <strong style="color:{_kalan_renk2}">₺{_kalan_bakiye2:,.0f}</strong>'
+                            f'</div>'
                         )
                     else:
                         _harcirah_html2 = ""
@@ -3444,7 +3444,7 @@ tick();setInterval(tick,1000);
   if(bt)bt.textContent='🎉 ONAYLANDI! Harika!';
   if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},4800);}
 })();
-</script>''', height=0, scrolling=False)
+</script>''', height=1, scrolling=False)
                                 with st.spinner("Onaylanıyor..."):
                                     if api_approve(str(row['ID']), "approve", user_name):
                                         st.success("✅ Onaylandı!")
@@ -3464,7 +3464,7 @@ tick();setInterval(tick,1000);
   if(bt)bt.textContent='😢 Fiş reddedildi...';
   if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},4800);}
 })();
-</script>''', height=0, scrolling=False)
+</script>''', height=1, scrolling=False)
                                 with st.spinner("Reddediliyor..."):
                                     if api_approve(str(row['ID']), "reject", user_name):
                                         st.warning("❌ Reddedildi!")
@@ -4162,7 +4162,7 @@ Yanıtın yapısı:
 3. Kişiselleştirilmiş Öneriler (somut adımlar)
 4. {('Hedef Gerçekleşme Planı' if hedef_tutar else 'Motivasyon & Özet')}
 """
-                    response = genai.GenerativeModel("gemini-2.0-flash").generate_content(prompt)
+                    response = genai.GenerativeModel("models/gemini-2.5-flash").generate_content(prompt)
                     coach_result = response.text
 
                     st.markdown(f"""
@@ -4317,7 +4317,7 @@ Lütfen aşağıdaki formatta detaylı gider tahmini yap:
 
 Somut rakamlar ve yüzdeler kullan. Profesyonel ama anlaşılır ol.
 """
-                    response = genai.GenerativeModel("gemini-2.0-flash").generate_content(prompt)
+                    response = genai.GenerativeModel("models/gemini-2.5-flash").generate_content(prompt)
                     tahmin_result = response.text
 
                     st.markdown(f"""
