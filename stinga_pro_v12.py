@@ -2344,13 +2344,15 @@ else:
         if "read_notif_ids" not in st.session_state:
             st.session_state.read_notif_ids = set()
         _read_ids = st.session_state.read_notif_ids
+        def _notif_key(n):
+            return f"{n.get('user','')}|{n.get('msg','')}|{n.get('date','')}|{n.get('time','')}"
         my_notifs = [n for n in data_store.get("notifications", [])
                      if (str(n.get("user","")) == user_name or str(n.get("user","")) == "Hepsi"
                          or str(n.get("user","")).lower() == user_name.lower())
-                     and id(n) not in _read_ids]
+                     and _notif_key(n) not in _read_ids]
         # session_state'teki lokal bildirimleri de ekle
         local_notifs = st.session_state.get("local_notifications", [])
-        my_notifs = my_notifs + [n for n in local_notifs if not n.get("read", False) and id(n) not in _read_ids]
+        my_notifs = my_notifs + [n for n in local_notifs if not n.get("read", False) and _notif_key(n) not in _read_ids]
         notif_count = len(my_notifs)
 
         if not df_full.empty and 'Tutar' in df_full.columns:
@@ -2376,7 +2378,7 @@ else:
             </div>
             <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:0.88rem; font-weight:900;
                         letter-spacing:0.3em; color:#0f1923; margin-top:13px; text-transform:uppercase;">
-                STİNGA PRO FİNANS V.17
+                VELA
             </div>
             <div style="font-family:'JetBrains Mono',monospace; font-size:0.51rem; color:#a0b8ae;
                         letter-spacing:0.18em; margin-top:4px; text-transform:uppercase;">
@@ -2445,7 +2447,7 @@ else:
             with st.expander("Bildirimleri Gör"):
                 # Tüm görünen bildirimleri okundu olarak işaretle (session_state id seti)
                 for n in my_notifs:
-                    st.session_state.read_notif_ids.add(id(n))
+                    st.session_state.read_notif_ids.add(_notif_key(n))
                 for n in st.session_state.get("local_notifications", []):
                     n["read"] = True
                 for n in reversed(my_notifs[-5:]):
@@ -3092,16 +3094,16 @@ tick();setInterval(tick,1000);
   ov.style.cssText='position:fixed;inset:0;background:rgba(220,38,38,.1);z-index:2147483640;pointer-events:none;';
   pd.body.appendChild(ov);setTimeout(function(){ov.remove();},600);
   var r=pd.getElementById('SGNX');
-  if(r){r.classList.remove('joy');r.classList.add('sad');setTimeout(function(){r.classList.remove('sad');},2500);}
+  if(r){r.classList.remove('joy');r.classList.add('sad');setTimeout(function(){r.classList.remove('sad');},4500);}
   var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
   if(bt)bt.textContent='😢 Fiş reddedildi...';
-  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},2800);}
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},4800);}
 })();
 </script>''', height=0, scrolling=False)
                                 with st.spinner("Reddediliyor..."):
                                     if api_approve(str(row['ID']), "reject", user_name):
                                         st.warning("❌ Reddedildi!")
-                                        time.sleep(0.5)
+                                        time.sleep(4.8)
                                         st.rerun()
                                     else:
                                         st.error("API hatası, tekrar deneyin")
@@ -3311,16 +3313,16 @@ tick();setInterval(tick,1000);
   ov.style.cssText='position:fixed;inset:0;background:rgba(220,38,38,.1);z-index:2147483640;pointer-events:none;';
   pd.body.appendChild(ov);setTimeout(function(){ov.remove();},600);
   var r=pd.getElementById('SGNX');
-  if(r){r.classList.remove('joy');r.classList.add('sad');setTimeout(function(){r.classList.remove('sad');},2500);}
+  if(r){r.classList.remove('joy');r.classList.add('sad');setTimeout(function(){r.classList.remove('sad');},4500);}
   var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
   if(bt)bt.textContent='😢 Fiş reddedildi...';
-  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},2800);}
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},4800);}
 })();
 </script>''', height=0, scrolling=False)
                                 with st.spinner("Reddediliyor..."):
                                     if api_approve(str(row['ID']), "reject", user_name):
                                         st.warning("❌ Reddedildi!")
-                                        time.sleep(0.5)
+                                        time.sleep(4.8)
                                         st.rerun()
                         
                         with cb:
