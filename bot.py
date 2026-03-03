@@ -114,6 +114,18 @@ PHONE_DIRECTORY = {
     },
 }
 
+
+# ─────────────────────────────────────────────
+#  KONUŞMALI AI & KONUM — STATE TANIMLAMALARI
+# ─────────────────────────────────────────────
+# "ai_chat" aktifken her gelen metin direkt Gemini'ye yönlendirilir.
+# "konum_bekle" aktifken bir sonraki konum pini son fişe bağlanır.
+AI_CHAT_TRIGGER  = ["sohbet", "chat", "konuş", "konuşalım", "ai modu"]
+AI_CHAT_EXIT     = ["çıkış", "exit", "kapat", "bitti", "dur"]
+KONUM_BEKLE_FLAG = "konum_bekle"   # user_states key
+AI_CHAT_FLAG     = "ai_chat"       # user_states key
+AI_CHAT_HISTORY  = "ai_history"    # user_states key — konuşma geçmişi
+
 KATEGORILER = {
     "yemek":     ["restoran", "kafe", "market", "manav", "kasap", "ekmek", "cafe", "burger", "pizza", "döner"],
     "ulasim":    ["akaryakıt", "benzin", "otopark", "taksi", "uber", "servis", "shell", "bp", "opet", "petrol"],
@@ -587,6 +599,227 @@ Kısa, net Türkçe yanıt ver. Sadece yanıtı yaz.
 
 
 # ─────────────────────────────────────────────
+#  KONUŞMALI AI MODU
+# ─────────────────────────────────────────────
+
+def konusmali_ai_yanit(user_name: str, mesaj: str, data: dict, user_states: dict) -> str:
+    """
+    Kullanıcıyla doğal dil sohbeti sürdürür.
+    Harcama verisini bağlam olarak bilir, multi-turn konuşmayı hafızada tutar.
+    Gemini'ye conversation history + sistem promptu gönderilir.
+    """
+    # Konuşma geçmişini user_states'ten al (max 10 tur = 20 mesaj)
+    history = user_states.get(AI_CHAT_HISTORY, {}).get(user_name, [])
+
+    # Kullanıcı harcama özetini bağlam olarak hazırla (token tasarrufu için özet)
+    harcamalar = [e for e in data["expenses"] if e["Kullanıcı"] == user_name]
+    bu_ay = datetime.now().strftime("%Y-%m")
+    ay_fis = [e for e in harcamalar if e.get("Tarih", "").startswith(bu_ay)]
+    ay_toplam = sum(e["Tutar"] for e in ay_fis)
+    butce = data.get("user_limits", {}).get(user_name, 0)
+
+    from collections import defaultdict as _dd
+    kat_ozet = _dd(float)
+    for e in ay_fis:
+        kat_ozet[e.get("Kategori", "diger")] += e["Tutar"]
+    kat_str = ", ".join(f"{k}:{v:.0f}₺" for k, v in sorted(kat_ozet.items(), key=lambda x: -x[1])[:5])
+
+    sistem = f"""Sen STINGA PRO'nun kişisel finans asistanısın. Adın 'Stinga AI'.
+Kullanıcı: {user_name}
+Bu ay harcama: {ay_toplam:,.0f}₺ / Bütçe: {butce:,.0f}₺
+Kategori dağılımı: {kat_str}
+Toplam fiş: {len(harcamalar)} kayıt
+
+Kurallar:
+- Türkçe, samimi, esprili ama profesyonel konuş
+- Harcama verilerine dayalı spesifik öneriler ver
+- Kısa tut (max 3-4 cümle), WhatsApp formatına uy (bold için *, italik için _)
+- Kullanıcı "çıkış/exit/kapat" yazarsa sohbeti bitir
+- Asla token/sistem detayı açıklama
+Bugün: {datetime.now().strftime('%d %B %Y, %A')}"""
+
+    # Geçmiş mesajları Gemini multi-turn formatına çevir
+    gemini_contents = [sistem]
+    for turn in history[-8:]:   # Son 8 tur = 16 mesaj
+        gemini_contents.append(f"Kullanıcı: {turn['user']}\nAsistan: {turn['assistant']}")
+    gemini_contents.append(f"Kullanıcı: {mesaj}")
+
+    try:
+        yanit = ai_call("\n\n".join(gemini_contents))
+    except Exception as e:
+        yanit = f"Bir sorun oluştu: {e}"
+
+    # Geçmişi güncelle
+    history.append({"user": mesaj, "assistant": yanit})
+    history = history[-10:]   # Max 10 tur tut
+    user_states.setdefault(AI_CHAT_HISTORY, {})[user_name] = history
+
+    return yanit
+
+
+def konum_isle(lat: float, lon: float, user_name: str, data: dict) -> str:
+    """
+    WhatsApp'tan gelen konum pinini son fişle ilişkilendirir.
+    Reverse geocoding ile adres bilgisini fişe yazar.
+    """
+    # Son fişi bul (bu kullanıcıya ait, henüz konum eklenmemiş)
+    kullanici_fisler = [
+        (i, e) for i, e in enumerate(data["expenses"])
+        if e["Kullanıcı"] == user_name and not e.get("Konum")
+    ]
+    if not kullanici_fisler:
+        return "📍 Konum alındı ama bağlanacak bekleyen fiş bulunamadı."
+
+    # En son fişi al
+    idx, son_fis = kullanici_fisler[-1]
+
+    # Nominatim reverse geocoding (ücretsiz, kayıt gerektirmez)
+    adres = f"{lat:.4f}, {lon:.4f}"
+    sehir = ""
+    try:
+        geo_url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json&accept-language=tr"
+        geo_res = requests.get(geo_url, headers={"User-Agent": "StingaProBot/1.0"}, timeout=5).json()
+        addr = geo_res.get("address", {})
+        parcalar = []
+        for alan in ["amenity", "road", "neighbourhood", "suburb", "town", "city", "county"]:
+            if addr.get(alan):
+                parcalar.append(addr[alan])
+                if len(parcalar) >= 3:
+                    break
+        if parcalar:
+            adres = ", ".join(parcalar)
+        sehir = addr.get("city") or addr.get("town") or addr.get("county") or ""
+    except Exception as geo_err:
+        print(f"Geocoding hatası: {geo_err}", flush=True)
+
+    # Fişi güncelle
+    data["expenses"][idx]["Konum"] = adres
+    data["expenses"][idx]["Konum_Lat"] = lat
+    data["expenses"][idx]["Konum_Lon"] = lon
+    if sehir:
+        data["expenses"][idx]["Sehir"] = sehir
+
+    save_data(data)
+
+    firma = son_fis.get("Firma", "Son fiş")
+    tutar = son_fis.get("Tutar", 0)
+    harita_link = f"https://maps.google.com/?q={lat},{lon}"
+
+    return (
+        f"📍 *Konum bağlandı!*\n"
+        f"🏢 {firma} — {tutar:,.0f} ₺\n"
+        f"📌 _{adres}_\n"
+        f"🗺️ {harita_link}"
+    )
+
+
+def coklu_fis_isle(sender_phone: str, user_name: str, user_info: dict,
+                    num_media: int, data: dict) -> str:
+    """
+    Birden fazla medya dosyası gönderildiğinde tüm görselleri sırayla işler.
+    Her fiş ayrı kaydedilir, sonunda toplu özet döner.
+    """
+    sonuclar = []
+    for i in range(min(num_media, 5)):   # Max 5 fiş aynı anda
+        media_url = request.values.get(f'MediaUrl{i}')
+        if not media_url:
+            continue
+        try:
+            res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN),
+                               allow_redirects=False, timeout=15)
+            if res.status_code in [301, 302, 307, 308]:
+                res = requests.get(res.headers.get('Location'), timeout=15)
+
+            raw_bytes = res.content
+            img_hash  = gorsel_hash(raw_bytes)
+
+            if img_hash in data["duplicate_hashes"]:
+                sonuclar.append(f"⚠️ Fiş {i+1}: Mükerrer, atlandı")
+                continue
+
+            image = Image.open(BytesIO(raw_bytes))
+            bugun = datetime.now().strftime("%Y-%m-%d")
+
+            prompt = f"""Fişi analiz et. Sadece JSON döndür.
+Bugün: {bugun}
+{{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,
+"odeme_yontemi":"nakit|kredi_karti|havale","para_birimi":"TRY",
+"risk_skoru":0,"sahte_mi":false,"fis_turu":"diger","audit_notu":"kısa özet"}}"""
+
+            ai_res   = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
+            raw_text = re.sub(r"```json?|```", "", ai_res.text).strip()
+            _m = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            fis = json.loads(_m.group() if _m else raw_text)
+
+            tutar_try   = float(fis.get("toplam_tutar", 0))
+            para_birimi = fis.get("para_birimi", "TRY")
+            if para_birimi != "TRY":
+                try:
+                    r   = requests.get(DOVIZ_API_URL, timeout=5).json()
+                    kur = r["rates"].get(para_birimi)
+                    if kur:
+                        tutar_try = tutar_try / kur
+                except:
+                    pass
+
+            kategori = kategori_tespit(fis.get("firma", ""))
+            risk     = int(fis.get("risk_skoru", 0))
+            durum    = "Sahte Şüphesi" if risk >= 70 or fis.get("sahte_mi") else "Onay Bekliyor"
+
+            new_expense = {
+                "ID"          : datetime.now().strftime("%Y%m%d%H%M%S") + str(i),
+                "Tarih"       : fis.get("tarih", bugun),
+                "Yukleme_Zamani": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Kullanıcı"   : user_name,
+                "Rol"         : user_info["rol"],
+                "Firma"       : fis.get("firma", "Bilinmiyor"),
+                "Tutar"       : tutar_try,
+                "KDV"         : float(fis.get("kdv_tutari", 0)),
+                "ParaBirimi"  : para_birimi,
+                "OdemeTipi"   : fis.get("odeme_yontemi", "bilinmiyor"),
+                "Odeme_Turu"  : fis.get("odeme_yontemi", "bilinmiyor"),
+                "Kategori"    : kategori,
+                "Durum"       : durum,
+                "Risk_Skoru"  : risk,
+                "AI_Audit"    : re.sub(r'<[^>]+>', '', str(fis.get("audit_notu", ""))).strip(),
+                "Anomaliler"  : anomali_tespit(user_name, tutar_try, data),
+                "Hash"        : img_hash,
+                "Proje"       : "Genel Merkez",
+                "Kaynak"      : "WhatsApp-Çoklu",
+                "Gorsel_B64"  : "",
+            }
+            data["expenses"].append(new_expense)
+            data["duplicate_hashes"].append(img_hash)
+            data.setdefault("fis_sayaci", {})[user_name] = data["fis_sayaci"].get(user_name, 0) + 1
+            add_xp(user_name, 50, f"Çoklu fiş #{i+1}", data=data)
+
+            risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
+            sonuclar.append(
+                f"✅ *Fiş {i+1}:* {fis.get('firma','?')} — {tutar_try:,.0f}₺  {risk_emoji}"
+            )
+        except Exception as e:
+            print(f"Çoklu fiş {i} hatası: {e}", flush=True)
+            sonuclar.append(f"❌ Fiş {i+1}: Okunamadı")
+
+    save_data(data)
+
+    toplam_tutar = sum(
+        e["Tutar"] for e in data["expenses"]
+        if e.get("Kaynak") == "WhatsApp-Çoklu"
+        and e.get("Yukleme_Zamani", "").startswith(datetime.now().strftime("%Y-%m-%d"))
+        and e["Kullanıcı"] == user_name
+    )
+
+    return (
+        f"📦 *{num_media} Fiş İşlendi*\n"
+        f"{'─'*22}\n"
+        + "\n".join(sonuclar) +
+        f"\n\n💰 Bugün eklenen: *{toplam_tutar:,.0f}₺*\n"
+        f"📨 Tümü onay kuyruğuna gönderildi."
+    )
+
+
+# ─────────────────────────────────────────────
 #  ANA WEBHOOK
 # ─────────────────────────────────────────────
 @app.route("/whatsapp", methods=['POST'])
@@ -594,6 +827,11 @@ def whatsapp_webhook():
     incoming_msg  = request.values.get('Body', '').strip()
     sender_phone  = request.values.get('From', '')
     num_media     = int(request.values.get('NumMedia', 0))
+    # WhatsApp konum mesajı: Latitude & Longitude parametreleri gelir
+    wa_lat        = request.values.get('Latitude', '')
+    wa_lon        = request.values.get('Longitude', '')
+    is_location   = bool(wa_lat and wa_lon)
+
     user_info     = PHONE_DIRECTORY.get(sender_phone, {"ad": "Bilinmeyen", "rol": "—", "limit": 0, "emoji": "👤", "yetki": "user"})
     user_name     = user_info["ad"]
     is_admin      = user_info.get("yetki") == "admin"
@@ -601,7 +839,40 @@ def whatsapp_webhook():
     resp = MessagingResponse()
     msg  = resp.message()
     data = load_data()
+    # user_states kısa yolu (karakter modu, AI chat, konum bekleme dahil)
+    data.setdefault("user_states", {})
+    us = data["user_states"].setdefault(user_name, {})
     mesaj_lower = incoming_msg.lower()
+
+    # ══════════════════════════════════════════
+    # 📍 KONUM MESAJI — fiş'e otomatik bağla
+    # ══════════════════════════════════════════
+    if is_location:
+        try:
+            lat = float(wa_lat)
+            lon = float(wa_lon)
+            yanit = konum_isle(lat, lon, user_name, data)
+            us.pop(KONUM_BEKLE_FLAG, None)
+            save_data(data)
+        except Exception as _ke:
+            yanit = f"📍 Konum alındı ama işlenemedi: {_ke}"
+        msg.body(yanit)
+        return str(resp)
+
+    # ══════════════════════════════════════════
+    # 🤖 KONUŞMALI AI MODU — aktifse yönlendir
+    # ══════════════════════════════════════════
+    if us.get(AI_CHAT_FLAG) and not num_media:
+        if mesaj_lower in AI_CHAT_EXIT:
+            us.pop(AI_CHAT_FLAG, None)
+            us.pop(AI_CHAT_HISTORY, None)
+            save_data(data)
+            msg.body("👋 Sohbet modu kapatıldı. İstediğin zaman tekrar *sohbet* yaz!")
+            return str(resp)
+        yanit = konusmali_ai_yanit(user_name, incoming_msg, data, us)
+        save_data(data)
+        msg.body(f"🤖 {yanit}")
+        return str(resp)
 
     # ── KOMUTLAR ────────────────────────────────────────────────
 
@@ -616,7 +887,11 @@ def whatsapp_webhook():
             f"{user_info['emoji']} {user_name} | {yetki_str} | {seviye}\n"
             f"🏅 Rozetler: {rozet_str}\n"
             f"{'─'*28}\n"
-            f"📷 Fiş fotoğrafı → AI analiz\n"
+            f"📷 Fiş fotoğrafı gönder → AI analiz\n"
+            f"📦 *Birden fazla fotoğraf* → Çoklu fiş işle\n"
+            f"📍 Konum pini gönder → Son fişe bağla\n"
+            f"🤖 *sohbet* → Kişisel AI asistanınla konuş\n"
+            f"{'─'*28}\n"
             f"📊 *özet* → Aylık özet\n"
             f"🏆 *sıralama* → Ekip yarışması\n"
             f"🔮 *kehane* → Bütçe kehaneti\n"
@@ -739,6 +1014,37 @@ def whatsapp_webhook():
         msg.body(f"🧠 *AI Yanıtı:*\n{yanit}")
         return str(resp)
 
+    # ── SOHBET MODU BAŞLAT
+    if mesaj_lower in AI_CHAT_TRIGGER:
+        us[AI_CHAT_FLAG] = True
+        us[AI_CHAT_HISTORY] = []
+        save_data(data)
+        msg.body(
+            f"🤖 *Stinga AI Sohbet Modu Aktif!*\n"
+            f"{'─'*28}\n"
+            f"Harcamaların hakkında her şeyi sorabilirsin.\n"
+            f"Bütçe tavsiyesi, tasarruf ipuçları, analiz...\n\n"
+            f"_Çıkmak için: çıkış_"
+        )
+        return str(resp)
+
+    # ── KONUM BEKLEME MODUNU AKTİFLEŞTİR (manuel tetikleme)
+    if mesaj_lower in ["konum", "konum ekle", "📍"]:
+        # Son fişi bul
+        son_fisler = [e for e in data["expenses"] if e["Kullanıcı"] == user_name and not e.get("Konum")]
+        if not son_fisler:
+            msg.body("📍 Konum eklenecek bekleyen fiş yok.")
+        else:
+            son = son_fisler[-1]
+            us[KONUM_BEKLE_FLAG] = True
+            save_data(data)
+            msg.body(
+                f"📍 *Konum Bağlama*\n"
+                f"Son fişin: *{son.get('Firma','?')}* — {son.get('Tutar',0):,.0f}₺\n\n"
+                f"WhatsApp'tan konum pini gönder → fişe otomatik eklenecek! 🗺️"
+            )
+        return str(resp)
+
     # ARAMA
     if mesaj_lower.startswith("ara "):
         kelime  = incoming_msg[4:].strip().lower()
@@ -754,6 +1060,27 @@ def whatsapp_webhook():
 
     # ── FİŞ ANALİZİ ─────────────────────────────────────────────
     if num_media > 0:
+        # ── ÇOKLU FİŞ: 2+ görsel gönderilmişse toplu işle ──────────
+        if num_media >= 2:
+            def coklu_gonder():
+                _data = load_data()
+                _data.setdefault("user_states", {}).setdefault(user_name, {})
+                yanit = coklu_fis_isle(sender_phone, user_name, user_info, num_media, _data)
+                twilio_client.messages.create(
+                    body=yanit,
+                    from_="whatsapp:+14155238886",
+                    to=sender_phone
+                )
+            import threading as _t2
+            _t2.Thread(target=coklu_gonder, daemon=True).start()
+            msg.body(
+                f"📦 *{num_media} fiş fotoğrafı alındı!*\n"
+                f"⚙️ Tümü paralel olarak işleniyor...\n"
+                f"Sonuçlar birkaç saniye içinde gelecek. ⌛"
+            )
+            return str(resp)
+
+        # ── TEKİL FİŞ ───────────────────────────────────────────────
         media_url = request.values.get('MediaUrl0')
 
         def analiz_et_gonder():
@@ -933,6 +1260,10 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         "Kaynak"             : "WhatsApp",
                         "Dosya_Yolu"         : "",
                         "Gorsel_B64"         : gorsel_data_uri,
+                        "Konum"              : "",    # 📍 konum piniyle doldurulur
+                        "Konum_Lat"          : None,
+                        "Konum_Lon"          : None,
+                        "Sehir"              : "",
                     }
 
                     # ── Firma+Tutar+Tarih bazlı mükerrer fiş kontrolü (AI sonrası, kayıttan önce)
@@ -1076,6 +1407,7 @@ Sadece yorumu yaz, başka hiçbir şey ekleme."""
                         + sahte_str
                         + anomali_str
                         + f"\n\n📨 Yönetici onayından sonra bildirim alacaksınız."
+                        + f"\n📍 Konum eklemek için konum pini gönder!"
                         + f"\n🔖 `{new_expense['ID']}`"
                     )
                     twilio_client.messages.create(
@@ -1107,8 +1439,9 @@ Sadece yorumu yaz, başka hiçbir şey ekleme."""
         t.start()
         beklemeler = [
 
-            "📡 *STİNGA YAPAY ZEKA* yüklemiş olduğunuz fişi, dijital veri merkezine gönderdi. Analiz için lütfen bekleyiniz!⏳",
-            
+            "📡 **STİNGA YAPAY ZEKA** yüklemiş olduğunuz fişi, dijital veri merkezine gönderdi. Analiz için lütfen bekleyin.⌛",
+            "🏢 **STINGA YAPAY ZEKA** arşivlere daldı — fişiniz dijital dünyaya aktarılıyor, sonuçlar yükleniyor. Gözünü ekrandan ayırma!⌛",
+            "🛰️ **STINGA YAPAY ZEKA** GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz.🚩",
                     ]
         msg.body(random.choice(beklemeler))
         return str(resp)
