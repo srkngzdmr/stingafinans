@@ -2547,16 +2547,8 @@ tick();setInterval(tick,1000);
         total_pending  = _kpi_df[_kpi_df['Durum']=='Onay Bekliyor']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         crit_risks     = len(_kpi_df[_kpi_df['Risk_Skoru'] > 70]) if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
         # Kasa bakiyesi: avans - onaylı harcırah/nakit harcamalar
-        my_wallet_raw  = data_store.get('wallets',{}).get(user_name, 0)
-        _harcirah_odeme = {'harcirah','nakit','nakit/harcirah','kredi_karti','kredi kartı'}
-        my_harcirah_harcama = sum(
-            float(e.get('Tutar', 0))
-            for e in data_store.get('expenses', [])
-            if str(e.get('Kullanıcı', '')) == user_name
-            and e.get('Durum') == 'Onaylandı'
-            and str(e.get('Odeme_Turu', '')).lower() in _harcirah_odeme
-        )
-        my_wallet = max(0.0, my_wallet_raw - my_harcirah_harcama)
+        # Kasa: API wallets degerini direkt kullan (Railway net tutari tutuyor)
+        my_wallet = data_store.get("wallets", {}).get(user_name, 0)
         total_tx       = len(_kpi_df) if not _kpi_df.empty else 0
         avg_risk       = _kpi_df['Risk_Skoru'].mean() if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
         
