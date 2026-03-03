@@ -3551,14 +3551,43 @@ tick();setInterval(tick,1000);
             
             if st.button("🔍 Kapsamlı AI Denetimi Başlat"):
                 with st.spinner("Gemini AI tüm verileri tarıyor..."):
-                    prompt = f"""Sen bir adli mali denetçisin. Bu harcama verilerini incele ve şüpheli durumları rapor et:
-                    {df.to_dict(orient='records')}
-                    
-                    Türkçe olarak şunu belirt:
-                    1. En riskli 3 işlem ve neden
-                    2. Tespit ettiğin olağandışı patternler  
-                    3. Önerilen aksiyonlar
-                    Kısa ve net ol."""
+                    # Token taşmasını önlemek için özet istatistikler gönder
+                    _df_s = df.copy()
+                    _tutar_col = next((c for c in ["Tutar","tutar","Amount","amount"] if c in _df_s.columns), None)
+                    _kat_col   = next((c for c in ["Kategori","kategori","Category"] if c in _df_s.columns), None)
+                    _kul_col   = next((c for c in ["Kullanici","kullanici","Kullanıcı","User","user_name"] if c in _df_s.columns), None)
+                    _tip_col   = next((c for c in ["Odeme_Tipi","odeme_tipi","Ödeme Tipi"] if c in _df_s.columns), None)
+                    _stat_col  = next((c for c in ["Durum","durum","Status"] if c in _df_s.columns), None)
+
+                    ozet_satirlar = []
+                    ozet_satirlar.append(f"Toplam fiş sayısı: {len(_df_s)}")
+                    if _tutar_col:
+                        ozet_satirlar.append(f"Toplam tutar: {_df_s[_tutar_col].sum():,.0f} ₺")
+                        ozet_satirlar.append(f"Ortalama tutar: {_df_s[_tutar_col].mean():,.0f} ₺")
+                        ozet_satirlar.append(f"Maks tutar: {_df_s[_tutar_col].max():,.0f} ₺")
+                        # En yüksek 10 işlem
+                        top10 = _df_s.nlargest(10, _tutar_col)[[c for c in [_tutar_col, _kat_col, _kul_col, _tip_col, _stat_col] if c]].to_dict(orient="records")
+                        ozet_satirlar.append(f"En yüksek 10 işlem: {top10}")
+                    if _kat_col and _tutar_col:
+                        kat_ozet = _df_s.groupby(_kat_col)[_tutar_col].agg(["sum","count","mean"]).round(0).to_dict()
+                        ozet_satirlar.append(f"Kategori bazlı özet: {kat_ozet}")
+                    if _kul_col and _tutar_col:
+                        kul_ozet = _df_s.groupby(_kul_col)[_tutar_col].agg(["sum","count","mean"]).round(0).to_dict()
+                        ozet_satirlar.append(f"Kullanıcı bazlı özet: {kul_ozet}")
+                    if _stat_col:
+                        ozet_satirlar.append(f"Durum dağılımı: {_df_s[_stat_col].value_counts().to_dict()}")
+
+                    veri_ozeti = "\n".join(ozet_satirlar)
+
+                    prompt = f"""Sen bir adli mali denetçisin. Aşağıdaki harcama istatistiklerini incele ve şüpheli durumları rapor et:
+
+{veri_ozeti}
+
+Türkçe olarak şunu belirt:
+1. En riskli 3 işlem veya pattern ve nedeni
+2. Tespit ettiğin olağandışı durumlar
+3. Önerilen aksiyonlar
+Kısa ve net ol (max 300 kelime)."""
                     
                     try:
                         response = model.generate_content(prompt)
