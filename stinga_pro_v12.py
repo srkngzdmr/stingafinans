@@ -934,8 +934,19 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         # ── BAŞLIK ──
         hdr_items = []
         if logo_path and RLImage:
-            try: hdr_items.append(RLImage(logo_path, width=2*cm, height=2*cm))
-            except: pass
+            try:
+                from PIL import Image as _PI
+                import numpy as _np, io as _bio
+                _img = _PI.open(logo_path).convert('RGBA')
+                _d = _np.array(_img)
+                _d[(_d[:,:,0]<50)&(_d[:,:,1]<50)&(_d[:,:,2]<50), 3] = 0
+                _img = _PI.fromarray(_d, 'RGBA')
+                _w, _h = _img.size; _s = min(_w,_h)
+                _img = _img.crop(((_w-_s)//2,(_h-_s)//2,(_w+_s)//2,(_h+_s)//2)).resize((400,400), _PI.LANCZOS)
+                _lb = _bio.BytesIO(); _img.save(_lb, format='PNG'); _lb.seek(0)
+                hdr_items.append(RLImage(_lb, width=2.8*cm, height=2.8*cm))
+            except:
+                pass
         hdr_items += [
             Spacer(1,0.15*cm),
             _ph("STİNGA ENERJİ A.Ş.", ST["title"]),
