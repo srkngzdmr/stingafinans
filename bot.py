@@ -36,8 +36,14 @@ TWILIO_SID   = os.getenv("TWILIO_SID")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
 twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
 
-# DB_FILE mutlak yol — Railway'de çalışma dizini kaymaları için
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stinga_v13_db.json")
+# DB_FILE — Railway Volume öncelikli, yoksa script dizini
+# Railway'de Volume ekle: Mount Path = /data
+_DATA_DIR = os.environ.get("DATA_DIR", "")
+if not _DATA_DIR:
+    # Railway volume varsayılan mount noktası
+    _DATA_DIR = "/data" if os.path.isdir("/data") else os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(_DATA_DIR, "stinga_v13_db.json")
+print(f"DB yolu: {DB_FILE}", flush=True)
 DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
 
 PHONE_DIRECTORY = {
@@ -150,6 +156,8 @@ _DB_LOCK = _threading.Lock()
 
 def save_data(d: dict):
     """Thread-safe atomik kayıt. Lock + tmp dosya → veri bozulmasını önler."""
+    # Klasör yoksa oluştur (Railway Volume mount edilmemiş olabilir)
+    os.makedirs(os.path.dirname(DB_FILE) or ".", exist_ok=True)
     tmp = DB_FILE + ".tmp"
     with _DB_LOCK:
         try:
@@ -1038,17 +1046,17 @@ Sadece yorumu yaz, başka hiçbir şey ekleme."""
         t.start()
         beklemeler = [
 
-            "🛰️ *STINGA YAPAY ZEKA GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz.",
-            "🔍 *STINGA YAPAY ZEKA adli tıp modunda — Parmak izleri, mürekkep yoğunluğu ve yazı tipi... Hiçbir detay radardan kaçamaz!",
-            "🗺️ STINGA YAPAY ZEKA konum araştırmasında — Bu fiş nerede basıldı, sen şu an neredesin? Çapraz sorgu devrede.",
-            "🏢 *STINGA YAPAY ZEKA arşivlere daldı — fişiniz dijital dünyaya aktarılıyor, sonuçlar yükleniyor. Gözünü ekrandan ayırma!",
-            "🧩 *STINGA YAPAY ZEKA parçaları birleştiriyor — fişinizdeki tüm detaylar yerli yerine oturuyor. Geliyor gelmekte olan..",
-            "🛰️ *STINGA YAPAY ZEKA GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz.",
-            "🔍 *STINGA YAPAY ZEKA* devreye girdi — fiş mercek altına alındı, sonuç birazdan geliyor...",
-            "🧠 *STINGA YAPAY ZEKA* fişinizi inceliyor — rakamlar, tarih, KDV... hiçbir şey kaçmaz.Az sabret ama ;) ",
-            "⚡ *STINGA YAPAY ZEKA* analiz başladı — biraz sabredin, her kuruşu tartyoruz;)",
-            "🕵️ *STINGA YAPAY ZEKA* sahneye çıktı — fişiniz şu an sorgulanıyor, sonuç birazdan geliyor.",
-            "📡 *STINGA YAPAY ZEKA* bağlandı — fiş taranıyor, az sonra değerlendirme hazır.",
+            "🛰️ STINGA YAPAY ZEKA GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz.",
+            "🔍 STINGA YAPAY ZEKA adli tıp modunda — Parmak izleri, mürekkep yoğunluğu ve yazı tipi... Hiçbir detay radardan kaçamaz!",
+            "🗺️ STINGA YAPAY ZEKA konum araştırmasında — Bu fiş nerede basıldı, sen şu an neredesin?.",
+            "🏢 STINGA YAPAY ZEKA arşivlere daldı — fişiniz dijital dünyaya aktarılıyor, sonuçlar yükleniyor. Gözünü ekrandan ayırma!",
+            "🧩 STINGA YAPAY ZEKA parçaları birleştiriyor — fişinizdeki tüm detaylar yerli yerine oturuyor. Geliyor gelmekte olan..",
+            "🛰️ STINGA YAPAY ZEKA GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz.",
+            "🔍 STINGA YAPAY ZEKA* devreye girdi — fiş mercek altına alındı, sonuç birazdan geliyor...",
+            "🧠 STINGA YAPAY ZEKA* fişinizi inceliyor — rakamlar, tarih, KDV... hiçbir şey kaçmaz.Az sabret ama ;) ",
+            "⚡ STINGA YAPAY ZEKA* analiz başladı — biraz sabredin, her kuruşu tartıyoruz;)",
+            "🕵️ STINGA YAPAY ZEKA* sahneye çıktı — fişiniz şu an sorgulanıyor, sonuç birazdan geliyor.",
+            "📡 STINGA YAPAY ZEKA* bağlandı — fiş taranıyor, az sonra değerlendirme hazır.",
         ]
         msg.body(random.choice(beklemeler))
         return str(resp)
@@ -1149,7 +1157,40 @@ def add_expense_endpoint():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/all-data", methods=['GET'])
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    """Railway health check + DB durumu."""
+    exists = os.path.exists(DB_FILE)
+    size   = os.path.getsize(DB_FILE) if exists else 0
+    return jsonify({
+        "status": "ok",
+        "db_file": DB_FILE,
+        "db_exists": exists,
+        "db_size_bytes": size,
+        "db_dir_writable": os.access(os.path.dirname(DB_FILE) or ".", os.W_OK),
+    }), 200
+
+@app.route("/backup-db", methods=["GET"])
+def backup_db():
+    """DB JSON dosyasını indir (yedek almak için)."""
+    if os.path.exists(DB_FILE):
+        from flask import send_file
+        return send_file(DB_FILE, as_attachment=True, download_name="stinga_backup.json")
+    return jsonify({"error": "DB bulunamadı"}), 404
+
+@app.route("/restore-db", methods=["POST"])
+def restore_db():
+    """JSON body olarak gönderilen veriyi DB'ye yaz (restore için)."""
+    try:
+        data = request.get_json(force=True)
+        if not data or "expenses" not in data:
+            return jsonify({"error": "Geçersiz veri — 'expenses' alanı eksik"}), 400
+        save_data(data)
+        return jsonify({"ok": True, "expenses": len(data.get("expenses", []))}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/all-data", methods=["GET"])
 def all_data_endpoint():
     """Streamlit için tam veri seti: fişler, bütçeler, rozetler, anomaliler."""
     data = load_data()
