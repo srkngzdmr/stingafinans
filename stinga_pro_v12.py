@@ -1693,6 +1693,93 @@ else:
 .SGNXTOAST.warning{{border-left-color:#d97706;}}.SGNXTOAST.error{{border-left-color:#dc2626;}}
 @keyframes SGNXTI{{from{{transform:translateX(110%);opacity:0}}to{{transform:translateX(0);opacity:1}}}}
 @keyframes SGNXTO{{to{{transform:translateX(110%);opacity:0}}}}
+
+/* ── ROBOT DUYGU ANİMASYONLARI ── */
+/* SEVİNÇ: kollar yukarı + zıplama */
+#SGNX.joy{{animation:SGNXJOY .5s ease-out forwards!important;}}
+@keyframes SGNXJOY{{
+  0%  {{transform:translateY(0) scale(1);}}
+  20% {{transform:translateY(-22px) scale(1.08);}}
+  40% {{transform:translateY(-32px) scale(1.1);}}
+  60% {{transform:translateY(-18px) scale(1.06);}}
+  80% {{transform:translateY(-8px) scale(1.02);}}
+  100%{{transform:translateY(0) scale(1);}}
+}}
+#SGNX.joy .SGNXARML{{animation:SGNXARML_JOY .6s ease-out forwards!important;}}
+#SGNX.joy .SGNXARMR{{animation:SGNXARMR_JOY .6s ease-out forwards!important;}}
+@keyframes SGNXARML_JOY{{
+  0%  {{transform:rotate(-6deg);}}
+  30% {{transform:rotate(-150deg);}}
+  60% {{transform:rotate(-140deg);}}
+  80% {{transform:rotate(-145deg);}}
+  100%{{transform:rotate(-6deg);}}
+}}
+@keyframes SGNXARMR_JOY{{
+  0%  {{transform:rotate(6deg);}}
+  30% {{transform:rotate(150deg);}}
+  60% {{transform:rotate(140deg);}}
+  80% {{transform:rotate(145deg);}}
+  100%{{transform:rotate(6deg);}}
+}}
+/* Sevinç gözleri: ^^ */
+#SGNX.joy .SGNXIRIS{{background:radial-gradient(circle at 50% 80%,#00e896 0%,#11855B 60%,#063d25 100%)!important;}}
+#SGNX.joy .SGNXEYE{{animation:SGNXEYEJOY .6s ease forwards!important;transform-origin:center bottom!important;}}
+@keyframes SGNXEYEJOY{{
+  0%,100%{{transform:scaleY(1);}}
+  30%,70%{{transform:scaleY(.15) translateY(4px);}}
+}}
+
+/* ÜZÜNTÜ: sarkmak + sallantı */
+#SGNX.sad{{animation:SGNXSAD .8s ease-in-out forwards!important;}}
+@keyframes SGNXSAD{{
+  0%  {{transform:translateY(0) rotate(0);}}
+  20% {{transform:translateY(3px) rotate(-4deg);}}
+  40% {{transform:translateY(5px) rotate(4deg);}}
+  60% {{transform:translateY(3px) rotate(-3deg);}}
+  80% {{transform:translateY(4px) rotate(2deg);}}
+  100%{{transform:translateY(0) rotate(0);}}
+}}
+#SGNX.sad .SGNXARML{{animation:SGNXARML_SAD .8s ease-in-out forwards!important;}}
+#SGNX.sad .SGNXARMR{{animation:SGNXARMR_SAD .8s ease-in-out forwards!important;}}
+@keyframes SGNXARML_SAD{{
+  0%,100%{{transform:rotate(-6deg);}}
+  50%{{transform:rotate(40deg);}}
+}}
+@keyframes SGNXARMR_SAD{{
+  0%,100%{{transform:rotate(6deg);}}
+  50%{{transform:rotate(-40deg);}}
+}}
+/* Üzüntü gözleri: T_T  */
+#SGNX.sad .SGNXIRIS{{background:radial-gradient(circle at 50% 70%,#5a8fff 0%,#2F3C6E 60%,#1a2540 100%)!important;}}
+/* Göz yaşı damlaları */
+#SGNX.sad .SGNXEYE::before{{
+  content:'';position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);
+  width:5px;height:10px;
+  background:linear-gradient(180deg,rgba(100,160,255,.9),rgba(100,160,255,0));
+  border-radius:0 0 4px 4px;
+  animation:SGNXTEAR .5s ease-in .2s infinite;
+}}
+@keyframes SGNXTEAR{{
+  0%{{height:0;opacity:.9;transform:translateX(-50%) translateY(0);}}
+  100%{{height:14px;opacity:0;transform:translateX(-50%) translateY(8px);}}
+}}
+/* Anten üzgün renk */
+#SGNX.sad #SGNXANTB{{background:#5a8fff!important;box-shadow:0 0 8px #5a8fff!important;animation:none!important;}}
+
+/* Sevinç konfeti overlay */
+#SGNXJOYOVERLAY{{
+  position:fixed;inset:0;z-index:2147483640;pointer-events:none;
+  display:flex;align-items:center;justify-content:center;
+  animation:SGNXOVF .4s ease forwards;
+}}
+@keyframes SGNXOVF{{from{{background:rgba(0,232,150,.18)}}to{{background:rgba(0,0,0,0)}}}}
+/* Ret overlay */
+#SGNXSADOVERLAY{{
+  position:fixed;inset:0;z-index:2147483640;pointer-events:none;
+  display:flex;align-items:center;justify-content:center;
+  animation:SGNXOVFS .4s ease forwards;
+}}
+@keyframes SGNXOVFS{{from{{background:rgba(220,38,38,.12)}}to{{background:rgba(0,0,0,0)}}}}
 </style>
 <div id="SGNXBUB"><span class="badge">⚡ STINGA AI</span><span id="SGNXBT">Merhaba!</span></div>
 <div id="SGNXTC"></div>
@@ -1750,6 +1837,74 @@ else:
     el.onclick=function(){{el.remove();}};c.appendChild(el);
     setTimeout(function(){{if(el.parentNode)el.remove();}},5000);
   }};
+
+  // ── ROBOT SEVİNÇ (onay) ───────────────────────────────────
+  window._sgRobotJoy=function(){{
+    var r=document.getElementById('SGNX');
+    var bt=document.getElementById('SGNXBT'),bub=document.getElementById('SGNXBUB');
+    if(!r)return;
+    r.classList.remove('sad');
+    r.classList.add('joy');
+    // Konfeti overlay
+    var ov=document.createElement('div');ov.id='SGNXJOYOVERLAY';
+    document.body.appendChild(ov);
+    // Canvas konfeti
+    var cv=document.createElement('canvas');
+    cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2147483641;';
+    cv.width=window.innerWidth;cv.height=window.innerHeight;
+    document.body.appendChild(cv);
+    var ctx=cv.getContext('2d');
+    var particles=[];
+    for(var i=0;i<140;i++){{
+      particles.push({{
+        x:Math.random()*cv.width,y:-20+Math.random()*-80,
+        vx:(Math.random()-.5)*8,vy:Math.random()*5+3,
+        r:Math.random()*7+3,angle:Math.random()*360,av:(Math.random()-.5)*10,
+        color:['#00e896','#17a870','#2F3C6E','#f0a500','#ffffff','#3d4e8a'][Math.floor(Math.random()*6)]
+      }});
+    }}
+    var fr=0;
+    function drawC(){{
+      ctx.clearRect(0,0,cv.width,cv.height);
+      particles.forEach(function(p){{
+        p.x+=p.vx;p.y+=p.vy;p.angle+=p.av;p.vy+=.1;
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle*Math.PI/180);
+        ctx.fillStyle=p.color;ctx.globalAlpha=Math.max(0,1-fr/100);
+        ctx.fillRect(-p.r/2,-p.r/2,p.r,p.r*1.7);ctx.restore();
+      }});
+      fr++;if(fr<110)requestAnimationFrame(drawC);else cv.remove();
+    }}
+    drawC();
+    // Balon mesajı
+    if(bt)bt.textContent='🎉 ONAYLANDI! Harika iş!';
+    if(bub){{bub.classList.add('on');}}
+    setTimeout(function(){{
+      r.classList.remove('joy');
+      if(ov.parentNode)ov.remove();
+      if(bub)bub.classList.remove('on');
+    }},2200);
+  }};
+
+  // ── ROBOT ÜZÜNTÜ (ret) ───────────────────────────────────
+  window._sgRobotSad=function(){{
+    var r=document.getElementById('SGNX');
+    var bt=document.getElementById('SGNXBT'),bub=document.getElementById('SGNXBUB');
+    if(!r)return;
+    r.classList.remove('joy');
+    r.classList.add('sad');
+    // Kırmızı overlay
+    var ov=document.createElement('div');ov.id='SGNXSADOVERLAY';
+    document.body.appendChild(ov);
+    // Balon mesajı
+    if(bt)bt.textContent='😢 Fiş reddedildi...';
+    if(bub){{bub.classList.add('on');}}
+    setTimeout(function(){{
+      r.classList.remove('sad');
+      if(ov.parentNode)ov.remove();
+      if(bub)bub.classList.remove('on');
+    }},2500);
+  }};
+
 }})();
 </script>
 """, unsafe_allow_html=True)
@@ -2346,6 +2501,7 @@ else:
 
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"omcent_on_{row['ID']}", use_container_width=True):
+                                st.markdown('<script>if(window._sgRobotJoy)window._sgRobotJoy();</script>', unsafe_allow_html=True)
                                 # Tam ekran kutlama animasyonu göster
                                 st.markdown("""
 <div id="sg-approve-overlay">
@@ -2396,6 +2552,7 @@ else:
                                         st.error("API hatası, tekrar deneyin")
 
                             if btn2.button("❌ Reddet", key=f"omcent_ret_{row['ID']}", use_container_width=True):
+                                st.markdown('<script>if(window._sgRobotSad)window._sgRobotSad();</script>', unsafe_allow_html=True)
                                 with st.spinner("Reddediliyor..."):
                                     if api_approve(str(row['ID']), "reject", user_name):
                                         st.warning("❌ Reddedildi!")
@@ -2577,6 +2734,7 @@ else:
                             
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"on_{row['ID']}", use_container_width=True):
+                                st.markdown('<script>if(window._sgRobotJoy)window._sgRobotJoy();</script>', unsafe_allow_html=True)
                                 st.markdown("""
 <div id="sg-approve-overlay">
   <canvas id="sg-confetti-cv" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:100000;"></canvas>
@@ -2605,6 +2763,7 @@ else:
                                         st.rerun()
                             
                             if btn2.button("❌ Reddet", key=f"ret_{row['ID']}", use_container_width=True):
+                                st.markdown('<script>if(window._sgRobotSad)window._sgRobotSad();</script>', unsafe_allow_html=True)
                                 with st.spinner("Reddediliyor..."):
                                     if api_approve(str(row['ID']), "reject", user_name):
                                         st.warning("❌ Reddedildi!")
