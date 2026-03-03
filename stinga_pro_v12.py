@@ -2227,10 +2227,8 @@ else:
     _stc.html(f"""<!DOCTYPE html><html><head></head><body><script>
 (function(){{
   var tips={_rj.dumps(_rtips)},ti=0,cRX=0,cRY=0,cEX=0,cEY=0,mx=window.innerWidth/2,my=window.innerHeight/2;
-  // Bildirim badge
+  // Bildirim badge - sidebar markdown tarafından kontrol edilir
   var _nb=document.getElementById("SGNXNOTIF-BADGE");
-  var _nc={notif_count};
-  if(_nb){{_nb.textContent=_nc;_nb.style.display=_nc>0?"flex":"none";}}
   var head=document.getElementById('SGNXH'),iL=document.getElementById('SGNXIL'),iR=document.getElementById('SGNXIR'),
       bub=document.getElementById('SGNXBUB'),bt=document.getElementById('SGNXBT'),wrap=document.getElementById('SGNX');
   function tick(){{
@@ -2408,6 +2406,22 @@ else:
         """, unsafe_allow_html=True)
 
         # ── 3. NOTIFICATION
+        # Robot badge'ini güncelle (notif_count burada hazır)
+        st.markdown(f"""
+        <script>
+        (function(){{
+          var nb=window.parent.document.getElementById('SGNXNOTIF-BADGE');
+          if(!nb){{
+            // iframe içinde ara
+            var frames=window.parent.document.querySelectorAll('iframe');
+            frames.forEach(function(f){{
+              try{{var el=f.contentDocument.getElementById('SGNXNOTIF-BADGE');if(el)nb=el;}}catch(e){{}}
+            }});
+          }}
+          if(nb){{nb.textContent='{notif_count}';nb.style.display={notif_count}>0?'flex':'none';}}
+        }})();
+        </script>
+        """, unsafe_allow_html=True)
         if notif_count > 0:
             st.markdown(f"""
             <div class="snotif">
