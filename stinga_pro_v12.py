@@ -775,22 +775,37 @@ def img_to_b64(img_path):
             return base64.b64encode(f.read()).decode()
     return ""
 
-# ─── TÜRKÇE FONT KAYDI (DejaVuSans — tam Unicode desteği) ─────
+# ─── TÜRKÇE FONT KAYDI ────────────────────────────────────────
+# Önce sistemde arar, yoksa otomatik indirir (Railway uyumlu)
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-_FONT_DIRS = [
-    "/usr/share/fonts/truetype/dejavu",
-    "/usr/share/fonts/dejavu",
-    "/app/fonts",
-    os.path.dirname(os.path.abspath(__file__)),
-    ".",
-]
-def _reg_font(name, filename):
-    for d in _FONT_DIRS:
+import urllib.request
+
+_FONT_CACHE = os.path.join(os.path.expanduser("~"), ".stinga_fonts")
+os.makedirs(_FONT_CACHE, exist_ok=True)
+
+_DEJAVU_URLS = {
+    "DejaVuSans.ttf":            "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
+    "DejaVuSans-Bold.ttf":       "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf",
+    "DejaVuSans-Oblique.ttf":    "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Oblique.ttf",
+    "DejaVuSans-BoldOblique.ttf":"https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-BoldOblique.ttf",
+}
+
+def _find_or_dl(filename):
+    for d in ["/usr/share/fonts/truetype/dejavu", "/usr/share/fonts/dejavu", _FONT_CACHE, "."]:
         p = os.path.join(d, filename)
-        if os.path.exists(p):
-            try: pdfmetrics.registerFont(TTFont(name, p)); return True
-            except: pass
+        if os.path.exists(p): return p
+    dest = os.path.join(_FONT_CACHE, filename)
+    if not os.path.exists(dest):
+        try: urllib.request.urlretrieve(_DEJAVU_URLS[filename], dest)
+        except: return None
+    return dest if os.path.exists(dest) else None
+
+def _reg_font(name, filename):
+    p = _find_or_dl(filename)
+    if p:
+        try: pdfmetrics.registerFont(TTFont(name, p)); return True
+        except: pass
     return False
 
 _fonts_ok = (
@@ -799,14 +814,13 @@ _fonts_ok = (
     _reg_font("DJ-I",  "DejaVuSans-Oblique.ttf") and
     _reg_font("DJ-BI", "DejaVuSans-BoldOblique.ttf")
 )
-# Font mapping: DejaVu yoksa Helvetica
 _FN  = "DJ"   if _fonts_ok else "Helvetica"
 _FNB = "DJ-B" if _fonts_ok else "Helvetica-Bold"
 _FNI = "DJ-I" if _fonts_ok else "Helvetica-Oblique"
 
-# Türkçe karakter güvenlik ağı — DejaVu yoksa ASCII'ye çevir
 _TR_MAP = str.maketrans("ıİğĞüÜşŞöÖçÇ", "iIgGuUsSOoCc")
 def _tr(t):
+    """Font varsa Türkçe, yoksa ASCII fallback."""
     if _fonts_ok: return str(t)
     return str(t).translate(_TR_MAP)
 
@@ -2284,7 +2298,11 @@ else:
         level = user_xp // 500 + 1
         xp_progress = (user_xp % 500) / 500
         my_notifs = [n for n in data_store.get("notifications", [])
-                     if (n["user"] == user_name or n["user"] == "Hepsi") and not n.get("read", False)]
+                     if (str(n.get("user","")) == user_name or str(n.get("user","")) == "Hepsi"
+                         or str(n.get("user","")).lower() == user_name.lower()) and not n.get("read", False)]
+        # session_state'teki lokal bildirimleri de ekle
+        local_notifs = st.session_state.get("local_notifications", [])
+        my_notifs = my_notifs + [n for n in local_notifs if not n.get("read", False)]
         notif_count = len(my_notifs)
 
         if not df_full.empty and 'Tutar' in df_full.columns:
