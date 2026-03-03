@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # ╔══════════════════════════════════════════════════════════════╗
-# ║          STINGA PRO v15.0 - ULTRA EDITION                   ║
+# ║          STINGA PRO v17.0 - ULTRA EDITION                   ║
 # ║  Geliştiren: AI ile birlikte - Gemini 2.5 Flash Destekli    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
