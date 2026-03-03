@@ -565,7 +565,7 @@ USERS = {
         "avatar": "👑",
         "title": "Yönetim Kurulu Başkanı",
         "department": "Yönetim Kurulu",
-        "monthly_limit": 0,
+        "monthly_limit": 50000,
         "xp": 0
     },
     "senol": {
@@ -575,7 +575,7 @@ USERS = {
         "avatar": "🏢",
         "title": "Genel Müdür",
         "department": "Genel Müdürlük",
-        "monthly_limit": 0,
+        "monthly_limit": 30000,
         "xp": 0
     },
     "serkan": {
@@ -585,7 +585,7 @@ USERS = {
         "avatar": "📊",
         "title": "İşletme Müdürü",
         "department": "İşletme Müdürlüğü",
-        "monthly_limit": 0,
+        "monthly_limit": 25000,
         "xp": 0
     },
     "okan": {
@@ -595,7 +595,7 @@ USERS = {
         "avatar": "🔧",
         "title": "Saha Personeli",
         "department": "Saha",
-        "monthly_limit": 0,
+        "monthly_limit": 5000,
         "xp": 0
     },
 }
@@ -778,18 +778,11 @@ def get_user_wallet_balance(user_nm: str, data_store: dict) -> float:
             search_names.add(_uinfo.get("name", "").lower().strip())
             search_names.add(_ukey.lower().strip())
 
-    # 1. wallets dict'inde ara
-    wallets = data_store.get("wallets", {})
-    for k, v in wallets.items():
-        if k.lower().strip() in search_names or any(_nm(k, s) for s in search_names):
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                pass
+    # wallets dict görmezden gelinir — herkes sıfır bakiye ile başlar
+    # Sadece gerçek ledger avans transferleri bakiyeyi değiştirir
 
-    # 2. Ledger tabanlı hesapla (tüm varyasyonlarla)
+    # Ledger tabanlı hesapla (tüm varyasyonlarla)
     best = compute_wallet(user_nm, data_store)
-    # Eğer 0 döndüyse diğer isim varyasyonlarıyla da dene
     if best == 0:
         for alt_name in search_names:
             if alt_name != str(user_nm).lower().strip():
