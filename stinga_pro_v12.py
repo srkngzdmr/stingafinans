@@ -1636,7 +1636,7 @@ else:
 
 
     # ── ROBOT: st.markdown + parent window inject ────────────
-    import json as _rj
+    import json as _rj, streamlit.components.v1 as _stc
     _rtips = [
         f"Merhaba {user_name}! Hoş geldin 👋",
         "📑 Yeni fiş yüklemek için Fiş Tarama!",
@@ -1801,7 +1801,8 @@ else:
   </div>
   <div id="SGNXSH"></div>
 </div>
-<script>
+""", unsafe_allow_html=True)
+    _stc.html(f"""<!DOCTYPE html><html><head></head><body><script>
 (function(){{
   var tips={_rj.dumps(_rtips)},ti=0,cRX=0,cRY=0,cEX=0,cEY=0,mx=window.innerWidth/2,my=window.innerHeight/2;
   var head=document.getElementById('SGNXH'),iL=document.getElementById('SGNXIL'),iR=document.getElementById('SGNXIR'),
@@ -1906,8 +1907,7 @@ else:
   }};
 
 }})();
-</script>
-""", unsafe_allow_html=True)
+</script></body></html>""", height=0, scrolling=False)
 
     # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
@@ -2501,7 +2501,24 @@ else:
 
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"omcent_on_{row['ID']}", use_container_width=True):
-                                st.markdown('<script>if(window._sgRobotJoy)window._sgRobotJoy();</script>', unsafe_allow_html=True)
+                                _stc.html('''<script>
+(function(){
+  var pd=window.parent.document;
+  var cv=pd.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2147483641;';
+  cv.width=window.parent.innerWidth;cv.height=window.parent.innerHeight;
+  pd.body.appendChild(cv);
+  var ctx=cv.getContext('2d');
+  var p=[];for(var i=0;i<140;i++)p.push({x:Math.random()*cv.width,y:-20+Math.random()*-80,vx:(Math.random()-.5)*8,vy:Math.random()*5+3,r:Math.random()*7+3,angle:Math.random()*360,av:(Math.random()-.5)*10,color:['#00e896','#17a870','#2F3C6E','#f0a500','#ffffff','#3d4e8a'][Math.floor(Math.random()*6)]});
+  var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/100);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.7);ctx.restore();});fr++;if(fr<110)requestAnimationFrame(draw);else cv.remove();}
+  draw();
+  var r=pd.getElementById('SGNX');
+  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},2200);}
+  var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
+  if(bt)bt.textContent='🎉 ONAYLANDI! Harika!';
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},2500);}
+})();
+</script>''', height=0, scrolling=False)
                                 # Tam ekran kutlama animasyonu göster
                                 st.markdown("""
 <div id="sg-approve-overlay">
@@ -2552,7 +2569,19 @@ else:
                                         st.error("API hatası, tekrar deneyin")
 
                             if btn2.button("❌ Reddet", key=f"omcent_ret_{row['ID']}", use_container_width=True):
-                                st.markdown('<script>if(window._sgRobotSad)window._sgRobotSad();</script>', unsafe_allow_html=True)
+                                _stc.html('''<script>
+(function(){
+  var pd=window.parent.document;
+  var ov=pd.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(220,38,38,.1);z-index:2147483640;pointer-events:none;';
+  pd.body.appendChild(ov);setTimeout(function(){ov.remove();},600);
+  var r=pd.getElementById('SGNX');
+  if(r){r.classList.remove('joy');r.classList.add('sad');setTimeout(function(){r.classList.remove('sad');},2500);}
+  var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
+  if(bt)bt.textContent='😢 Fiş reddedildi...';
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},2800);}
+})();
+</script>''', height=0, scrolling=False)
                                 with st.spinner("Reddediliyor..."):
                                     if api_approve(str(row['ID']), "reject", user_name):
                                         st.warning("❌ Reddedildi!")
@@ -2734,7 +2763,24 @@ else:
                             
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"on_{row['ID']}", use_container_width=True):
-                                st.markdown('<script>if(window._sgRobotJoy)window._sgRobotJoy();</script>', unsafe_allow_html=True)
+                                _stc.html('''<script>
+(function(){
+  var pd=window.parent.document;
+  var cv=pd.createElement('canvas');
+  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2147483641;';
+  cv.width=window.parent.innerWidth;cv.height=window.parent.innerHeight;
+  pd.body.appendChild(cv);
+  var ctx=cv.getContext('2d');
+  var p=[];for(var i=0;i<140;i++)p.push({x:Math.random()*cv.width,y:-20+Math.random()*-80,vx:(Math.random()-.5)*8,vy:Math.random()*5+3,r:Math.random()*7+3,angle:Math.random()*360,av:(Math.random()-.5)*10,color:['#00e896','#17a870','#2F3C6E','#f0a500','#ffffff','#3d4e8a'][Math.floor(Math.random()*6)]});
+  var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/100);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.7);ctx.restore();});fr++;if(fr<110)requestAnimationFrame(draw);else cv.remove();}
+  draw();
+  var r=pd.getElementById('SGNX');
+  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},2200);}
+  var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
+  if(bt)bt.textContent='🎉 ONAYLANDI! Harika!';
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},2500);}
+})();
+</script>''', height=0, scrolling=False)
                                 st.markdown("""
 <div id="sg-approve-overlay">
   <canvas id="sg-confetti-cv" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:100000;"></canvas>
@@ -2763,7 +2809,19 @@ else:
                                         st.rerun()
                             
                             if btn2.button("❌ Reddet", key=f"ret_{row['ID']}", use_container_width=True):
-                                st.markdown('<script>if(window._sgRobotSad)window._sgRobotSad();</script>', unsafe_allow_html=True)
+                                _stc.html('''<script>
+(function(){
+  var pd=window.parent.document;
+  var ov=pd.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(220,38,38,.1);z-index:2147483640;pointer-events:none;';
+  pd.body.appendChild(ov);setTimeout(function(){ov.remove();},600);
+  var r=pd.getElementById('SGNX');
+  if(r){r.classList.remove('joy');r.classList.add('sad');setTimeout(function(){r.classList.remove('sad');},2500);}
+  var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
+  if(bt)bt.textContent='😢 Fiş reddedildi...';
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},2800);}
+})();
+</script>''', height=0, scrolling=False)
                                 with st.spinner("Reddediliyor..."):
                                     if api_approve(str(row['ID']), "reject", user_name):
                                         st.warning("❌ Reddedildi!")
