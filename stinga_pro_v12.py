@@ -1696,7 +1696,7 @@ else:
 
 /* ── ROBOT DUYGU ANİMASYONLARI ── */
 /* SEVİNÇ: kollar yukarı + zıplama */
-#SGNX.joy{{animation:SGNXJOY .5s ease-out forwards!important;}}
+#SGNX.joy{{animation:SGNXJOY .7s ease-out 4 forwards!important;}}
 @keyframes SGNXJOY{{
   0%  {{transform:translateY(0) scale(1);}}
   20% {{transform:translateY(-22px) scale(1.08);}}
@@ -1705,8 +1705,8 @@ else:
   80% {{transform:translateY(-8px) scale(1.02);}}
   100%{{transform:translateY(0) scale(1);}}
 }}
-#SGNX.joy .SGNXARML{{animation:SGNXARML_JOY .6s ease-out forwards!important;}}
-#SGNX.joy .SGNXARMR{{animation:SGNXARMR_JOY .6s ease-out forwards!important;}}
+#SGNX.joy .SGNXARML{{animation:SGNXARML_JOY .7s ease-out 4 forwards!important;}}
+#SGNX.joy .SGNXARMR{{animation:SGNXARMR_JOY .7s ease-out 4 forwards!important;}}
 @keyframes SGNXARML_JOY{{
   0%  {{transform:rotate(-6deg);}}
   30% {{transform:rotate(-150deg);}}
@@ -1723,7 +1723,7 @@ else:
 }}
 /* Sevinç gözleri: ^^ */
 #SGNX.joy .SGNXIRIS{{background:radial-gradient(circle at 50% 80%,#00e896 0%,#11855B 60%,#063d25 100%)!important;}}
-#SGNX.joy .SGNXEYE{{animation:SGNXEYEJOY .6s ease forwards!important;transform-origin:center bottom!important;}}
+#SGNX.joy .SGNXEYE{{animation:SGNXEYEJOY .7s ease 4 forwards!important;transform-origin:center bottom!important;}}
 @keyframes SGNXEYEJOY{{
   0%,100%{{transform:scaleY(1);}}
   30%,70%{{transform:scaleY(.15) translateY(4px);}}
@@ -2510,13 +2510,13 @@ else:
   pd.body.appendChild(cv);
   var ctx=cv.getContext('2d');
   var p=[];for(var i=0;i<140;i++)p.push({x:Math.random()*cv.width,y:-20+Math.random()*-80,vx:(Math.random()-.5)*8,vy:Math.random()*5+3,r:Math.random()*7+3,angle:Math.random()*360,av:(Math.random()-.5)*10,color:['#00e896','#17a870','#2F3C6E','#f0a500','#ffffff','#3d4e8a'][Math.floor(Math.random()*6)]});
-  var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/100);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.7);ctx.restore();});fr++;if(fr<110)requestAnimationFrame(draw);else cv.remove();}
+  var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/100);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.7);ctx.restore();});fr++;if(fr<180)requestAnimationFrame(draw);else cv.remove();}
   draw();
   var r=pd.getElementById('SGNX');
-  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},2200);}
+  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},3000);}
   var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
   if(bt)bt.textContent='🎉 ONAYLANDI! Harika!';
-  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},2500);}
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},3200);}
 })();
 </script>''', height=0, scrolling=False)
                                 # Tam ekran kutlama animasyonu göster
@@ -2772,13 +2772,13 @@ else:
   pd.body.appendChild(cv);
   var ctx=cv.getContext('2d');
   var p=[];for(var i=0;i<140;i++)p.push({x:Math.random()*cv.width,y:-20+Math.random()*-80,vx:(Math.random()-.5)*8,vy:Math.random()*5+3,r:Math.random()*7+3,angle:Math.random()*360,av:(Math.random()-.5)*10,color:['#00e896','#17a870','#2F3C6E','#f0a500','#ffffff','#3d4e8a'][Math.floor(Math.random()*6)]});
-  var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/100);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.7);ctx.restore();});fr++;if(fr<110)requestAnimationFrame(draw);else cv.remove();}
+  var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/100);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.7);ctx.restore();});fr++;if(fr<180)requestAnimationFrame(draw);else cv.remove();}
   draw();
   var r=pd.getElementById('SGNX');
-  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},2200);}
+  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},3000);}
   var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
   if(bt)bt.textContent='🎉 ONAYLANDI! Harika!';
-  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},2500);}
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},3200);}
 })();
 </script>''', height=0, scrolling=False)
                                 st.markdown("""
