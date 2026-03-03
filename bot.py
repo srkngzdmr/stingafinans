@@ -1206,6 +1206,31 @@ def approve_endpoint():
                 f"❌ {firma} harcamanız reddedildi",
                 "warning", data=data)
 
+        # WhatsApp bildirimi gönder (onay veya red)
+        try:
+            # Kullanıcı adından telefon numarasını bul
+            target_phone = None
+            for phone, info in PHONE_DIRECTORY.items():
+                if info.get("ad") == kullanici:
+                    target_phone = phone
+                    break
+            if target_phone:
+                if action == "approve":
+                    mesaj = f"✅ {firma} (₺{tutar:,.0f}) harcamanız onaylandı."
+                else:
+                    mesaj = f"❌ {firma} (₺{tutar:,.0f}) harcamanız reddedildi."
+                twilio_client.messages.create(
+                    body=mesaj,
+                    from_="whatsapp:+14155238886",
+                    to=target_phone
+                )
+                print(f"WhatsApp bildirimi gönderildi: {kullanici} - {mesaj}", flush=True)
+            else:
+                print(f"Uyarı: {kullanici} için telefon numarası bulunamadı.", flush=True)
+        except Exception as e:
+            # WhatsApp gönderilemezse sadece logla, işlem devam etsin
+            print(f"WhatsApp bildirimi gönderilemedi: {e}", flush=True)
+
         save_data(data)
         print(f"Fiş {action}: ID={fis_id}, kullanıcı={kullanici}", flush=True)
         return jsonify({"ok": True, "ID": fis_id, "action": action}), 200
