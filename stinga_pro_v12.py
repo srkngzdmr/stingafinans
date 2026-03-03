@@ -479,72 +479,40 @@ section[data-testid="stMain"] > div { background:transparent !important; }
 
 /* ── AI ROBOT (fare takipçi) ─────────────────────────────── */
 #sg-robot-wrap {
-    position:fixed; bottom:32px; right:32px;
+    position:fixed; bottom:28px; left:28px;
     z-index:9998; pointer-events:none;
-    will-change: transform;
+    transition: transform 0.18s ease;
 }
-#sg-robot-body {
-    width:90px; height:90px;
-    filter: drop-shadow(0 8px 24px rgba(17,133,91,0.45));
-    animation: sgRobotFloat 3.5s ease-in-out infinite;
+#sg-robot-svg {
+    width:72px; height:72px;
+    filter: drop-shadow(0 4px 16px rgba(17,133,91,0.35));
+    animation: sgRobotFloat 3s ease-in-out infinite;
     cursor: pointer; pointer-events:all;
-    transition: filter 0.2s ease, transform 0.2s ease;
-}
-#sg-robot-body:hover {
-    filter: drop-shadow(0 12px 32px rgba(17,133,91,0.7));
-    transform: scale(1.08);
 }
 @keyframes sgRobotFloat {
-    0%,100%{transform:translateY(0px) rotate(-1deg);}
-    50%{transform:translateY(-10px) rotate(1deg);}
+    0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);}
 }
 #sg-robot-bubble {
-    position:absolute; bottom:100px; right:0;
-    background:linear-gradient(135deg,#ffffff,#f4f9f6);
-    border:1.5px solid rgba(17,133,91,0.25);
-    border-radius:16px 16px 4px 16px;
-    padding:12px 16px; min-width:200px; max-width:260px;
+    position:absolute; bottom:80px; left:0;
+    background:#fff; border:1px solid rgba(17,133,91,0.2);
+    border-radius:14px 14px 14px 4px;
+    padding:10px 14px; min-width:180px; max-width:240px;
     font-family:'Plus Jakarta Sans',sans-serif;
-    font-size:0.78rem; color:#0f1923; line-height:1.6;
-    box-shadow:0 8px 32px rgba(17,133,91,0.12), 0 2px 8px rgba(0,0,0,0.06);
-    opacity:0; transform:translateY(8px) scale(0.92);
-    transition:all 0.3s cubic-bezier(0.16,1,0.3,1);
+    font-size:0.75rem; color:#0f1923; line-height:1.5;
+    box-shadow:0 4px 20px rgba(0,0,0,0.1);
+    opacity:0; transform:translateY(6px) scale(0.95);
+    transition:all 0.25s ease;
     pointer-events:none;
 }
+#sg-robot-wrap:hover #sg-robot-bubble,
 #sg-robot-bubble.visible {
     opacity:1; transform:translateY(0) scale(1);
 }
 #sg-robot-bubble::before {
     content:'⚡ STINGA AI';
-    display:block; font-size:0.6rem; font-weight:800;
-    color:var(--sg); letter-spacing:2px; margin-bottom:5px;
-    text-transform:uppercase;
+    display:block; font-size:0.58rem; font-weight:700;
+    color:var(--sg); letter-spacing:1.5px; margin-bottom:4px;
 }
-#sg-robot-bubble::after {
-    content:'';
-    position:absolute; bottom:-8px; right:20px;
-    width:16px; height:8px;
-    background:linear-gradient(135deg,#ffffff,#f4f9f6);
-    clip-path: polygon(0 0, 100% 0, 0 100%);
-    border-right:1.5px solid rgba(17,133,91,0.25);
-}
-/* Halo ring behind robot */
-#sg-robot-halo {
-    position:absolute; inset:-12px;
-    border-radius:50%;
-    background: conic-gradient(
-        from 0deg,
-        rgba(17,133,91,0) 0%,
-        rgba(17,133,91,0.3) 25%,
-        rgba(47,60,110,0.3) 50%,
-        rgba(17,133,91,0.3) 75%,
-        rgba(17,133,91,0) 100%
-    );
-    animation: sgHaloSpin 6s linear infinite;
-    pointer-events:none;
-    opacity:0.6;
-}
-@keyframes sgHaloSpin { to { transform:rotate(360deg); } }
 
 </style>
 """, unsafe_allow_html=True)
@@ -918,18 +886,12 @@ YAKIT:
 - Akaryakıt/benzin/motorin: başlangıç risk skoru 1
 - (Günlük birden fazla yakıt fişi Python tarafında kontrol edilecek)
 
-KİŞİSEL GİDERLER (KRİTİK KURAL — ASLA ATLAMA):
-- Fişte veya makbuzdaki kalemler arasında şunlardan herhangi biri varsa MUTLAKA tespit et:
-  sigara, cigarette, tobacco, Marlboro, Winston, Camel, Philip Morris,
-  çikolata, chocolate, Ülker çikolata, Milka, Toblerone, Kit Kat, Snickers,
-  şeker, candy, gummy, Haribo, şekerleme, lollipop,
-  alkol, alcohol, bira, beer, şarap, wine, rakı, viski, whisky, vodka, içki,
-  cips, chips, snack, atıştırmalık, kraker, Red Bull, Monster, energy drink,
-  kozmetik, parfüm, perfume, şampuan, shampoo, deodorant, losyon,
-  oyun, game, oyuncak, toy, müzik aleti, Netflix, Spotify, abonelik
-- Bu ürünleri tespit edersen: risk_skoru minimum 60, anomali=true
-- kisisel_giderler listesine ürün adını yaz (örn: [sigara, çikolata])
-- anomali_aciklamasi'nda hangi ürünün kişisel gider olduğunu AÇIKÇA yaz
+KİŞİSEL GİDERLER (ÇOK ÖNEMLİ):
+- Fişte şu ürünler varsa mutlaka belirt ve risk skoru 40+ yap:
+  çikolata, şeker, şekerleme, sigara, alkol, bira, içki, kozmetik, parfüm, oyuncak,
+  kişisel bakım, şampuan, dizi/film aboneliği, oyun, müzik aleti
+- Bu ürünler tespit edilirse anomali=true yap ve anomali_aciklamasi'nda hangi ürünler olduğunu yaz
+- kisisel_giderler listesine bu ürünleri ekle
 
 GENEL KURALLAR:
 - Tutar makul görünüyorsa düşük risk, şüpheli yüksekse risk artır
@@ -1024,87 +986,50 @@ def apply_business_rules(data_ai, data_store, user_name):
                 anomali = True
 
     # ── KİŞİSEL GİDER KURALLARI ───────────────────────────────────
-    # Hem Türkçe hem İngilizce, hem de normalize edilmiş formlar
-    KISISEL_MAP = {
-        # sigara grubu
-        "sigara": "sigara", "cigarette": "sigara", "tobacco": "sigara", "tütün": "sigara",
-        "tutun": "sigara", "marlboro": "sigara", "philip morris": "sigara",
-        "winston": "sigara", "camel": "sigara", "sigaretasi": "sigara",
-        # alkol grubu
-        "alkol": "alkol", "alcohol": "alkol", "bira": "bira", "beer": "bira",
-        "şarap": "alkol", "sarap": "alkol", "wine": "alkol", "rakı": "alkol",
-        "raki": "alkol", "viski": "alkol", "whisky": "alkol", "vodka": "alkol",
-        "içki": "alkol", "icki": "alkol", "spirits": "alkol",
-        # şeker/çikolata grubu
-        "çikolata": "çikolata", "cikolata": "çikolata", "chocolate": "çikolata",
-        "şeker": "şeker", "seker": "şeker", "candy": "şeker", "şekerleme": "şeker",
-        "sekerleme": "şeker", "gummy": "şeker", "lollipop": "şeker",
-        "haribo": "şeker", "ülker çikolata": "çikolata", "ulker cikolata": "çikolata",
-        # atıştırmalık
-        "cips": "atıştırmalık", "chips": "atıştırmalık", "snack": "atıştırmalık",
-        "atıştırmalık": "atıştırmalık", "atistirmalik": "atıştırmalık",
-        "kraker": "atıştırmalık", "cracker": "atıştırmalık",
-        # kozmetik/kişisel bakım
-        "kozmetik": "kozmetik", "cosmetic": "kozmetik", "parfüm": "parfüm",
-        "parfum": "parfüm", "perfume": "parfüm", "şampuan": "kişisel bakım",
-        "sampuan": "kişisel bakım", "shampoo": "kişisel bakım",
-        "kişisel bakım": "kişisel bakım", "kisisel bakim": "kişisel bakım",
-        "deodorant": "kişisel bakım", "losyon": "kişisel bakım",
-        # oyun/eğlence
-        "oyun": "oyun/eğlence", "game": "oyun/eğlence", "oyuncak": "oyun/eğlence",
-        "toy": "oyun/eğlence", "müzik aleti": "oyun/eğlence", "muzik aleti": "oyun/eğlence",
-        # abonelik/dijital
-        "abonelik": "abonelik", "subscription": "abonelik", "netflix": "abonelik",
-        "spotify": "abonelik", "dizi": "abonelik", "film izle": "abonelik",
-        # energy drink / fast food
-        "energy drink": "enerji içeceği", "red bull": "enerji içeceği",
-        "monster": "enerji içeceği", "fast food": "fast food",
-        # market zinciri + genel
-        "kisisel": "kişisel harcama", "kişisel": "kişisel harcama",
-    }
+    KISISEL_KEYWORDS = [
+        "sigara","cigarette","tobacco","marlboro","winston","camel","philip morris",
+        "çikolata","cikolata","chocolate","milka","toblerone","snickers","kitkat",
+        "şeker","seker","candy","gummy","haribo","şekerleme","sekerleme",
+        "alkol","alcohol","bira","beer","şarap","sarap","wine","rakı","raki",
+        "viski","whisky","vodka","içki","icki",
+        "cips","chips","snack","atıştırmalık","atistirmalik","kraker",
+        "kozmetik","parfüm","parfum","perfume","şampuan","sampuan","shampoo",
+        "deodorant","losyon","kişisel bakım","kisisel bakim",
+        "oyuncak","oyun","abonelik","netflix","spotify","red bull","monster","energy drink",
+        "kişisel","kisisel",
+    ]
 
-    # Tüm fiş metnini düz string olarak birleştir (AI çıktısının her alanı)
-    _tum_metin = " ".join([
-        str(data_ai.get("firma", "")),
-        str(data_ai.get("kategori", "")),
-        str(data_ai.get("audit_ozeti", "")),
-        str(data_ai.get("anomali_aciklamasi", "")),
-        " ".join([str(k) for k in data_ai.get("kalemler", [])]),
-        " ".join([str(k) for k in data_ai.get("kisisel_giderler", [])]),
+    # Tüm AI çıktısını birleştir — firma, kategori, kalemler, audit hepsi
+    _metin = " ".join([
+        str(data_ai.get("firma","")),
+        str(data_ai.get("kategori","")),
+        str(data_ai.get("audit_ozeti","")),
+        str(data_ai.get("anomali_aciklamasi","")),
+        " ".join(str(k) for k in data_ai.get("kalemler",[])),
+        " ".join(str(k) for k in data_ai.get("kisisel_giderler",[])),
     ]).lower()
-
-    # Türkçe normalize (ı→i, ş→s vb. ile karşılaştırma için ek tarama)
-    def _tr_norm(s):
-        return s.replace("ı","i").replace("ş","s").replace("ğ","g")\
-                .replace("ç","c").replace("ö","o").replace("ü","u")
-
-    _metin_norm = _tr_norm(_tum_metin)
+    # Türkçe normalize
+    _metin_n = _metin.replace("ı","i").replace("ş","s").replace("ğ","g").replace("ç","c").replace("ö","o").replace("ü","u")
 
     bulunan_kisisel = list(kisisel) if kisisel else []
-
-    for kw, kategori_adi in KISISEL_MAP.items():
-        kw_norm = _tr_norm(kw)
-        # Kelime tam eşleşme (yanlış pozitif önlemek için)
-        if (kw in _tum_metin or kw_norm in _metin_norm):
-            # Zaten listedeyse ekleme
-            if kategori_adi not in bulunan_kisisel and kw not in " ".join(bulunan_kisisel).lower():
-                bulunan_kisisel.append(kategori_adi)
-
-    # AI'ın kisisel_giderler listesini de ekle (AI doğru tespit etmişse)
-    for item in data_ai.get("kisisel_giderler", []):
-        if item and item not in bulunan_kisisel:
+    for kw in KISISEL_KEYWORDS:
+        kw_n = kw.replace("ı","i").replace("ş","s").replace("ğ","g").replace("ç","c").replace("ö","o").replace("ü","u")
+        if kw in _metin or kw_n in _metin_n:
+            if kw not in " ".join(bulunan_kisisel).lower():
+                bulunan_kisisel.append(kw)
+    # AI'ın kisisel_giderler listesini de ekle
+    for item in data_ai.get("kisisel_giderler",[]):
+        if item and str(item) not in bulunan_kisisel:
             bulunan_kisisel.append(str(item))
-
-    # Tekrar temizle
-    bulunan_kisisel = list(dict.fromkeys(bulunan_kisisel))  # sıra koruyarak unique
+    bulunan_kisisel = list(dict.fromkeys(bulunan_kisisel))
 
     if bulunan_kisisel:
-        risk = max(risk, 60)   # 45'ten 60'a yükseltildi — daha sert
+        risk = max(risk, 65)
         anomali = True
         kisisel_str = ", ".join(bulunan_kisisel)
-        uyari = f"🚫 KİŞİSEL GİDER TESPİTİ: {kisisel_str}"
+        uyari = f"🚫 KİŞİSEL GİDER: {kisisel_str}"
         anomali_msg = (anomali_msg + " | " + uyari).strip(" | ")
-        audit += f" | 🚫 KİŞİSEL GİDER İÇERİYOR: {kisisel_str} — ONAY ÖNCESİ İNCELENMELİ!"
+        audit += f" | 🚫 KİŞİSEL GİDER TESPİT EDİLDİ: {kisisel_str}"
         uyarilar.append(uyari)
         data_ai["kisisel_giderler"] = bulunan_kisisel
 
@@ -1676,6 +1601,149 @@ def logout():
 # ─── ANA UYGULAMA ─────────────────────────────────────────────
 init_db()
 
+# ── GLOBAL: AI Robot + Toast + Auto-refresh JS ───────────────
+_ROBOT_TIPS = [
+    "Yeni fiş taramak için 📑 Fiş Tarama bölümünü kullan!",
+    "Onay bekleyen fişleri kontrol etmeyi unutma ⚖️",
+    "Dashboard'da günlük AI brifingini başlatabilirsin 🤖",
+    "Anomali Dedektörü şüpheli işlemleri otomatik bulur 🔬",
+    "Raporları PDF olarak indirebilirsin 📄",
+    "Kasa bakiyeni 💰 Finans ekranından takip et",
+]
+import json as _json
+_robot_tips_js = _json.dumps(_ROBOT_TIPS)
+
+st.markdown(f"""
+<!-- STINGA PRO: Robot + Toast + Auto-refresh -->
+<div id="sg-robot-wrap">
+  <div id="sg-robot-bubble"></div>
+  <svg id="sg-robot-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="rg1" cx="50%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#00e896"/>
+        <stop offset="100%" stop-color="#0c6344"/>
+      </radialGradient>
+      <filter id="rglow"><feGaussianBlur stdDeviation="2" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <!-- Body -->
+    <rect x="22" y="38" width="56" height="44" rx="10" fill="url(#rg1)" filter="url(#rglow)"/>
+    <!-- Head -->
+    <rect x="28" y="14" width="44" height="30" rx="9" fill="#0f6b45"/>
+    <rect x="30" y="16" width="40" height="26" rx="7" fill="url(#rg1)" opacity="0.9"/>
+    <!-- Antenna -->
+    <line x1="50" y1="14" x2="50" y2="6" stroke="rgba(0,232,150,0.7)" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="50" cy="5" r="3" fill="#00e896">
+      <animate attributeName="r" values="3;5;3" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Eyes -->
+    <ellipse cx="39" cy="27" rx="5" ry="5.5" fill="#001f12"/>
+    <ellipse cx="61" cy="27" rx="5" ry="5.5" fill="#001f12"/>
+    <circle cx="40" cy="26" r="2" fill="#00e896" id="reye-l"/>
+    <circle cx="62" cy="26" r="2" fill="#00e896" id="reye-r"/>
+    <!-- Mouth -->
+    <path d="M38 36 Q50 42 62 36" stroke="rgba(0,232,150,0.8)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <!-- Chest panel -->
+    <rect x="32" y="46" width="36" height="22" rx="6" fill="rgba(0,0,0,0.2)"/>
+    <circle cx="42" cy="57" r="4" fill="rgba(0,232,150,0.7)">
+      <animate attributeName="opacity" values="0.7;1;0.7" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <rect x="50" y="53" width="14" height="3" rx="2" fill="rgba(0,232,150,0.5)"/>
+    <rect x="50" y="59" width="10" height="3" rx="2" fill="rgba(0,232,150,0.3)"/>
+    <!-- Arms -->
+    <rect x="8" y="44" width="14" height="30" rx="7" fill="#0f6b45"/>
+    <rect x="78" y="44" width="14" height="30" rx="7" fill="#0f6b45"/>
+    <!-- Legs -->
+    <rect x="32" y="78" width="14" height="18" rx="7" fill="#0c6344"/>
+    <rect x="54" y="78" width="14" height="18" rx="7" fill="#0c6344"/>
+    <!-- Feet -->
+    <rect x="28" y="92" width="22" height="8" rx="4" fill="#0a5236"/>
+    <rect x="50" y="92" width="22" height="8" rx="4" fill="#0a5236"/>
+  </svg>
+</div>
+<div id="sg-toast-container"></div>
+
+<script>
+(function(){{
+  // ── ROBOT: fare takip + mesaj ─────────────────────────────
+  const wrap   = document.getElementById('sg-robot-wrap');
+  const bubble = document.getElementById('sg-robot-bubble');
+  const eyeL   = document.getElementById('reye-l');
+  const eyeR   = document.getElementById('reye-r');
+  const tips   = {_robot_tips_js};
+  let tipIdx = 0;
+
+  // Mevcut pozisyon
+  let rx = 28, ry = window.innerHeight - 100;
+
+  // Robot'un gözleri fareyi takip eder (küçük offset)
+  document.addEventListener('mousemove', function(e) {{
+    const svgRect = wrap.getBoundingClientRect();
+    const cx = svgRect.left + svgRect.width/2;
+    const cy = svgRect.top  + svgRect.height/2;
+    const dx = (e.clientX - cx) / window.innerWidth  * 6;
+    const dy = (e.clientY - cy) / window.innerHeight * 5;
+    if(eyeL) {{ eyeL.setAttribute('cx', 40 + dx); eyeL.setAttribute('cy', 26 + dy); }}
+    if(eyeR) {{ eyeR.setAttribute('cx', 62 + dx); eyeR.setAttribute('cy', 26 + dy); }}
+
+    // Robot hafifçe fareye yönelir (çok yavaş)
+    const targetX = Math.max(8, Math.min(window.innerWidth - 100, e.clientX * 0.05 + 8));
+    const targetY = Math.max(80, Math.min(window.innerHeight - 100, 
+                    window.innerHeight - 100 + (e.clientY - window.innerHeight/2) * 0.04));
+    wrap.style.left   = targetX  + 'px';
+    wrap.style.bottom = (window.innerHeight - targetY - 72) + 'px';
+  }});
+
+  // Robot tıklanınca mesaj göster
+  document.getElementById('sg-robot-svg').addEventListener('click', function() {{
+    bubble.textContent = tips[tipIdx % tips.length];
+    tipIdx++;
+    bubble.classList.add('visible');
+    setTimeout(() => bubble.classList.remove('visible'), 3500);
+  }});
+
+  // ── TOAST SİSTEMİ ────────────────────────────────────────
+  window._sgShowToast = function(title, msg, type) {{
+    const c = document.getElementById('sg-toast-container');
+    if(!c) return;
+    const icons = {{success:'✅', warning:'⚠️', error:'🚨', info:'🔔'}};
+    const t = document.createElement('div');
+    t.className = 'sg-toast ' + (type||'');
+    t.innerHTML = `<div class="sg-toast-icon">${{icons[type]||'📌'}}</div>
+                   <div class="sg-toast-body">
+                     <div class="sg-toast-title">${{title}}</div>
+                     <div class="sg-toast-msg">${{msg}}</div>
+                   </div>`;
+    t.onclick = () => t.remove();
+    c.appendChild(t);
+    setTimeout(() => {{ if(t.parentNode) t.remove(); }}, 5000);
+  }};
+
+  // ── OTOMATİK YENİLEME (10 sn) ───────────────────────────
+  // Son bilinen bildirim sayısını localStorage'da sakla
+  let lastNotifCount = parseInt(sessionStorage.getItem('sg_notif_count')||'0');
+  
+  setInterval(function() {{
+    // Streamlit rerun'u tetiklemek için gizli bir hidden input tıkla
+    // Streamlit'in kendi auto-rerun mekanizması yoktur doğrudan,
+    // ama window.location.reload() yerine Streamlit'in internal API'sini kullanıyoruz
+    try {{
+      // Streamlit'e "veri güncelle" sinyali: query_params değiştir
+      const url = new URL(window.location.href);
+      const ts = Date.now();
+      url.searchParams.set('_sgr', ts);
+      window.history.replaceState(null, '', url.toString());
+      // Streamlit bunu query_params değişikliği olarak algılar → rerun
+      window.parent.postMessage({{type: 'streamlit:rerun'}}, '*');
+    }} catch(e) {{}}
+  }}, 10000);
+
+}})();
+</script>
+""", unsafe_allow_html=True)
+
 if not st.session_state.authenticated:
     login()
 elif not st.session_state.splash_done:
@@ -1737,326 +1805,54 @@ if(window._sgShowToast) {{
         df = df_full[df_full["Kullanıcı"] == user_name].copy()
     else:
         df = df_full.copy()
-
-    # ── PREMIUM AI ROBOT (her sayfada, fare takipçi) ─────────
-    import json as _json
-    _ROBOT_TIPS = [
-        f"Merhaba {user_name}! Bugün nasıl gidiyor? 👋",
-        "Yeni fiş taramak için 📑 Fiş Tarama bölümünü kullan!",
-        "Onay bekleyen fişleri kontrol etmeyi unutma ⚖️",
-        "Dashboard'da günlük AI brifingini başlatabilirsin 🤖",
-        "Anomali Dedektörü şüpheli işlemleri otomatik bulur 🔬",
-        "Raporları PDF olarak indirebilirsin 📄",
-        f"Kasa bakiyeni 💰 Finans ekranından takip et",
-        "Risk skoru 70+ olan fişler kritik — dikkatli ol! ⛔",
-    ]
-    _tips_js = _json.dumps(_ROBOT_TIPS)
-    import streamlit.components.v1 as _components
-    _robot_html = f"""<!DOCTYPE html>
-<html>
-<head>
+    
+    # ── AI ROBOT ────────────────────────────────────────────────
+    _rb64 = "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgMTQwIiB3aWR0aD0iOTAiIGhlaWdodD0iMTA1Ij4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYmciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjMTdhODcwIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMGM2MzQ0Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJudiIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMzZDRlOGEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMyRjNDNkUiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImdsIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjAlIiB5Mj0iMTAwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMwMGU4OTYiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMxMTg1NUIiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDwhLS0gQW50ZW4gLS0+CiAgPGxpbmUgeDE9IjYwIiB5MT0iMTMiIHgyPSI2MCIgeTI9IjQiIHN0cm9rZT0iIzAwZTg5NiIgc3Ryb2tlLXdpZHRoPSIyLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxjaXJjbGUgY3g9IjYwIiBjeT0iMyIgcj0iNSIgZmlsbD0iIzAwZTg5NiI+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJyIiB2YWx1ZXM9IjM7NjszIiBkdXI9IjEuOHMiIHJlcGVhdENvdW50PSJpbmRlZmluaXRlIi8+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJvcGFjaXR5IiB2YWx1ZXM9IjE7MC4zOzEiIGR1cj0iMS44cyIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiLz4KICA8L2NpcmNsZT4KICA8IS0tIEJhxZ8gZ8O2bGdlIC0tPgogIDxyZWN0IHg9IjIyIiB5PSIxOCIgd2lkdGg9Ijc4IiBoZWlnaHQ9IjQ4IiByeD0iMTYiIGZpbGw9IiMwYTRmMzQiIG9wYWNpdHk9IjAuMjUiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDIsMykiLz4KICA8IS0tIEJhxZ8gLS0+CiAgPHJlY3QgeD0iMjIiIHk9IjE1IiB3aWR0aD0iNzYiIGhlaWdodD0iNTAiIHJ4PSIxNiIgZmlsbD0idXJsKCNudikiLz4KICA8cmVjdCB4PSIyNiIgeT0iMTciIHdpZHRoPSI2OCIgaGVpZ2h0PSIxOCIgcng9IjEwIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDgpIi8+CiAgPHJlY3QgeD0iMjIiIHk9IjE1IiB3aWR0aD0iNzYiIGhlaWdodD0iNTAiIHJ4PSIxNiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjMpIiBzdHJva2Utd2lkdGg9IjEuNSIvPgogIDwhLS0gU29sIGfDtnogLS0+CiAgPGNpcmNsZSBjeD0iNDMiIGN5PSIzNyIgcj0iMTEiIGZpbGw9IiMwYTE2MjgiLz4KICA8Y2lyY2xlIGN4PSI0MyIgY3k9IjM3IiByPSI4IiBmaWxsPSIjMDkxMDIwIi8+CiAgPGNpcmNsZSBjeD0iNDMiIGN5PSIzNyIgcj0iNi41IiBmaWxsPSJ1cmwoI2dsKSIgb3BhY2l0eT0iMC45NSIvPgogIDxjaXJjbGUgY3g9IjQzIiBjeT0iMzciIHI9IjYuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjUpIiBzdHJva2Utd2lkdGg9IjEiLz4KICA8Y2lyY2xlIGlkPSJwbCIgY3g9IjQzIiBjeT0iMzciIHI9IjMuNSIgZmlsbD0iIzAwMWEwZCIvPgogIDxjaXJjbGUgY3g9IjQ2IiBjeT0iMzQiIHI9IjEuNiIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjcpIi8+CiAgPCEtLSBTYcSfIGfDtnogLS0+CiAgPGNpcmNsZSBjeD0iNzciIGN5PSIzNyIgcj0iMTEiIGZpbGw9IiMwYTE2MjgiLz4KICA8Y2lyY2xlIGN4PSI3NyIgY3k9IjM3IiByPSI4IiBmaWxsPSIjMDkxMDIwIi8+CiAgPGNpcmNsZSBjeD0iNzciIGN5PSIzNyIgcj0iNi41IiBmaWxsPSJ1cmwoI2dsKSIgb3BhY2l0eT0iMC45NSIvPgogIDxjaXJjbGUgY3g9Ijc3IiBjeT0iMzciIHI9IjYuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjUpIiBzdHJva2Utd2lkdGg9IjEiLz4KICA8Y2lyY2xlIGlkPSJwciIgY3g9Ijc3IiBjeT0iMzciIHI9IjMuNSIgZmlsbD0iIzAwMWEwZCIvPgogIDxjaXJjbGUgY3g9IjgwIiBjeT0iMzQiIHI9IjEuNiIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjcpIi8+CiAgPCEtLSBMRUQgYWdpeiAtLT4KICA8cmVjdCB4PSIzMiIgeT0iNTUiIHdpZHRoPSI1NiIgaGVpZ2h0PSI3IiByeD0iMy41IiBmaWxsPSIjMGExNjI4IiBvcGFjaXR5PSIwLjgiLz4KICA8cmVjdCB4PSIzNSIgeT0iNTYuMyIgd2lkdGg9IjciIGhlaWdodD0iNC40IiByeD0iMiIgZmlsbD0iIzAwZTg5NiI+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJvcGFjaXR5IiB2YWx1ZXM9IjE7MC4yOzEiIGR1cj0iMnMiIGJlZ2luPSIwcyIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiLz4KICA8L3JlY3Q+CiAgPHJlY3QgeD0iNDQiIHk9IjU2LjMiIHdpZHRoPSI3IiBoZWlnaHQ9IjQuNCIgcng9IjIiIGZpbGw9IiMwMGU4OTYiPgogICAgPGFuaW1hdGUgYXR0cmlidXRlTmFtZT0ib3BhY2l0eSIgdmFsdWVzPSIxOzAuMjsxIiBkdXI9IjJzIiBiZWdpbj0iMC4yNXMiIHJlcGVhdENvdW50PSJpbmRlZmluaXRlIi8+CiAgPC9yZWN0PgogIDxyZWN0IHg9IjUzIiB5PSI1Ni4zIiB3aWR0aD0iNyIgaGVpZ2h0PSI0LjQiIHJ4PSIyIiBmaWxsPSIjMDBlODk2Ij4KICAgIDxhbmltYXRlIGF0dHJpYnV0ZU5hbWU9Im9wYWNpdHkiIHZhbHVlcz0iMTswLjI7MSIgZHVyPSIycyIgYmVnaW49IjAuNXMiIHJlcGVhdENvdW50PSJpbmRlZmluaXRlIi8+CiAgPC9yZWN0PgogIDxyZWN0IHg9IjYyIiB5PSI1Ni4zIiB3aWR0aD0iNyIgaGVpZ2h0PSI0LjQiIHJ4PSIyIiBmaWxsPSIjMDBlODk2Ij4KICAgIDxhbmltYXRlIGF0dHJpYnV0ZU5hbWU9Im9wYWNpdHkiIHZhbHVlcz0iMTswLjI7MSIgZHVyPSIycyIgYmVnaW49IjAuNzVzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIvPgogIDwvcmVjdD4KICA8cmVjdCB4PSI3MSIgeT0iNTYuMyIgd2lkdGg9IjciIGhlaWdodD0iNC40IiByeD0iMiIgZmlsbD0iIzAwZTg5NiI+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJvcGFjaXR5IiB2YWx1ZXM9IjE7MC4yOzEiIGR1cj0iMnMiIGJlZ2luPSIxcyIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiLz4KICA8L3JlY3Q+CiAgPCEtLSBCb3l1biAtLT4KICA8cmVjdCB4PSI0OSIgeT0iNjQiIHdpZHRoPSIyMiIgaGVpZ2h0PSI5IiByeD0iNC41IiBmaWxsPSIjMGM2MzQ0Ii8+CiAgPCEtLSBHb3ZkZSBnb2xnZSAtLT4KICA8cmVjdCB4PSIxNCIgeT0iNzIiIHdpZHRoPSI5MiIgaGVpZ2h0PSI1MCIgcng9IjE1IiBmaWxsPSIjMGE0ZjM0IiBvcGFjaXR5PSIwLjI1IiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgyLDMpIi8+CiAgPCEtLSBHb3ZkZSAtLT4KICA8cmVjdCB4PSIxNCIgeT0iNzIiIHdpZHRoPSI5MiIgaGVpZ2h0PSI1MCIgcng9IjE1IiBmaWxsPSJ1cmwoI2JnKSIvPgogIDxyZWN0IHg9IjE4IiB5PSI3NCIgd2lkdGg9Ijg0IiBoZWlnaHQ9IjE2IiByeD0iMTAiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wOCkiLz4KICA8cmVjdCB4PSIxNCIgeT0iNzIiIHdpZHRoPSI5MiIgaGVpZ2h0PSI1MCIgcng9IjE1IiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMCwyMzIsMTUwLDAuMjUpIiBzdHJva2Utd2lkdGg9IjEuNSIvPgogIDwhLS0gUGFuZWwgLS0+CiAgPHJlY3QgeD0iMjgiIHk9IjgwIiB3aWR0aD0iNjQiIGhlaWdodD0iMzQiIHJ4PSI5IiBmaWxsPSJyZ2JhKDAsMCwwLDAuMikiLz4KICA8cmVjdCB4PSIyOCIgeT0iODAiIHdpZHRoPSI2NCIgaGVpZ2h0PSIzNCIgcng9IjkiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgwLDIzMiwxNTAsMC4xNSkiIHN0cm9rZS13aWR0aD0iMSIvPgogIDwhLS0gTEVEIG1lcmtleiAtLT4KICA8Y2lyY2xlIGN4PSI0NiIgY3k9IjkyIiByPSI4IiBmaWxsPSIjMDAxNjI4Ii8+CiAgPGNpcmNsZSBjeD0iNDYiIGN5PSI5MiIgcj0iNS41IiBmaWxsPSJ1cmwoI2dsKSI+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJyIiB2YWx1ZXM9IjQuNTs2LjU7NC41IiBkdXI9IjJzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIvPgogIDwvY2lyY2xlPgogIDxjaXJjbGUgY3g9IjQ2IiBjeT0iOTIiIHI9IjUuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjQpIiBzdHJva2Utd2lkdGg9IjEiPgogICAgPGFuaW1hdGUgYXR0cmlidXRlTmFtZT0iciIgdmFsdWVzPSI1LjU7MTA7NS41IiBkdXI9IjJzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIvPgogICAgPGFuaW1hdGUgYXR0cmlidXRlTmFtZT0ib3BhY2l0eSIgdmFsdWVzPSIwLjQ7MDswLjQiIGR1cj0iMnMiIHJlcGVhdENvdW50PSJpbmRlZmluaXRlIi8+CiAgPC9jaXJjbGU+CiAgPHRleHQgeD0iNDYiIHk9Ijk2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjUuNSIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC45KSIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSI+QUk8L3RleHQ+CiAgPCEtLSBDdWJ1a2xhciAtLT4KICA8cmVjdCB4PSI2MCIgeT0iODIiIHdpZHRoPSIyNiIgaGVpZ2h0PSIzIiByeD0iMS41IiBmaWxsPSJyZ2JhKDAsMjMyLDE1MCwwLjcpIi8+CiAgPHJlY3QgeD0iNjAiIHk9Ijg4IiB3aWR0aD0iMjAiIGhlaWdodD0iMyIgcng9IjEuNSIgZmlsbD0icmdiYSgwLDIzMiwxNTAsMC41KSIvPgogIDxyZWN0IHg9IjYwIiB5PSI5NCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjMiIHJ4PSIxLjUiIGZpbGw9InJnYmEoNDcsNjAsMTEwLDAuOSkiLz4KICA8cmVjdCB4PSI2MCIgeT0iMTAwIiB3aWR0aD0iMTYiIGhlaWdodD0iMyIgcng9IjEuNSIgZmlsbD0icmdiYSgwLDIzMiwxNTAsMC4zKSIvPgogIDwhLS0gU29sIGtvbCAtLT4KICA8cmVjdCB4PSIyIiB5PSI3NiIgd2lkdGg9IjEzIiBoZWlnaHQ9IjMyIiByeD0iNi41IiBmaWxsPSIjMGM1YzNhIi8+CiAgPHJlY3QgeD0iMiIgeT0iNzYiIHdpZHRoPSIxMyIgaGVpZ2h0PSIzMiIgcng9IjYuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjE1KSIgc3Ryb2tlLXdpZHRoPSIxIi8+CiAgPGVsbGlwc2UgY3g9IjguNSIgY3k9IjExMCIgcng9IjYuNSIgcnk9IjQuNSIgZmlsbD0iIzBjNWMzYSIvPgogIDwhLS0gU2FnIGtvbCAtLT4KICA8cmVjdCB4PSIxMDUiIHk9Ijc2IiB3aWR0aD0iMTMiIGhlaWdodD0iMzIiIHJ4PSI2LjUiIGZpbGw9IiMwYzVjM2EiLz4KICA8cmVjdCB4PSIxMDUiIHk9Ijc2IiB3aWR0aD0iMTMiIGhlaWdodD0iMzIiIHJ4PSI2LjUiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgwLDIzMiwxNTAsMC4xNSkiIHN0cm9rZS13aWR0aD0iMSIvPgogIDxlbGxpcHNlIGN4PSIxMTEuNSIgY3k9IjExMCIgcng9IjYuNSIgcnk9IjQuNSIgZmlsbD0iIzBjNWMzYSIvPgogIDwhLS0gQmFjYWtsYXIgLS0+CiAgPHJlY3QgeD0iMjgiIHk9IjEyMCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjEzIiByeD0iNi41IiBmaWxsPSIjMGE0ZjM0Ii8+CiAgPHJlY3QgeD0iMjIiIHk9IjEzMCIgd2lkdGg9IjI4IiBoZWlnaHQ9IjciIHJ4PSI0IiBmaWxsPSIjMDgzZDI4Ii8+CiAgPHJlY3QgeD0iNzIiIHk9IjEyMCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjEzIiByeD0iNi41IiBmaWxsPSIjMGE0ZjM0Ii8+CiAgPHJlY3QgeD0iNzAiIHk9IjEzMCIgd2lkdGg9IjI4IiBoZWlnaHQ9IjciIHJ4PSI0IiBmaWxsPSIjMDgzZDI4Ii8+Cjwvc3ZnPg=="
+    _rtips = ["Merhaba! Ho\u015f geldin \ud83d\udc4b", "\ud83d\udcd1 Fi\u015f Tarama ile yeni fi\u015f y\u00fckle!", "\u2696\ufe0f Onay bekleyen fi\u015fleri kontrol et!", "\ud83d\udd2c Anomali Dedekt\u00f6r\u00fc \u015f\u00fcpheli fi\u015fleri bulur!", "\ud83d\udcb0 Kasa bakiyeni Finans ekran\u0131nda g\u00f6r!", "\ud83d\udcc4 Raporlar\u0131 PDF olarak indir!"]
+    _rtips[0] = f"Merhaba {user_name}! Hoş geldin 👋"
+    import json as _rj
+    st.markdown(f"""
 <style>
-*{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:transparent;overflow:hidden;}}
-#sg-robot-wrap{{
-    position:fixed;bottom:28px;right:28px;z-index:9998;
-    pointer-events:none;
-}}
-#sg-robot-body{{
-    width:100px;height:118px;
-    filter:drop-shadow(0 8px 24px rgba(17,133,91,0.5));
-    animation:sgFloat 3.5s ease-in-out infinite;
-    cursor:pointer;pointer-events:all;
-    transition:filter 0.2s ease,transform 0.2s ease;
-    display:block;
-}}
-#sg-robot-body:hover{{
-    filter:drop-shadow(0 12px 36px rgba(17,133,91,0.8));
-    transform:scale(1.08) !important;
-}}
-@keyframes sgFloat{{
-    0%,100%{{transform:translateY(0px) rotate(-0.5deg);}}
-    50%{{transform:translateY(-10px) rotate(0.5deg);}}
-}}
-#sg-robot-halo{{
-    position:absolute;inset:-14px;border-radius:50%;
-    background:conic-gradient(from 0deg,rgba(17,133,91,0) 0%,rgba(17,133,91,0.35) 25%,
-    rgba(47,60,110,0.35) 50%,rgba(17,133,91,0.35) 75%,rgba(17,133,91,0) 100%);
-    animation:sgHaloSpin 6s linear infinite;
-    pointer-events:none;opacity:0.65;
-}}
-@keyframes sgHaloSpin{{to{{transform:rotate(360deg);}}}}
-#sg-robot-bubble{{
-    position:absolute;bottom:115px;right:0;
-    background:linear-gradient(135deg,#ffffff,#f4f9f6);
-    border:1.5px solid rgba(17,133,91,0.28);
-    border-radius:16px 16px 4px 16px;
-    padding:12px 16px;min-width:210px;max-width:270px;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-    font-size:13px;color:#0f1923;line-height:1.55;
-    box-shadow:0 8px 32px rgba(17,133,91,0.14),0 2px 8px rgba(0,0,0,0.07);
-    opacity:0;transform:translateY(8px) scale(0.92);
-    transition:all 0.3s cubic-bezier(0.16,1,0.3,1);
-    pointer-events:none;
-}}
-#sg-robot-bubble.visible{{opacity:1;transform:translateY(0) scale(1);}}
-#sg-robot-bubble .badge{{
-    display:inline-block;font-size:10px;font-weight:800;
-    color:#11855B;letter-spacing:2px;margin-bottom:6px;
-    text-transform:uppercase;
-}}
-#sg-robot-bubble::after{{
-    content:'';position:absolute;bottom:-9px;right:22px;
-    width:0;height:0;
-    border-left:9px solid transparent;
-    border-right:9px solid transparent;
-    border-top:9px solid #ffffff;
-    filter:drop-shadow(0 2px 1px rgba(17,133,91,0.15));
-}}
+#sgrw{{position:fixed;bottom:28px;right:28px;z-index:9999;cursor:pointer;}}
+#sgri{{width:88px;animation:sgRF 3.5s ease-in-out infinite;filter:drop-shadow(0 6px 18px rgba(17,133,91,.5));transition:transform .2s,filter .2s;}}
+#sgri:hover{{transform:scale(1.1);filter:drop-shadow(0 10px 28px rgba(17,133,91,.8));}}
+@keyframes sgRF{{0%,100%{{transform:translateY(0)rotate(-.5deg)}}50%{{transform:translateY(-10px)rotate(.5deg)}}}}
+#sgrb{{position:absolute;bottom:100px;right:0;background:linear-gradient(135deg,#fff,#f4f9f6);border:1.5px solid rgba(17,133,91,.28);border-radius:14px 14px 4px 14px;padding:11px 15px;min-width:200px;max-width:260px;font-family:sans-serif;font-size:13px;color:#0f1923;line-height:1.55;box-shadow:0 6px 24px rgba(17,133,91,.13);opacity:0;transform:translateY(6px) scale(.94);transition:all .28s cubic-bezier(.16,1,.3,1);pointer-events:none;}}
+#sgrb.on{{opacity:1;transform:translateY(0) scale(1);}}
+#sgrbadge{{font-size:10px;font-weight:800;color:#11855B;letter-spacing:2px;display:block;margin-bottom:4px;}}
+#sgrb::after{{content:'';position:absolute;bottom:-8px;right:18px;border-left:8px solid transparent;border-right:8px solid transparent;border-top:8px solid #fff;}}
+#sgtc{{position:fixed;bottom:130px;right:28px;z-index:9998;display:flex;flex-direction:column;gap:8px;pointer-events:none;}}
+.sgt{{background:#fff;border-radius:12px;padding:12px 16px;min-width:260px;box-shadow:0 6px 24px rgba(0,0,0,.1);border-left:4px solid #11855B;display:flex;gap:10px;align-items:flex-start;animation:sgTI .35s cubic-bezier(.16,1,.3,1) both,sgTO .3s ease 4.5s forwards;cursor:pointer;pointer-events:all;}}
+.sgt.warning{{border-left-color:#d97706;}}.sgt.error{{border-left-color:#dc2626;}}
+@keyframes sgTI{{from{{transform:translateX(110%);opacity:0}}to{{transform:translateX(0);opacity:1}}}}
+@keyframes sgTO{{to{{transform:translateX(110%);opacity:0}}}}
+.sgti{{font-size:1.2rem;}}.sgtb{{flex:1;}}.sgtt{{font-weight:700;font-size:.82rem;color:#0f1923;margin-bottom:2px;}}.sgtm{{font-size:.73rem;color:#5a7a6a;line-height:1.4;}}
 </style>
-</head>
-<body>
-<div id="sg-robot-wrap">
-  <div id="sg-robot-halo"></div>
-  <div id="sg-robot-bubble">
-    <div class="badge">⚡ STINGA AI</div>
-    <div id="bubble-text">Merhaba {user_name}! 👋</div>
-  </div>
-
-  <svg id="sg-robot-body" viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#17a870"/>
-        <stop offset="100%" stop-color="#0c6344"/>
-      </linearGradient>
-      <linearGradient id="navyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#3d4e8a"/>
-        <stop offset="100%" stop-color="#2F3C6E"/>
-      </linearGradient>
-      <linearGradient id="glowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stop-color="#00e896"/>
-        <stop offset="100%" stop-color="#11855B"/>
-      </linearGradient>
-      <filter id="glow1"><feGaussianBlur stdDeviation="2.5" result="b"/>
-        <feComposite in="SourceGraphic" in2="b" operator="over"/>
-      </filter>
-    </defs>
-
-    <!-- Anten -->
-    <line x1="60" y1="13" x2="60" y2="3" stroke="#00e896" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="60" cy="3" r="4" fill="#00e896" filter="url(#glow1)">
-      <animate attributeName="r" values="3.5;5.5;3.5" dur="1.8s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="1;0.4;1" dur="1.8s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="60" cy="3" r="9" fill="none" stroke="#00e896" stroke-width="0.8" opacity="0.35">
-      <animate attributeName="r" values="7;14;7" dur="1.8s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.35;0;0.35" dur="1.8s" repeatCount="indefinite"/>
-    </circle>
-
-    <!-- Baş gölgesi -->
-    <rect x="20" y="15" width="80" height="50" rx="17" fill="#0a4f34" opacity="0.3" transform="translate(2,3)"/>
-    <!-- Baş -->
-    <rect x="20" y="15" width="80" height="50" rx="17" fill="url(#navyGrad)"/>
-    <rect x="24" y="17" width="72" height="20" rx="12" fill="rgba(255,255,255,0.09)"/>
-    <rect x="20" y="15" width="80" height="50" rx="17" fill="none" stroke="rgba(0,232,150,0.3)" stroke-width="1.5"/>
-
-    <!-- Sol göz -->
-    <circle cx="42" cy="37" r="12" fill="#0a1628"/>
-    <circle cx="42" cy="37" r="9" fill="#091020"/>
-    <circle cx="42" cy="37" r="7" fill="url(#glowGrad)" opacity="0.95"/>
-    <circle cx="42" cy="37" r="7" fill="none" stroke="rgba(0,232,150,0.5)" stroke-width="1.2"/>
-    <circle id="pupil-l" cx="42" cy="37" r="3.8" fill="#001a0d"/>
-    <circle cx="45.5" cy="34" r="1.8" fill="rgba(255,255,255,0.75)"/>
-
-    <!-- Sağ göz -->
-    <circle cx="78" cy="37" r="12" fill="#0a1628"/>
-    <circle cx="78" cy="37" r="9" fill="#091020"/>
-    <circle cx="78" cy="37" r="7" fill="url(#glowGrad)" opacity="0.95"/>
-    <circle cx="78" cy="37" r="7" fill="none" stroke="rgba(0,232,150,0.5)" stroke-width="1.2"/>
-    <circle id="pupil-r" cx="78" cy="37" r="3.8" fill="#001a0d"/>
-    <circle cx="81.5" cy="34" r="1.8" fill="rgba(255,255,255,0.75)"/>
-
-    <!-- LED ağız -->
-    <rect x="30" y="55" width="60" height="7" rx="3.5" fill="#0a1628" opacity="0.8"/>
-    <rect x="33" y="56.2" width="8" height="4.5" rx="2.2" fill="#00e896">
-      <animate attributeName="opacity" values="0.9;0.3;0.9" dur="2.2s" begin="0s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="43" y="56.2" width="8" height="4.5" rx="2.2" fill="#00e896">
-      <animate attributeName="opacity" values="0.9;0.3;0.9" dur="2.2s" begin="0.22s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="53" y="56.2" width="8" height="4.5" rx="2.2" fill="#00e896">
-      <animate attributeName="opacity" values="0.9;0.3;0.9" dur="2.2s" begin="0.44s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="63" y="56.2" width="8" height="4.5" rx="2.2" fill="#00e896">
-      <animate attributeName="opacity" values="0.9;0.3;0.9" dur="2.2s" begin="0.66s" repeatCount="indefinite"/>
-    </rect>
-    <rect x="73" y="56.2" width="8" height="4.5" rx="2.2" fill="#00e896">
-      <animate attributeName="opacity" values="0.9;0.3;0.9" dur="2.2s" begin="0.88s" repeatCount="indefinite"/>
-    </rect>
-
-    <!-- Boyun -->
-    <rect x="48" y="64" width="24" height="9" rx="4.5" fill="#0c6344"/>
-    <line x1="54" y1="65.5" x2="66" y2="65.5" stroke="rgba(0,232,150,0.25)" stroke-width="1"/>
-    <line x1="54" y1="68.5" x2="66" y2="68.5" stroke="rgba(0,232,150,0.25)" stroke-width="1"/>
-    <line x1="54" y1="71.5" x2="66" y2="71.5" stroke="rgba(0,232,150,0.25)" stroke-width="1"/>
-
-    <!-- Gövde gölgesi -->
-    <rect x="12" y="72" width="96" height="52" rx="16" fill="#0a4f34" opacity="0.3" transform="translate(2,3)"/>
-    <!-- Gövde -->
-    <rect x="12" y="72" width="96" height="52" rx="16" fill="url(#bodyGrad)"/>
-    <rect x="16" y="74" width="88" height="18" rx="12" fill="rgba(255,255,255,0.08)"/>
-    <rect x="12" y="72" width="96" height="52" rx="16" fill="none" stroke="rgba(0,232,150,0.25)" stroke-width="1.5"/>
-
-    <!-- Göğüs paneli -->
-    <rect x="26" y="80" width="68" height="36" rx="10" fill="rgba(0,0,0,0.22)"/>
-    <rect x="26" y="80" width="68" height="36" rx="10" fill="none" stroke="rgba(0,232,150,0.18)" stroke-width="1"/>
-
-    <!-- Ana LED (pulse) -->
-    <circle cx="46" cy="93" r="8" fill="#001628"/>
-    <circle cx="46" cy="93" r="6" fill="url(#glowGrad)">
-      <animate attributeName="r" values="5;7;5" dur="2s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="46" cy="93" r="6" fill="none" stroke="rgba(0,232,150,0.45)" stroke-width="1">
-      <animate attributeName="r" values="6;10;6" dur="2s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="0.45;0;0.45" dur="2s" repeatCount="indefinite"/>
-    </circle>
-    <text x="46" y="97" text-anchor="middle" font-size="6" font-weight="bold"
-          fill="rgba(255,255,255,0.9)" font-family="monospace">AI</text>
-
-    <!-- Sağ panel çubukları -->
-    <rect x="62" y="82" width="26" height="3.5" rx="1.75" fill="rgba(0,232,150,0.75)"/>
-    <rect x="62" y="88" width="20" height="3.5" rx="1.75" fill="rgba(0,232,150,0.5)"/>
-    <rect x="62" y="94" width="24" height="3.5" rx="1.75" fill="rgba(47,60,110,0.9)"/>
-    <rect x="62" y="100" width="16" height="3.5" rx="1.75" fill="rgba(0,232,150,0.3)"/>
-    <rect x="30" y="110" width="60" height="1.5" rx="0.75" fill="rgba(0,232,150,0.18)"/>
-
-    <!-- Sol kol -->
-    <rect x="0" y="76" width="14" height="34" rx="7" fill="#0c5c3a"/>
-    <rect x="0" y="76" width="14" height="34" rx="7" fill="none" stroke="rgba(0,232,150,0.18)" stroke-width="1"/>
-    <circle cx="7" cy="78" r="4" fill="#0a4f34"/>
-    <circle cx="7" cy="78" r="2.5" fill="rgba(0,232,150,0.4)"/>
-    <ellipse cx="7" cy="112" rx="7" ry="5" fill="#0c5c3a"/>
-
-    <!-- Sağ kol -->
-    <rect x="106" y="76" width="14" height="34" rx="7" fill="#0c5c3a"/>
-    <rect x="106" y="76" width="14" height="34" rx="7" fill="none" stroke="rgba(0,232,150,0.18)" stroke-width="1"/>
-    <circle cx="113" cy="78" r="4" fill="#0a4f34"/>
-    <circle cx="113" cy="78" r="2.5" fill="rgba(0,232,150,0.4)"/>
-    <ellipse cx="113" cy="112" rx="7" ry="5" fill="#0c5c3a"/>
-
-    <!-- Sol bacak -->
-    <rect x="26" y="122" width="22" height="14" rx="7" fill="#0a4f34"/>
-    <rect x="20" y="133" width="30" height="7" rx="4" fill="#083d28"/>
-
-    <!-- Sağ bacak -->
-    <rect x="72" y="122" width="22" height="14" rx="7" fill="#0a4f34"/>
-    <rect x="70" y="133" width="30" height="7" rx="4" fill="#083d28"/>
-  </svg>
+<div id="sgrw">
+  <div id="sgrb"><span id="sgrbadge">⚡ STINGA AI</span><span id="sgrtxt"></span></div>
+  <img id="sgri" src="data:image/svg+xml;base64,{_rb64}" alt="AI"/>
 </div>
-
+<div id="sgtc"></div>
 <script>
-(function() {{
-  const tips = {_tips_js};
-  let tipIdx = 1;
-  const pL = document.getElementById('pupil-l');
-  const pR = document.getElementById('pupil-r');
-  const bubble = document.getElementById('sg-robot-bubble');
-  const bubbleText = document.getElementById('bubble-text');
-  const robot = document.getElementById('sg-robot-body');
-
-  // Göz takip — parent window'daki fareyi dinle
-  function updateEyes(mx, my) {{
-    const svgEl = document.getElementById('sg-robot-body');
-    if (!svgEl || !pL || !pR) return;
-    const rect = svgEl.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top  + rect.height / 2;
-    const dx = mx - cx, dy = my - cy;
-    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-    const nx = dx/dist, ny = dy/dist;
-    const maxM = 3.5;
-    pL.setAttribute('cx', (42 + nx * maxM).toFixed(2));
-    pL.setAttribute('cy', (37 + ny * maxM).toFixed(2));
-    pR.setAttribute('cx', (78 + nx * maxM).toFixed(2));
-    pR.setAttribute('cy', (37 + ny * maxM).toFixed(2));
-  }}
-
-  // Kendi iframe içi fare
-  document.addEventListener('mousemove', e => updateEyes(e.clientX, e.clientY));
-  // Parent frame faresi (Streamlit ana sayfası)
-  try {{
-    window.parent.document.addEventListener('mousemove', function(e) {{
-      // iframe offset'ini hesapla
-      const iframes = window.parent.document.querySelectorAll('iframe');
-      let iframeLeft = 0, iframeTop = 0;
-      iframes.forEach(fr => {{
-        try {{
-          if (fr.contentWindow === window) {{
-            const r = fr.getBoundingClientRect();
-            iframeLeft = r.left; iframeTop = r.top;
-          }}
-        }} catch(ex) {{}}
-      }});
-      updateEyes(e.clientX - iframeLeft, e.clientY - iframeTop);
-    }});
-  }} catch(ex) {{}}
-
-  // Tıklama
-  if (robot) {{
-    robot.addEventListener('click', function() {{
-      if (bubbleText) bubbleText.textContent = tips[tipIdx % tips.length];
-      tipIdx++;
-      if (bubble) {{
-        bubble.classList.add('visible');
-        setTimeout(() => bubble.classList.remove('visible'), 4500);
-      }}
-    }});
-  }}
-
-  // Toast sistemi — parent window'a expose et
-  window._sgShowToast = function(title, msg, type) {{
-    try {{
-      window.parent._sgShowToast && window.parent._sgShowToast(title, msg, type);
-    }} catch(e) {{}}
+(function(){{
+  var tips={_rj.dumps(_rtips)};
+  var ti=0,bub=document.getElementById('sgrb'),txt=document.getElementById('sgrtxt'),img=document.getElementById('sgri');
+  function show(t){{if(txt)txt.textContent=t;if(bub){{bub.classList.add('on');setTimeout(()=>bub.classList.remove('on'),4500);}}}}
+  if(img)img.addEventListener('click',function(){{show(tips[ti%tips.length]);ti++;}});
+  setTimeout(()=>show(tips[0]),1400);
+  window._sgShowToast=function(title,msg,type){{
+    var c=document.getElementById('sgtc');if(!c)return;
+    var el=document.createElement('div');el.className='sgt '+(type||'');
+    var ic={{success:'✅',warning:'⚠️',error:'🚨',info:'🔔'}};
+    el.innerHTML='<div class="sgti">'+(ic[type]||'📌')+'</div><div class="sgtb"><div class="sgtt">'+title+'</div><div class="sgtm">'+msg+'</div></div>';
+    el.onclick=()=>el.remove();c.appendChild(el);
+    setTimeout(()=>{{if(el.parentNode)el.remove();}},5000);
   }};
-
-  // İlk karşılama
-  setTimeout(() => {{
-    if (bubble && bubbleText) {{
-      bubbleText.textContent = tips[0];
-      bubble.classList.add('visible');
-      setTimeout(() => bubble.classList.remove('visible'), 4500);
-    }}
-  }}, 1200);
-
 }})();
-</script>
-</body>
-</html>"""
-    _components.html(_robot_html, height=0, scrolling=False)
-
-    # Toast container (ana sayfada)
-    st.markdown("""
-<div id="sg-toast-container"></div>
-<script>
-window._sgShowToast = function(title, msg, type) {
-  const c = document.getElementById('sg-toast-container');
-  if(!c) return;
-  const icons = {success:'✅', warning:'⚠️', error:'🚨', info:'🔔'};
-  const t = document.createElement('div');
-  t.className = 'sg-toast ' + (type || 'info');
-  t.innerHTML = '<div class="sg-toast-icon">' + (icons[type]||'📌') + '</div>'
-              + '<div class="sg-toast-body">'
-              + '<div class="sg-toast-title">' + title + '</div>'
-              + '<div class="sg-toast-msg">' + msg + '</div>'
-              + '</div>';
-  t.onclick = () => t.remove();
-  c.appendChild(t);
-  setTimeout(() => { if(t.parentNode) t.remove(); }, 5000);
-};
 </script>
 """, unsafe_allow_html=True)
 
+    # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
         logo_b64 = get_logo_b64()
         user_xp = data_store.get("xp", {}).get(user_name, 0)
@@ -2201,7 +1997,7 @@ window._sgShowToast = function(title, msg, type) {
         total_approved = _kpi_df[_kpi_df['Durum']=='Onaylandı']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         total_pending  = _kpi_df[_kpi_df['Durum']=='Onay Bekliyor']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         crit_risks     = len(_kpi_df[_kpi_df['Risk_Skoru'] > 70]) if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
-        my_wallet      = data_store.get('wallets', {}).get(user_name, 0)
+        my_wallet      = data_store.get('wallets',{}).get(user_name, 0)
         total_tx       = len(_kpi_df) if not _kpi_df.empty else 0
         avg_risk       = _kpi_df['Risk_Skoru'].mean() if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
         
@@ -2232,7 +2028,7 @@ window._sgShowToast = function(title, msg, type) {
         
         # Liquidity warning
         if role == "admin":
-            total_wallet = sum(data_store.get('wallets', {}).values())
+            total_wallet = sum(data_store.get('wallets',{}).values())
             if total_wallet < total_pending:
                 st.markdown(f"""
                 <div class="anomaly-alert">
@@ -2414,81 +2210,33 @@ window._sgShowToast = function(title, msg, type) {
                         else:
                             data_ai = extract_json(res_raw)
                             if data_ai:
-                                # ── Mükerrer Fiş Kontrolü (FRESH VERİ — cache bypass) ──
-                                # Cache'i temizle, en güncel veriyi al
+                                # ── Mükerrer Fiş Kontrolü (cache bypass) ──
                                 st.cache_data.clear()
-                                fresh_store = load_data()
-                                firma_yeni = str(data_ai.get("firma", "")).strip().lower()
-                                tutar_yeni = float(data_ai.get("toplam_tutar", 0))
-                                tarih_yeni = str(data_ai.get("tarih", ""))
-
-                                dup_ayni_gun = None        # Aynı kullanıcı VEYA farklı kullanıcı, aynı tarih
-                                dup_farkli_gun = None      # Farklı tarih ama aynı firma+tutar
-
-                                def _firma_eslesir(f1, f2):
-                                    """İki firma adını normalize ederek karşılaştır."""
-                                    f1 = f1.strip().lower()
-                                    f2 = f2.strip().lower()
-                                    if f1 == f2:
-                                        return True
-                                    if len(f1) > 3 and len(f2) > 3:
-                                        return f1 in f2 or f2 in f1
-                                    return False
-
-                                for e in fresh_store.get("expenses", []):
-                                    firma_eski = str(e.get("Firma", "")).strip().lower()
-                                    tutar_eski = float(e.get("Tutar", 0))
-                                    tarih_eski = str(e.get("Tarih", ""))
-
-                                    tutar_esit  = abs(tutar_eski - tutar_yeni) < 1.0
-                                    firma_esit  = _firma_eslesir(firma_eski, firma_yeni)
-
-                                    if firma_esit and tutar_esit:
-                                        if tarih_eski == tarih_yeni:
-                                            # Aynı gün — kim yüklemiş olursa olsun BLOKE
-                                            dup_ayni_gun = e
-                                            break
+                                _fresh = load_data()
+                                firma_yeni = str(data_ai.get("firma","")).strip().lower()
+                                tutar_yeni = float(data_ai.get("toplam_tutar",0))
+                                tarih_yeni = str(data_ai.get("tarih",""))
+                                dup_blok = None
+                                dup_uyar = None
+                                for e in _fresh.get("expenses",[]):
+                                    f_eski = str(e.get("Firma","")).strip().lower()
+                                    t_eski = float(e.get("Tutar",0))
+                                    d_eski = str(e.get("Tarih",""))
+                                    t_esit = abs(t_eski - tutar_yeni) < 1.0
+                                    f_esit = f_eski == firma_yeni or (len(firma_yeni)>3 and (firma_yeni in f_eski or f_eski in firma_yeni))
+                                    if f_esit and t_esit:
+                                        if d_eski == tarih_yeni:
+                                            dup_blok = e; break
                                         else:
-                                            # Farklı tarih — uyar ama geçir
-                                            dup_farkli_gun = e
+                                            dup_uyar = e
+                                if dup_blok:
+                                    kim = dup_blok.get("Kullanıcı","?")
+                                    mesaj = f"Bu fişi **sen** daha önce yükledin." if kim==user_name else f"Bu fişi **{kim}** yüklemiş."
+                                    st.error(f"⛔ MÜKERRER FİŞ! {mesaj}\n\nFirma: {dup_blok.get('Firma')} | ₺{float(dup_blok.get('Tutar',0)):,.0f} | {dup_blok.get('Tarih')}")
+                                elif dup_uyar:
+                                    st.warning(f"⚠️ Benzer fiş mevcut: {dup_uyar.get('Firma')} ₺{float(dup_uyar.get('Tutar',0)):,.0f} — {dup_uyar.get('Kullanıcı')} tarafından {dup_uyar.get('Tarih')} tarihinde yüklenmiş.")
 
-                                if dup_ayni_gun:
-                                    yukleme_sahibi = dup_ayni_gun.get('Kullanıcı', '?')
-                                    if yukleme_sahibi == user_name:
-                                        st.error(
-                                            f"⛔ MÜKERRER FİŞ TESPİTİ!\n\n"
-                                            f"Bu fişi **sen** daha önce aynı tarihte sisteme yükledin.\n\n"
-                                            f"Firma: **{dup_ayni_gun.get('Firma')}** | "
-                                            f"Tutar: ₺{float(dup_ayni_gun.get('Tutar',0)):,.0f} | "
-                                            f"Tarih: {dup_ayni_gun.get('Tarih')} | "
-                                            f"Durum: {dup_ayni_gun.get('Durum','?')}"
-                                        )
-                                    else:
-                                        st.error(
-                                            f"⛔ MÜKERRER FİŞ TESPİTİ!\n\n"
-                                            f"Bu fiş **{yukleme_sahibi}** tarafından "
-                                            f"aynı tarihte sisteme zaten yüklenmiş.\n\n"
-                                            f"Firma: **{dup_ayni_gun.get('Firma')}** | "
-                                            f"Tutar: ₺{float(dup_ayni_gun.get('Tutar',0)):,.0f} | "
-                                            f"Tarih: {dup_ayni_gun.get('Tarih')}"
-                                        )
-                                    # BLOKE — aşağıdaki kayıt kodu çalışmaz
-                                elif dup_farkli_gun:
-                                    st.warning(
-                                        f"⚠️ OLASI MÜKERRER FİŞ!\n\n"
-                                        f"Aynı firma ve tutarda bir fiş **{dup_farkli_gun.get('Kullanıcı')}** "
-                                        f"tarafından {dup_farkli_gun.get('Tarih')} tarihinde yüklenmiş. "
-                                        f"Farklı tarihli olduğu için sistem devam ediyor, "
-                                        f"ancak yönetici bildirimi gönderildi."
-                                    )
-                                    _api_post("/notify", {
-                                        "user": "Zeynep",
-                                        "msg": f"🔴 Olası mükerrer fiş: {data_ai.get('firma')} ₺{tutar_yeni:,.0f} — "
-                                               f"{user_name} ve {dup_farkli_gun.get('Kullanıcı')} aynı fişi yüklemiş olabilir.",
-                                        "type": "warning"
-                                    })
-
-                                if not dup_ayni_gun:
+                                if not dup_blok:
                                     # ── Tarih Doğrulama (Python tarafında) ──
                                     tarih_str = data_ai.get("tarih", datetime.now().strftime("%Y-%m-%d"))
                                     try:
@@ -2498,18 +2246,13 @@ window._sgShowToast = function(title, msg, type) {
                                             # AI yanlış tarih verdiyse bugünün tarihine çek
                                             tarih_str = bugun_dt.strftime("%Y-%m-%d")
                                             data_ai["tarih"] = tarih_str
-                                            # ÖNEMLİ: anomali=False YAPMA — kisisel gider vs. anomalisi kaybolur
-                                            # Sadece tarih anomalisini temizle
-                                            prev_aciklama = data_ai.get("anomali_aciklamasi", "")
-                                            if "gelecek tarih" in prev_aciklama.lower() or "ileri tarih" in prev_aciklama.lower():
-                                                data_ai["anomali_aciklamasi"] = ""
                                             st.info("ℹ️ Fiş tarihi gelecek olarak tespit edildi, bugünün tarihi kullanıldı.")
                                     except:
                                         tarih_str = datetime.now().strftime("%Y-%m-%d")
                                         data_ai["tarih"] = tarih_str
 
-                                    # ── İş Kuralı Motoru Uygula (fresh veri ile) ──
-                                    data_ai = apply_business_rules(data_ai, fresh_store, user_name)
+                                    # ── İş Kuralı Motoru Uygula ──
+                                    data_ai = apply_business_rules(data_ai, _fresh, user_name)
                                     uyarilar = data_ai.pop("_uyarilar", [])
 
                                     # Görseli hem lokal hem base64 olarak kaydet
@@ -2816,7 +2559,7 @@ window._sgShowToast = function(title, msg, type) {
         with col_c:
             if role == "admin":
                 st.markdown("### 💳 Personel Kasa Durumları")
-                wallets = data_store.get("wallets", {})
+                wallets = data_store.get("wallets",{})
                 
                 for person, bal in wallets.items():
                     # "Şenol" → "senol" key ile USERS'dan bul
@@ -2858,7 +2601,7 @@ window._sgShowToast = function(title, msg, type) {
                             else:
                                 st.error("Transfer başarısız, tekrar deneyin")
             else:
-                my_bal = data_store.get('wallets', {}).get(user_name, 0)
+                my_bal = data_store.get('wallets',{}).get(user_name, 0)
                 st.markdown(f"""
                 <div class="metric-card" style="margin-bottom:16px;">
                     <div style="font-size:1rem; color:var(--text-secondary);">Mevcut Bakiyeniz</div>
