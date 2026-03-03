@@ -932,7 +932,7 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         fmt = lambda x: f"₺{x:,.2f}"
 
         # ── BAŞLIK ──
-        hdr_items = []
+        logo_cell = Spacer(3*cm, 3*cm)
         if logo_path and RLImage:
             try:
                 from PIL import Image as _PI
@@ -944,21 +944,29 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
                 _w, _h = _img.size; _s = min(_w,_h)
                 _img = _img.crop(((_w-_s)//2,(_h-_s)//2,(_w+_s)//2,(_h+_s)//2)).resize((400,400), _PI.LANCZOS)
                 _lb = _bio.BytesIO(); _img.save(_lb, format='PNG'); _lb.seek(0)
-                hdr_items.append(RLImage(_lb, width=2.8*cm, height=2.8*cm))
+                logo_cell = RLImage(_lb, width=3*cm, height=3*cm)
             except:
                 pass
-        hdr_items += [
+        _logo_w = 4.5*cm
+        _title_w = W - _logo_w
+        hdr_items = [
             Spacer(1,0.15*cm),
             _ph("STİNGA ENERJİ A.Ş.", ST["title"]),
             _ph("GİDER VE KDV RAPORU", ST["title"]),
             _ph(f"Dönem: {donem}  |  {datetime.now().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v15.0", ST["sub"]),
         ]
-        hdr = Table([[ hdr_items ]], colWidths=[W])
+        hdr = Table([[logo_cell, hdr_items]], colWidths=[_logo_w, _title_w])
         hdr.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,-1),_R_DARK),
-            ("TOPPADDING",(0,0),(-1,-1),14),("BOTTOMPADDING",(0,0),(-1,-1),14),
-            ("LEFTPADDING",(0,0),(-1,-1),20),("RIGHTPADDING",(0,0),(-1,-1),20),
-            ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("BACKGROUND",  (0,0),(0,0), rl_colors.white),
+            ("ALIGN",       (0,0),(0,0), "CENTER"),
+            ("VALIGN",      (0,0),(0,0), "MIDDLE"),
+            ("TOPPADDING",  (0,0),(0,0), 8), ("BOTTOMPADDING",(0,0),(0,0), 8),
+            ("LEFTPADDING", (0,0),(0,0), 8), ("RIGHTPADDING", (0,0),(0,0), 8),
+            ("BACKGROUND",  (1,0),(1,0), _R_DARK),
+            ("ALIGN",       (1,0),(1,0), "CENTER"),
+            ("VALIGN",      (1,0),(1,0), "MIDDLE"),
+            ("TOPPADDING",  (1,0),(1,0), 16), ("BOTTOMPADDING",(1,0),(1,0), 16),
+            ("LEFTPADDING", (1,0),(1,0), 16), ("RIGHTPADDING", (1,0),(1,0), 20),
         ]))
         story.append(hdr); story.append(Spacer(1,0.5*cm))
 
