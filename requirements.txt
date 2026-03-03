@@ -6,3 +6,12 @@ pillow
 requests
 streamlit-autorefresh
 scikit-learn
+streamlit
+pandas
+google-generativeai
+plotly
+
+reportlab
+openpyxl
+requests
+
