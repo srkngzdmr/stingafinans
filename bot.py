@@ -1107,18 +1107,10 @@ Sadece yorumu yaz, başka hiçbir şey ekleme."""
         t.start()
         beklemeler = [
 
-            "🛰️ STINGA YAPAY ZEKA GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz.",
-            "🔍 STINGA YAPAY ZEKA adli tıp modunda — Parmak izleri, mürekkep yoğunluğu ve yazı tipi... Hiçbir detay radardan kaçamaz!",
-            "🗺️ STINGA YAPAY ZEKA konum araştırmasında — Bu fiş nerede basıldı, sen şu an neredesin?.",
-            "🏢 STINGA YAPAY ZEKA arşivlere daldı — fişiniz dijital dünyaya aktarılıyor, sonuçlar yükleniyor. Gözünü ekrandan ayırma!",
-            "🧩 STINGA YAPAY ZEKA parçaları birleştiriyor — fişinizdeki tüm detaylar yerli yerine oturuyor. Geliyor gelmekte olan..",
-            "🛰️ STINGA YAPAY ZEKA GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz.",
-            "🔍 STINGA YAPAY ZEKA* devreye girdi — fiş mercek altına alındı, sonuç birazdan geliyor...",
-            "🧠 STINGA YAPAY ZEKA* fişinizi inceliyor — rakamlar, tarih, KDV... hiçbir şey kaçmaz.Az sabret ama ;) ",
-            "⚡ STINGA YAPAY ZEKA* analiz başladı — biraz sabredin, her kuruşu tartıyoruz;)",
-            "🕵️ STINGA YAPAY ZEKA* sahneye çıktı — fişiniz şu an sorgulanıyor, sonuç birazdan geliyor.",
-            "📡 STINGA YAPAY ZEKA* bağlandı — fiş taranıyor, az sonra değerlendirme hazır.",
-        ]
+            "📡 **STİNGA YAPAY ZEKA** yüklemiş olduğunuz fişi, dijital veri merkezine gönderdi. Analiz için lütfen bekleyin.⌛",
+            "🏢 **STINGA YAPAY ZEKA** arşivlere daldı — fişiniz dijital dünyaya aktarılıyor, sonuçlar yükleniyor. Gözünü ekrandan ayırma!⌛",
+            "🛰️ **STINGA YAPAY ZEKA** GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz.🚩",
+                    ]
         msg.body(random.choice(beklemeler))
         return str(resp)
 
