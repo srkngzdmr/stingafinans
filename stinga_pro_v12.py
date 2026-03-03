@@ -411,6 +411,109 @@ section[data-testid="stMain"] > div { background:transparent !important; }
 @keyframes sdotBlink{0%,100%{opacity:1;}50%{opacity:0.2;}}
 .sactive-dot{width:5px;height:5px;background:var(--sg);border-radius:50%;box-shadow:0 0 6px var(--sg);animation:sdotBlink 2s ease-in-out infinite;display:inline-block;margin-left:auto;}
 
+/* ── ONAY ANİMASYONU (tam ekran overlay) ────────────────── */
+#sg-approve-overlay {
+    position:fixed; inset:0; z-index:99999;
+    background:#000;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:20px;
+    animation: sgOverlayOut 0.4s ease 1.8s forwards;
+    pointer-events:all;
+}
+@keyframes sgOverlayOut {
+    to { opacity:0; pointer-events:none; }
+}
+.sg-approve-icon {
+    font-size: 7rem;
+    animation: sgIconPop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.2s both;
+    filter: drop-shadow(0 0 40px rgba(17,233,150,0.9));
+}
+@keyframes sgIconPop {
+    from { transform:scale(0) rotate(-30deg); opacity:0; }
+    to   { transform:scale(1) rotate(0deg);   opacity:1; }
+}
+.sg-approve-text {
+    font-family:'Plus Jakarta Sans',sans-serif;
+    font-size: clamp(2rem, 6vw, 4.5rem);
+    font-weight:900; letter-spacing:0.06em;
+    background:linear-gradient(135deg,#00e896,#17a870,#2d4a8a);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    filter:drop-shadow(0 0 30px rgba(0,232,150,0.5));
+    animation: sgTextRise 0.6s cubic-bezier(0.16,1,0.3,1) 0.4s both;
+}
+.sg-approve-sub {
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.85rem; letter-spacing:0.2em;
+    color:rgba(0,200,140,0.6);
+    animation: sgTextRise 0.6s cubic-bezier(0.16,1,0.3,1) 0.6s both;
+}
+@keyframes sgTextRise {
+    from { opacity:0; transform:translateY(20px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+
+/* ── TOAST BİLDİRİM ──────────────────────────────────────── */
+#sg-toast-container {
+    position:fixed; bottom:28px; right:28px;
+    z-index:9999; display:flex; flex-direction:column; gap:10px;
+    pointer-events:none;
+}
+.sg-toast {
+    background:#fff; border-radius:14px;
+    padding:14px 18px; min-width:280px; max-width:360px;
+    box-shadow:0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
+    border-left:4px solid var(--sg);
+    display:flex; align-items:flex-start; gap:12px;
+    animation: sgToastIn 0.4s cubic-bezier(0.16,1,0.3,1) both,
+               sgToastOut 0.35s ease 4.5s forwards;
+    pointer-events:all; cursor:pointer;
+}
+.sg-toast.warning { border-left-color: var(--amber); }
+.sg-toast.error   { border-left-color: var(--red); }
+@keyframes sgToastIn  { from{transform:translateX(110%);opacity:0;} to{transform:translateX(0);opacity:1;} }
+@keyframes sgToastOut { to{transform:translateX(110%);opacity:0;} }
+.sg-toast-icon { font-size:1.4rem; flex-shrink:0; margin-top:1px; }
+.sg-toast-body { flex:1; }
+.sg-toast-title { font-weight:700; font-size:0.82rem; color:#0f1923; margin-bottom:2px; }
+.sg-toast-msg   { font-size:0.74rem; color:#5a7a6a; line-height:1.4; }
+
+/* ── AI ROBOT (fare takipçi) ─────────────────────────────── */
+#sg-robot-wrap {
+    position:fixed; bottom:28px; left:28px;
+    z-index:9998; pointer-events:none;
+    transition: transform 0.18s ease;
+}
+#sg-robot-svg {
+    width:72px; height:72px;
+    filter: drop-shadow(0 4px 16px rgba(17,133,91,0.35));
+    animation: sgRobotFloat 3s ease-in-out infinite;
+    cursor: pointer; pointer-events:all;
+}
+@keyframes sgRobotFloat {
+    0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);}
+}
+#sg-robot-bubble {
+    position:absolute; bottom:80px; left:0;
+    background:#fff; border:1px solid rgba(17,133,91,0.2);
+    border-radius:14px 14px 14px 4px;
+    padding:10px 14px; min-width:180px; max-width:240px;
+    font-family:'Plus Jakarta Sans',sans-serif;
+    font-size:0.75rem; color:#0f1923; line-height:1.5;
+    box-shadow:0 4px 20px rgba(0,0,0,0.1);
+    opacity:0; transform:translateY(6px) scale(0.95);
+    transition:all 0.25s ease;
+    pointer-events:none;
+}
+#sg-robot-wrap:hover #sg-robot-bubble,
+#sg-robot-bubble.visible {
+    opacity:1; transform:translateY(0) scale(1);
+}
+#sg-robot-bubble::before {
+    content:'⚡ STINGA AI';
+    display:block; font-size:0.58rem; font-weight:700;
+    color:var(--sg); letter-spacing:1.5px; margin-bottom:4px;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -1476,6 +1579,149 @@ def logout():
 # ─── ANA UYGULAMA ─────────────────────────────────────────────
 init_db()
 
+# ── GLOBAL: AI Robot + Toast + Auto-refresh JS ───────────────
+_ROBOT_TIPS = [
+    "Yeni fiş taramak için 📑 Fiş Tarama bölümünü kullan!",
+    "Onay bekleyen fişleri kontrol etmeyi unutma ⚖️",
+    "Dashboard'da günlük AI brifingini başlatabilirsin 🤖",
+    "Anomali Dedektörü şüpheli işlemleri otomatik bulur 🔬",
+    "Raporları PDF olarak indirebilirsin 📄",
+    "Kasa bakiyeni 💰 Finans ekranından takip et",
+]
+import json as _json
+_robot_tips_js = _json.dumps(_ROBOT_TIPS)
+
+st.markdown(f"""
+<!-- STINGA PRO: Robot + Toast + Auto-refresh -->
+<div id="sg-robot-wrap">
+  <div id="sg-robot-bubble"></div>
+  <svg id="sg-robot-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="rg1" cx="50%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#00e896"/>
+        <stop offset="100%" stop-color="#0c6344"/>
+      </radialGradient>
+      <filter id="rglow"><feGaussianBlur stdDeviation="2" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <!-- Body -->
+    <rect x="22" y="38" width="56" height="44" rx="10" fill="url(#rg1)" filter="url(#rglow)"/>
+    <!-- Head -->
+    <rect x="28" y="14" width="44" height="30" rx="9" fill="#0f6b45"/>
+    <rect x="30" y="16" width="40" height="26" rx="7" fill="url(#rg1)" opacity="0.9"/>
+    <!-- Antenna -->
+    <line x1="50" y1="14" x2="50" y2="6" stroke="rgba(0,232,150,0.7)" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="50" cy="5" r="3" fill="#00e896">
+      <animate attributeName="r" values="3;5;3" dur="1.5s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Eyes -->
+    <ellipse cx="39" cy="27" rx="5" ry="5.5" fill="#001f12"/>
+    <ellipse cx="61" cy="27" rx="5" ry="5.5" fill="#001f12"/>
+    <circle cx="40" cy="26" r="2" fill="#00e896" id="reye-l"/>
+    <circle cx="62" cy="26" r="2" fill="#00e896" id="reye-r"/>
+    <!-- Mouth -->
+    <path d="M38 36 Q50 42 62 36" stroke="rgba(0,232,150,0.8)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <!-- Chest panel -->
+    <rect x="32" y="46" width="36" height="22" rx="6" fill="rgba(0,0,0,0.2)"/>
+    <circle cx="42" cy="57" r="4" fill="rgba(0,232,150,0.7)">
+      <animate attributeName="opacity" values="0.7;1;0.7" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <rect x="50" y="53" width="14" height="3" rx="2" fill="rgba(0,232,150,0.5)"/>
+    <rect x="50" y="59" width="10" height="3" rx="2" fill="rgba(0,232,150,0.3)"/>
+    <!-- Arms -->
+    <rect x="8" y="44" width="14" height="30" rx="7" fill="#0f6b45"/>
+    <rect x="78" y="44" width="14" height="30" rx="7" fill="#0f6b45"/>
+    <!-- Legs -->
+    <rect x="32" y="78" width="14" height="18" rx="7" fill="#0c6344"/>
+    <rect x="54" y="78" width="14" height="18" rx="7" fill="#0c6344"/>
+    <!-- Feet -->
+    <rect x="28" y="92" width="22" height="8" rx="4" fill="#0a5236"/>
+    <rect x="50" y="92" width="22" height="8" rx="4" fill="#0a5236"/>
+  </svg>
+</div>
+<div id="sg-toast-container"></div>
+
+<script>
+(function(){{
+  // ── ROBOT: fare takip + mesaj ─────────────────────────────
+  const wrap   = document.getElementById('sg-robot-wrap');
+  const bubble = document.getElementById('sg-robot-bubble');
+  const eyeL   = document.getElementById('reye-l');
+  const eyeR   = document.getElementById('reye-r');
+  const tips   = {_robot_tips_js};
+  let tipIdx = 0;
+
+  // Mevcut pozisyon
+  let rx = 28, ry = window.innerHeight - 100;
+
+  // Robot'un gözleri fareyi takip eder (küçük offset)
+  document.addEventListener('mousemove', function(e) {{
+    const svgRect = wrap.getBoundingClientRect();
+    const cx = svgRect.left + svgRect.width/2;
+    const cy = svgRect.top  + svgRect.height/2;
+    const dx = (e.clientX - cx) / window.innerWidth  * 6;
+    const dy = (e.clientY - cy) / window.innerHeight * 5;
+    if(eyeL) {{ eyeL.setAttribute('cx', 40 + dx); eyeL.setAttribute('cy', 26 + dy); }}
+    if(eyeR) {{ eyeR.setAttribute('cx', 62 + dx); eyeR.setAttribute('cy', 26 + dy); }}
+
+    // Robot hafifçe fareye yönelir (çok yavaş)
+    const targetX = Math.max(8, Math.min(window.innerWidth - 100, e.clientX * 0.05 + 8));
+    const targetY = Math.max(80, Math.min(window.innerHeight - 100, 
+                    window.innerHeight - 100 + (e.clientY - window.innerHeight/2) * 0.04));
+    wrap.style.left   = targetX  + 'px';
+    wrap.style.bottom = (window.innerHeight - targetY - 72) + 'px';
+  }});
+
+  // Robot tıklanınca mesaj göster
+  document.getElementById('sg-robot-svg').addEventListener('click', function() {{
+    bubble.textContent = tips[tipIdx % tips.length];
+    tipIdx++;
+    bubble.classList.add('visible');
+    setTimeout(() => bubble.classList.remove('visible'), 3500);
+  }});
+
+  // ── TOAST SİSTEMİ ────────────────────────────────────────
+  window._sgShowToast = function(title, msg, type) {{
+    const c = document.getElementById('sg-toast-container');
+    if(!c) return;
+    const icons = {{success:'✅', warning:'⚠️', error:'🚨', info:'🔔'}};
+    const t = document.createElement('div');
+    t.className = 'sg-toast ' + (type||'');
+    t.innerHTML = `<div class="sg-toast-icon">${{icons[type]||'📌'}}</div>
+                   <div class="sg-toast-body">
+                     <div class="sg-toast-title">${{title}}</div>
+                     <div class="sg-toast-msg">${{msg}}</div>
+                   </div>`;
+    t.onclick = () => t.remove();
+    c.appendChild(t);
+    setTimeout(() => {{ if(t.parentNode) t.remove(); }}, 5000);
+  }};
+
+  // ── OTOMATİK YENİLEME (10 sn) ───────────────────────────
+  // Son bilinen bildirim sayısını localStorage'da sakla
+  let lastNotifCount = parseInt(sessionStorage.getItem('sg_notif_count')||'0');
+  
+  setInterval(function() {{
+    // Streamlit rerun'u tetiklemek için gizli bir hidden input tıkla
+    // Streamlit'in kendi auto-rerun mekanizması yoktur doğrudan,
+    // ama window.location.reload() yerine Streamlit'in internal API'sini kullanıyoruz
+    try {{
+      // Streamlit'e "veri güncelle" sinyali: query_params değiştir
+      const url = new URL(window.location.href);
+      const ts = Date.now();
+      url.searchParams.set('_sgr', ts);
+      window.history.replaceState(null, '', url.toString());
+      // Streamlit bunu query_params değişikliği olarak algılar → rerun
+      window.parent.postMessage({{type: 'streamlit:rerun'}}, '*');
+    }} catch(e) {{}}
+  }}, 10000);
+
+}})();
+</script>
+""", unsafe_allow_html=True)
+
 if not st.session_state.authenticated:
     login()
 elif not st.session_state.splash_done:
@@ -1484,6 +1730,39 @@ else:
     data_store = load_data()
     model = configure_ai()
     user_info = st.session_state.user_info
+
+    # ── 10 SN OTOMATİK YENİLEME ─────────────────────────────
+    # Son yenileme zamanını session_state'de sakla
+    if 'last_refresh' not in st.session_state:
+        st.session_state.last_refresh = time.time()
+    if 'last_notif_count' not in st.session_state:
+        st.session_state.last_notif_count = 0
+
+    now_ts = time.time()
+    if now_ts - st.session_state.last_refresh >= 10:
+        # Bildirim sayısını kontrol et
+        _new_notifs = [n for n in data_store.get("notifications", [])
+                       if (n.get("user") == st.session_state.user_info.get("name","") 
+                           or n.get("user") == "Hepsi") and not n.get("read", False)]
+        _new_count = len(_new_notifs)
+        _prev_count = st.session_state.last_notif_count
+
+        if _new_count > _prev_count:
+            # Yeni bildirim var — toast göster
+            _diff = _new_count - _prev_count
+            st.markdown(f"""
+<script>
+if(window._sgShowToast) {{
+  window._sgShowToast('🔔 {_diff} Yeni Bildirim', 
+    '{_new_notifs[-1].get("msg","Yeni bir bildirim var.")[:80]}', 'info');
+}}
+</script>
+""", unsafe_allow_html=True)
+            st.session_state.last_notif_count = _new_count
+
+        st.session_state.last_refresh = now_ts
+        st.cache_data.clear()
+        st.rerun()
 
     # ── Eski bozuk AI_Audit kayıtlarını sessizce onar (tek seferlik) ──
     if not st.session_state.get("audit_fixed"):
@@ -2120,6 +2399,47 @@ else:
 
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"omcent_on_{row['ID']}", use_container_width=True):
+                                # Tam ekran kutlama animasyonu göster
+                                st.markdown("""
+<div id="sg-approve-overlay">
+  <canvas id="sg-confetti-cv" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:100000;"></canvas>
+  <div class="sg-approve-icon">✅</div>
+  <div class="sg-approve-text">ONAYLANDI!</div>
+  <div class="sg-approve-sub">İŞLEM BAŞARIYLA TAMAMLANDI</div>
+</div>
+<script>
+(function(){
+  // Confetti
+  const cv = document.getElementById('sg-confetti-cv');
+  if(!cv) return;
+  const ctx = cv.getContext('2d');
+  cv.width = window.innerWidth; cv.height = window.innerHeight;
+  const particles = Array.from({length:120}, () => ({
+    x: Math.random()*cv.width, y: Math.random()*cv.height*0.3 - cv.height*0.1,
+    vx:(Math.random()-0.5)*6, vy:Math.random()*4+2,
+    r:Math.random()*7+3, angle:Math.random()*360,
+    av:(Math.random()-0.5)*8,
+    color:['#00e896','#17a870','#2d4a8a','#f0a500','#ffffff'][Math.floor(Math.random()*5)]
+  }));
+  let frame = 0;
+  function draw(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    particles.forEach(p=>{
+      p.x+=p.vx; p.y+=p.vy; p.angle+=p.av; p.vy+=0.08;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.angle*Math.PI/180);
+      ctx.fillStyle=p.color; ctx.globalAlpha=Math.max(0,1-frame/80);
+      ctx.fillRect(-p.r/2,-p.r/2,p.r,p.r*1.6);
+      ctx.restore();
+    });
+    frame++;
+    if(frame<90) requestAnimationFrame(draw);
+  }
+  draw();
+  // 2sn sonra overlay'i kaldır
+  setTimeout(()=>{ const o=document.getElementById('sg-approve-overlay'); if(o) o.remove(); }, 2000);
+})();
+</script>
+""", unsafe_allow_html=True)
                                 with st.spinner("Onaylanıyor..."):
                                     if api_approve(str(row['ID']), "approve", user_name):
                                         st.success("✅ Onaylandı!")
@@ -2310,6 +2630,27 @@ else:
                             
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"on_{row['ID']}", use_container_width=True):
+                                st.markdown("""
+<div id="sg-approve-overlay">
+  <canvas id="sg-confetti-cv" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:100000;"></canvas>
+  <div class="sg-approve-icon">✅</div>
+  <div class="sg-approve-text">ONAYLANDI!</div>
+  <div class="sg-approve-sub">İŞLEM BAŞARIYLA TAMAMLANDI</div>
+</div>
+<script>
+(function(){
+  const cv=document.getElementById('sg-confetti-cv');
+  if(!cv)return;
+  const ctx=cv.getContext('2d');
+  cv.width=window.innerWidth; cv.height=window.innerHeight;
+  const p=Array.from({length:120},()=>({x:Math.random()*cv.width,y:Math.random()*cv.height*.3-50,vx:(Math.random()-.5)*6,vy:Math.random()*4+2,r:Math.random()*7+3,angle:Math.random()*360,av:(Math.random()-.5)*8,color:['#00e896','#17a870','#2d4a8a','#f0a500','#fff'][Math.floor(Math.random()*5)]}));
+  let f=0;
+  function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(i=>{i.x+=i.vx;i.y+=i.vy;i.angle+=i.av;i.vy+=.08;ctx.save();ctx.translate(i.x,i.y);ctx.rotate(i.angle*Math.PI/180);ctx.fillStyle=i.color;ctx.globalAlpha=Math.max(0,1-f/80);ctx.fillRect(-i.r/2,-i.r/2,i.r,i.r*1.6);ctx.restore();});f++;if(f<90)requestAnimationFrame(draw);}
+  draw();
+  setTimeout(()=>{const o=document.getElementById('sg-approve-overlay');if(o)o.remove();},2000);
+})();
+</script>
+""", unsafe_allow_html=True)
                                 with st.spinner("Onaylanıyor..."):
                                     if api_approve(str(row['ID']), "approve", user_name):
                                         st.success("✅ Onaylandı!")
