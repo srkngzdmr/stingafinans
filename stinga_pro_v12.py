@@ -2340,12 +2340,17 @@ else:
         user_xp = data_store.get("xp", {}).get(user_name, 0)
         level = user_xp // 500 + 1
         xp_progress = (user_xp % 500) / 500
+        # Okundu takibi session_state id seti ile
+        if "read_notif_ids" not in st.session_state:
+            st.session_state.read_notif_ids = set()
+        _read_ids = st.session_state.read_notif_ids
         my_notifs = [n for n in data_store.get("notifications", [])
                      if (str(n.get("user","")) == user_name or str(n.get("user","")) == "Hepsi"
-                         or str(n.get("user","")).lower() == user_name.lower()) and not n.get("read", False)]
+                         or str(n.get("user","")).lower() == user_name.lower())
+                     and id(n) not in _read_ids]
         # session_state'teki lokal bildirimleri de ekle
         local_notifs = st.session_state.get("local_notifications", [])
-        my_notifs = my_notifs + [n for n in local_notifs if not n.get("read", False)]
+        my_notifs = my_notifs + [n for n in local_notifs if not n.get("read", False) and id(n) not in _read_ids]
         notif_count = len(my_notifs)
 
         if not df_full.empty and 'Tutar' in df_full.columns:
@@ -2406,22 +2411,29 @@ else:
         """, unsafe_allow_html=True)
 
         # ── 3. NOTIFICATION
-        # Robot badge'ini güncelle (notif_count burada hazır)
-        st.markdown(f"""
-        <script>
+        # Robot badge'ini _stc.html ile güncelle (st.markdown script çalıştırmaz)
+        _stc.html(f"""<!DOCTYPE html><html><body><script>
         (function(){{
-          var nb=window.parent.document.getElementById('SGNXNOTIF-BADGE');
-          if(!nb){{
-            // iframe içinde ara
+          function setBadge(){{
             var frames=window.parent.document.querySelectorAll('iframe');
-            frames.forEach(function(f){{
-              try{{var el=f.contentDocument.getElementById('SGNXNOTIF-BADGE');if(el)nb=el;}}catch(e){{}}
-            }});
+            for(var i=0;i<frames.length;i++){{
+              try{{
+                var doc=frames[i].contentDocument||frames[i].contentWindow.document;
+                var nb=doc.getElementById('SGNXNOTIF-BADGE');
+                if(nb){{
+                  nb.textContent='{notif_count}';
+                  nb.style.display={notif_count}>0?'flex':'none';
+                  return;
+                }}
+              }}catch(e){{}}
+            }}
           }}
-          if(nb){{nb.textContent='{notif_count}';nb.style.display={notif_count}>0?'flex':'none';}}
+          setBadge();
+          setTimeout(setBadge,500);
+          setTimeout(setBadge,1500);
         }})();
-        </script>
-        """, unsafe_allow_html=True)
+        </script></body></html>""", height=0, scrolling=False)
+
         if notif_count > 0:
             st.markdown(f"""
             <div class="snotif">
@@ -2431,14 +2443,11 @@ else:
             </div>
             """, unsafe_allow_html=True)
             with st.expander("Bildirimleri Gör"):
-                # Lokal bildirimleri okundu işaretle (session_state)
+                # Tüm görünen bildirimleri okundu olarak işaretle (session_state id seti)
+                for n in my_notifs:
+                    st.session_state.read_notif_ids.add(id(n))
                 for n in st.session_state.get("local_notifications", []):
                     n["read"] = True
-                # data_store'daki bildirimleri okundu işaretle (in-memory, rerun'da sıfırlanır)
-                for n in data_store.get("notifications", []):
-                    if (str(n.get("user","")) == user_name or str(n.get("user","")) == "Hepsi"
-                            or str(n.get("user","")).lower() == user_name.lower()):
-                        n["read"] = True
                 for n in reversed(my_notifs[-5:]):
                     icon = {"xp": "🏆", "info": "ℹ️", "warning": "⚠️", "success": "✅"}.get(n.get("type", "info"), "📌")
                     st.markdown(f"""
@@ -2451,43 +2460,41 @@ else:
                         </div>
                     </div>""", unsafe_allow_html=True)
 
-        # ── 4. SAAT / TARİH (İstanbul UTC+3)
-        st.markdown("""
-        <div id="sg-clock-box" style="
-            text-align:center; padding:8px 12px 6px;
-            background:rgba(17,133,91,0.08); border-radius:10px;
-            margin:4px 8px 2px; border:1px solid rgba(17,133,91,0.15);">
-          <div id="sg-clock" style="font-family:'JetBrains Mono',monospace;
-              font-size:1.35rem; font-weight:700; color:#11855B; letter-spacing:2px;">
-            --:--
-          </div>
-          <div id="sg-date" style="font-family:'JetBrains Mono',monospace;
-              font-size:0.62rem; color:#7a96a4; letter-spacing:1px; margin-top:1px;">
-            -- --- ----
-          </div>
-        </div>
-        <script>
-        (function(){
-          var DAYS=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-          var MONTHS=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
-                      'Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-          function pad(n){return n<10?'0'+n:n;}
-          function tick(){
-            // UTC+3 İstanbul saati
-            var now=new Date(new Date().getTime()+3*3600*1000);
-            var h=now.getUTCHours(),m=now.getUTCMinutes(),s=now.getUTCSeconds();
-            var d=now.getUTCDate(),mo=now.getUTCMonth(),y=now.getUTCFullYear();
-            var dw=now.getUTCDay();
-            var cl=document.getElementById('sg-clock');
-            var dt=document.getElementById('sg-date');
-            if(cl)cl.textContent=pad(h)+':'+pad(m)+':'+pad(s);
-            if(dt)dt.textContent=DAYS[dw]+', '+d+' '+MONTHS[mo]+' '+y;
-          }
-          tick();
-          setInterval(tick,1000);
-        })();
-        </script>
-        """, unsafe_allow_html=True)
+        # ── 4. SAAT / TARİH (İstanbul UTC+3) — components.html ile çalışır
+        _stc.html(f"""<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:transparent;overflow:hidden;}}
+#box{{
+  text-align:center;padding:8px 12px 6px;
+  background:rgba(17,133,91,0.08);border-radius:10px;
+  margin:4px 8px 2px;border:1px solid rgba(17,133,91,0.15);
+}}
+#clk{{font-family:'JetBrains Mono',monospace;font-size:1.3rem;
+  font-weight:700;color:#11855B;letter-spacing:2px;}}
+#dat{{font-family:'JetBrains Mono',monospace;font-size:0.6rem;
+  color:#7a96a4;letter-spacing:1px;margin-top:2px;}}
+</style>
+</head><body>
+<div id="box">
+  <div id="clk">--:--:--</div>
+  <div id="dat">-- --- ----</div>
+</div>
+<script>
+var DAYS=['Pazar','Pazartesi','Sali','Carsamba','Persembe','Cuma','Cumartesi'];
+var MONTHS=['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
+function pad(n){{return n<10?'0'+n:n;}}
+function tick(){{
+  var now=new Date(new Date().getTime()+3*3600*1000);
+  var h=now.getUTCHours(),m=now.getUTCMinutes(),s=now.getUTCSeconds();
+  var d=now.getUTCDate(),mo=now.getUTCMonth(),y=now.getUTCFullYear(),dw=now.getUTCDay();
+  document.getElementById('clk').textContent=pad(h)+':'+pad(m)+':'+pad(s);
+  document.getElementById('dat').textContent=DAYS[dw]+', '+d+' '+MONTHS[mo]+' '+y;
+}}
+tick();setInterval(tick,1000);
+</script>
+</body></html>""", height=72, scrolling=False)
 
         # ── 5. SEPARATOR + NAV HEADER
         st.markdown('<div class="ssep" style="margin-top:6px;"></div><div class="snav-hdr">Navigasyon</div>', unsafe_allow_html=True)
