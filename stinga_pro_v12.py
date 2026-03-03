@@ -3192,16 +3192,15 @@ tick();setInterval(tick,1000);
         with col_c:
             if role == "admin":
                 st.markdown("### 💳 Personel Kasa Durumları")
-                wallets = data_store.get("wallets",{})
                 
-                for person, bal in wallets.items():
-                    # compute_wallet ile tutarlı hesaplama
+                # wallets dict yerine USERS listesini kullan
+                # → Railway'deki "Serkan" / "Serkan Güzdemir" duplikasyonu önlenir
+                for _ukey, _uinfo in USERS.items():
+                    person = _uinfo["name"]
                     bal = compute_wallet(person, data_store)
-                    # "Şenol" → "senol" key ile USERS'dan bul
-                    _ukey = person.lower().replace("ş","s").replace("ı","i").replace("ö","o").replace("ü","u").replace("ğ","g").replace("ç","c")
-                    person_limit = USERS.get(_ukey, USERS.get(person.lower(), {})).get("monthly_limit", 15000)
-                    bal_pct = min(bal / person_limit * 100, 100) if person_limit > 0 else 0
-                    avatar = USERS.get(_ukey, USERS.get(person.lower(), {})).get("avatar", "👤")
+                    person_limit = _uinfo.get("monthly_limit", 15000)
+                    bal_pct = min(abs(bal) / person_limit * 100, 100) if person_limit > 0 else 0
+                    avatar = _uinfo.get("avatar", "👤")
                     
                     st.markdown(f"""
                     <div class="ultra-card" style="padding:16px; margin:8px 0;">
@@ -3221,10 +3220,11 @@ tick();setInterval(tick,1000);
                     """, unsafe_allow_html=True)
                 
                 st.markdown("### 💸 Harcırah Transfer")
+                _transfer_persons = {info["name"]: key for key, info in USERS.items()}
                 with st.form("harcirah_form"):
                     col_t1, col_t2 = st.columns(2)
                     with col_t1:
-                        target = st.selectbox("Personel", list(wallets.keys()))
+                        target = st.selectbox("Personel", list(_transfer_persons.keys()))
                     with col_t2:
                         amt = st.number_input("Tutar (₺)", min_value=0, step=500, value=1000)
                     aciklama = st.text_input("Açıklama", value="Aylık harcırah")
