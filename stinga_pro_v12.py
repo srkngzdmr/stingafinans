@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # ╔══════════════════════════════════════════════════════════════╗
-# ║          STINGA PRO v17.0 - ULTRA EDITION                   ║
+# ║          STINGA PRO v15.0 - ULTRA EDITION                   ║
 # ║  Geliştiren: AI ile birlikte - Gemini 2.5 Flash Destekli    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -1291,45 +1291,50 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
 # ─── AI FONKSİYONLARI ─────────────────────────────────────────
 def analyze_receipt_pro(image, model):
     bugun = now_ist().strftime("%Y-%m-%d")
-    prompt = f"""Sen Stinga Enerji şirketinin kıdemli mali denetçisisin. Fişi tara ve iş kurallarına göre risk skoru belirle.
+    prompt = f"""Sen Stinga Enerji şirketinin mali denetçisisin. Fişi dikkatli oku ve SADECE fişte yazanları analiz et.
 
-Bugünün tarihi: {bugun}. Fişteki tarih bu tarihten ÖNCE olmalı. Sonraki tarihse anomali=true.
-Yılı dikkatli oku: 2025 ve 2026 karıştırma. Tarih formatı: YYYY-MM-DD
+BUGÜNÜN TARİHİ: {bugun}
+- Fişteki tarih bu tarihten önce olmalı. Sonraki tarihse anomali=true.
+- Yılı dikkatli oku: 2025 ve 2026 karıştırma. Tarih formatı: YYYY-MM-DD
 
-=== RİSK SKORLAMA KURALLARI ===
-YEMEK:
-- Fişte yemek/restoran/kafe kategorisiyse başlangıç risk skoru: 2
-- (Günlük kaçıncı yemek fişi olduğu Python tarafında hesaplanacak, burada sadece kategoriyi belirle)
+=== KATEGORİ BELİRLEME ===
+- Restoran, kafe, lokanta, köfteci, balık, yemek → kategori: "Yemek"
+- Benzin, motorin, akaryakıt, shell, bp, total → kategori: "Yakıt"  
+- Otel, pansiyon, konaklama → kategori: "Konaklama"
+- Donanım, elektronik, kırtasiye → kategori: "Ekipman"
+- Diğer tüm durumlar → kategori: "Diğer"
 
-KONAKLAMA:
-- Otel/konaklama kategorisi: maksimum risk skoru 2 olsun
-
-YAKIT:
-- Akaryakıt/benzin/motorin: başlangıç risk skoru 1
-- (Günlük birden fazla yakıt fişi Python tarafında kontrol edilecek)
-
-KİŞİSEL GİDERLER (ÇOK ÖNEMLİ):
-- Fişte şu ürünler varsa mutlaka belirt ve risk skoru 40+ yap:
-  çikolata, şeker, şekerleme, sigara, alkol, bira, içki, kozmetik, parfüm, oyuncak,
-  kişisel bakım, şampuan, dizi/film aboneliği, oyun, müzik aleti
-- Bu ürünler tespit edilirse anomali=true yap ve anomali_aciklamasi'nda hangi ürünler olduğunu yaz
-- kisisel_giderler listesine bu ürünleri ekle
-
-GENEL KURALLAR:
-- Tutar makul görünüyorsa düşük risk, şüpheli yüksekse risk artır
+=== RİSK SKORU ===
+- Yemek fişi → risk_skoru: 2
+- Yakıt fişi → risk_skoru: 1
+- Konaklama → risk_skoru: 2
 - Fatura net okunmuyorsa risk +15
-- Gece yarısı saatli fiş (22:00-06:00 arası) risk +10
+- Gece 22:00-06:00 arası fiş → risk +10
 
-SADECE aşağıdaki JSON formatını döndür, başka hiçbir şey yazma:
+=== KİŞİSEL GİDER TESPİTİ (ÇOK DİKKATLİ OL) ===
+YALNIZCA fişte açıkça bu ürün isimleri geçiyorsa kisisel_giderler listesine ekle:
+sigara, marlboro, winston, bira, beer, alkol, şarap, rakı, viski, vodka, içki,
+çikolata, şeker şekerleme, parfüm, kozmetik, şampuan, deodorant,
+netflix, spotify, oyun aboneliği, oyuncak
+
+KURAL: Sadece fişte AÇIKÇA yazan ürünleri ekle. Tahmin etme, yorum yapma.
+Restoran/lokanta/köfteci fişinde yiyecek kalemi varsa → kisisel_giderler BOŞ bırak.
+Genel "yiyecek", "yemek", "food", "meal" ifadeleri kişisel gider DEĞİLDİR.
+
+=== AUDIT ÖZETİ ===
+audit_ozeti: Tek cümle, sadece fişin içeriğini açıkla. Kişisel gider yoksa bahsetme.
+Örnek: "Şükrü Bey Köftecisi'nden alınan yemek fişi, standart risk seviyesindedir."
+
+SADECE bu JSON formatını döndür, başka hiçbir şey yazma:
 {{
     "firma": "Firma Adı",
     "tarih": "YYYY-MM-DD",
     "saat": "HH:MM",
     "toplam_tutar": 0.0,
-    "kategori": "Yemek/Yakıt/Konaklama/Ekipman/Kişisel/Diğer",
+    "kategori": "Yemek/Yakıt/Konaklama/Ekipman/Diğer",
     "risk_skoru": 2,
-    "audit_ozeti": "1 cümlelik denetim özeti",
-    "kalemler": ["kalem1", "kalem2"],
+    "audit_ozeti": "Tek cümle özet",
+    "kalemler": ["sadece fişte yazan ürün isimleri"],
     "kisisel_giderler": [],
     "kdv_tutari": 0.0,
     "odeme_turu": "Nakit/Kredi Kartı/Havale",
@@ -1411,31 +1416,27 @@ def apply_business_rules(data_ai, data_store, user_name):
     KISISEL_KEYWORDS = [
         "sigara","cigarette","tobacco","marlboro","winston","camel","philip morris",
         "çikolata","cikolata","chocolate","milka","toblerone","snickers","kitkat",
-        "şeker","seker","candy","gummy","haribo","şekerleme","sekerleme",
+        "şeker şekerleme","sekerleme","candy","gummy","haribo",
         "alkol","alcohol","bira","beer","şarap","sarap","wine","rakı","raki",
         "viski","whisky","vodka","içki","icki",
-        "cips","chips","snack","atıştırmalık","atistirmalik","kraker",
         "kozmetik","parfüm","parfum","perfume","şampuan","sampuan","shampoo",
-        "deodorant","losyon","kişisel bakım","kisisel bakim",
-        "oyuncak","oyun","abonelik","netflix","spotify","red bull","monster","energy drink",
+        "deodorant","losyon","kisisel bakim",
+        "oyuncak","abonelik","netflix","spotify","red bull","monster",
     ]
 
-    # Tüm AI çıktısını birleştir — firma, kategori, kalemler, audit hepsi
-    _metin = " ".join([
-        str(data_ai.get("firma","")),
-        str(data_ai.get("kategori","")),
-        str(data_ai.get("audit_ozeti","")),
-        str(data_ai.get("anomali_aciklamasi","")),
-        " ".join(str(k) for k in data_ai.get("kalemler",[])),
-        " ".join(str(k) for k in data_ai.get("kisisel_giderler",[])),
+    # SADECE fişin kalem listelerini tara — AI'nın serbest yorumlarını değil
+    # audit_ozeti / anomali_aciklamasi taranmaz (false positive önleme)
+    _kalemler_metin = " ".join([
+        " ".join(str(k) for k in data_ai.get("kalemler", [])),
+        " ".join(str(k) for k in data_ai.get("kisisel_giderler", [])),
     ]).lower()
-    # Türkçe normalize
-    _metin_n = _metin.replace("ı","i").replace("ş","s").replace("ğ","g").replace("ç","c").replace("ö","o").replace("ü","u")
+    _kalemler_n = _kalemler_metin.replace("ı","i").replace("ş","s").replace("ğ","g").replace("ç","c").replace("ö","o").replace("ü","u")
 
     bulunan_kisisel = list(kisisel) if kisisel else []
     for kw in KISISEL_KEYWORDS:
         kw_n = kw.replace("ı","i").replace("ş","s").replace("ğ","g").replace("ç","c").replace("ö","o").replace("ü","u")
-        if kw in _metin or kw_n in _metin_n:
+        # Sadece kalem listelerinde ara — serbest yorumlarda değil
+        if kw in _kalemler_metin or kw_n in _kalemler_n:
             if kw not in " ".join(bulunan_kisisel).lower():
                 bulunan_kisisel.append(kw)
     # AI'ın kisisel_giderler listesini de ekle
@@ -2386,7 +2387,7 @@ else:
             </div>
             <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:0.88rem; font-weight:900;
                         letter-spacing:0.3em; color:#0f1923; margin-top:13px; text-transform:uppercase;">
-                STINGA PRO FINANCE v17.0
+                VELA
             </div>
             <div style="font-family:'JetBrains Mono',monospace; font-size:0.51rem; color:#a0b8ae;
                         letter-spacing:0.18em; margin-top:4px; text-transform:uppercase;">
@@ -2751,7 +2752,7 @@ tick();setInterval(tick,1000);
                 st.markdown('<div class="ultra-card">', unsafe_allow_html=True)
                 st.markdown("### 📸 Fiş Yükle & AI Analiz")
             
-                with st.form("pro_entry", clear_on_submit=True):
+                with st.form("pro_entry", clear_on_submit=False):
                     f = st.file_uploader("Fiş / Fatura Fotoğrafı", type=['jpg','png','jpeg','webp'],
                                          help="Net, iyi aydınlatılmış fotoğraflar için en iyi sonucu alırsınız")
                 
@@ -2762,13 +2763,20 @@ tick();setInterval(tick,1000);
                         oncelik = st.selectbox("Öncelik", ["Normal", "Acil", "Düşük"])
 
                     # ── Ödeme Tipi ─────────────────────────────────
+                    _odeme_secenekler = [
+                        "🏦 Harcırahtan Düş (Nakit / Kişisel Kart)",
+                        "💳 Şirket Kredi Kartı"
+                    ]
                     odeme_tipi = st.radio(
                         "💳 Bu harcama nasıl ödendi?",
-                        ["🏦 Harcırahtan Düş (Nakit / Kişisel Kart)",
-                         "💳 Şirket Kredi Kartı"],
+                        _odeme_secenekler,
+                        index=st.session_state.get("_fis_odeme_idx", 0),
                         horizontal=True,
+                        key="fis_odeme_radio",
                         help="Harcırahtan düşülürse kasa bakiyenizden azalır. Şirket kartı ise şirket borcuna eklenir."
                     )
+                    # Seçimi session_state'e kaydet (clear_on_submit sonrası kaybolmasın)
+                    st.session_state["_fis_odeme_idx"] = _odeme_secenekler.index(odeme_tipi)
                     odeme_turu_sec = "harcirah" if "Harcırahtan" in odeme_tipi else "sirket_karti"
 
                     notlar = st.text_area("Ek Not (isteğe bağlı)", height=60, placeholder="Harcamayla ilgili açıklama...")
@@ -2776,6 +2784,8 @@ tick();setInterval(tick,1000);
                     submitted = st.form_submit_button("🚀 AI ile Tara ve Gönder", use_container_width=True)
                 
                     if submitted and f:
+                        # Ödeme türünü rerun'dan önce session_state'e kaydet
+                        st.session_state["_submitted_odeme_turu"] = odeme_turu_sec
                         with st.spinner("🤖 Gemini AI fişi analiz ediyor..."):
                             progress = st.progress(0)
                             for i in range(70):
@@ -2865,7 +2875,7 @@ tick();setInterval(tick,1000);
                                             "Kategori": data_ai.get("kategori", "Diğer"),
                                             "Tutar": float(data_ai.get("toplam_tutar", 0)),
                                             "KDV": float(data_ai.get("kdv_tutari", 0)),
-                                            "Odeme_Turu": odeme_turu_sec,
+                                            "Odeme_Turu": st.session_state.get("_submitted_odeme_turu", odeme_turu_sec),
                                             "Kalemler": data_ai.get("kalemler", []),
                                             "Kisisel_Giderler": data_ai.get("kisisel_giderler", []),
                                             "Durum": "Onay Bekliyor",
