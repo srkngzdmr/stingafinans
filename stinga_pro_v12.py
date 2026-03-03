@@ -710,6 +710,44 @@ def add_xp(user_name, amount, reason="", d=None):
     """XP günceller — bildirim GÖNDERİLMEZ."""
     pass  # Railway API üzerinden yönetiliyor, local bildirim yok
 
+
+def compute_wallet(user_nm: str, data_store: dict) -> float:
+    """
+    Kişi bakiyesini hesapla:
+      + ledger'dan gelen avans transferleri
+      - onaylı harcırah/nakit/kisisel harcamalar
+    Negatif olabilir (şirkete borç).
+    """
+    def _nm(a, b):
+        a, b = str(a).lower().strip(), str(b).lower().strip()
+        return a == b or a in b or b in a
+
+    ledger    = data_store.get("ledger", [])
+    expenses  = data_store.get("expenses", [])
+
+    # Yöneticinin verdiği avans (ledger transferleri)
+    avans = sum(
+        float(e.get("miktar", e.get("Miktar", 0)))
+        for e in ledger
+        if _nm(e.get("hedef", e.get("Hedef", "")), user_nm)
+    )
+
+    # Onaylı harcırah/nakit/cep harcamaları
+    harcama = sum(
+        float(e.get("Tutar", 0))
+        for e in expenses
+        if _nm(e.get("Kullanıcı", ""), user_nm)
+        and str(e.get("Durum", "")).strip() in ("Onaylandı", "Onaylandi", "onaylandi", "onaylandı")
+        and str(e.get("Odeme_Turu", "")).lower().strip() in (
+            "harcirah", "nakit", "kisisel",
+            "harcırahtan düş", "harcirahtan dus",
+            "harcırahtan düş (nakit / kişisel kart)"
+        )
+    )
+
+    return avans - harcama  # Negatif = şirkete borç
+
+
 # ─── YARDIMCI ─────────────────────────────────────────────────
 def extract_json(text):
     try:
@@ -1434,17 +1472,19 @@ def clean_audit(text: str) -> str:
     if not text:
         return "Analiz tamamlandı."
     text = str(text)
-    # HTML tag'larını kaldır
-    text = _re.sub(r'<[^>]+>', '', text)
-    # CSS style bloklarını kaldır (style="..." kalıntıları)
-    text = _re.sub(r'style=["\'][^"\']*["\']', '', text)
-    # div/span kalıntılarını kaldır
-    text = _re.sub(r'</?(?:div|span|p|br)[^>]*>', '', text, flags=_re.IGNORECASE)
+    # Tüm <div ...>...</div> bloklarını kaldır (multi-line dahil)
+    text = _re.sub(r'<div[^>]*>.*?</div>', ' ', text, flags=_re.DOTALL | _re.IGNORECASE)
+    # Tüm HTML tag'larını kaldır (<tag> veya </tag>)
+    text = _re.sub(r'<[^>]+>', '', text, flags=_re.DOTALL)
+    # CSS style bloklarını kaldır
+    text = _re.sub(r'style\s*=\s*["\'][^"\']*["\']', '', text)
     # JSON/dict kalıntısı varsa temizle
-    text = _re.sub(r'\{[^}]{0,200}\}', '', text)
-    # Birden fazla boşluğu tek boşluğa indir
+    text = _re.sub(r'\{[^}]{0,300}\}', '', text)
+    # "Proje: ... · Öncelik: ... · Ödeme: ..." satırlarını kaldır (div kalıntısı)
+    text = _re.sub(r'Proje\s*:.*?Ödeme\s*:[^\n]*', '', text, flags=_re.IGNORECASE)
+    # Birden fazla boşluk/newline temizle
     text = _re.sub(r'\s+', ' ', text).strip()
-    # HTML escape (tırnak sorununu önler)
+    # HTML escape
     text = _html.escape(text, quote=False)
     return text if text else "Analiz tamamlandı."
 
@@ -1996,12 +2036,16 @@ else:
 
 
 
-    # ── Eski bozuk AI_Audit kayıtlarını sessizce onar (tek seferlik) ──
+    # ── Eski bozuk AI_Audit kayıtlarını client-side onar (tek seferlik) ──
     if not st.session_state.get("audit_fixed"):
+        st.session_state["audit_fixed"] = True  # Tekrar denemeyi engelle
         try:
-            import requests as _req_fix
-            _req_fix.post(f"{RAILWAY_URL}/fix-audit", timeout=5)
-            st.session_state["audit_fixed"] = True
+            for _e in data_store.get("expenses", []):
+                _raw = str(_e.get("AI_Audit", ""))
+                if "<div" in _raw or "</" in _raw or "style=" in _raw:
+                    _clean = clean_audit(_raw)
+                    _api_post("/update-expense", {"ID": _e.get("ID"), "AI_Audit": _clean})
+            st.cache_data.clear()
         except Exception:
             pass
     user_name = user_info["name"]
@@ -2518,35 +2562,9 @@ tick();setInterval(tick,1000);
         total_approved = _kpi_df[_kpi_df['Durum']=='Onaylandı']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         total_pending  = _kpi_df[_kpi_df['Durum']=='Onay Bekliyor']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         crit_risks     = len(_kpi_df[_kpi_df['Risk_Skoru'] > 70]) if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
-        # Kasa bakiyesi: ledger'dan verilen avanslar - onaylı harcırah harcamaları
-        def _wlookup(nm, wl):
-            if nm in wl: return wl[nm]
-            for k,v in wl.items():
-                if nm.lower() in k.lower() or k.lower() in nm.lower(): return v
-            return 0
-        _wallets = data_store.get("wallets", {})
-        # Avans: ledger'dan bu kişiye yapılan transferlerin toplamı
-        _ledger = data_store.get("ledger", [])
-        _avans_ledger = sum(
-            float(e.get("miktar", e.get("Miktar", 0)))
-            for e in _ledger
-            if str(e.get("hedef", e.get("Hedef", ""))).lower().strip() in (user_name.lower().strip(), user_name.lower().strip().split()[0])
-            or user_name.lower().strip() in str(e.get("hedef", e.get("Hedef", ""))).lower()
-        )
-        # Wallet API değeri varsa onu da deneyelim (fuzzy match)
-        _avans_api = _wlookup(user_name, _wallets)
-        _avans = max(_avans_ledger, _avans_api)
-        # Onaylı harcırah/nakit harcamalar kasadan düşülür
-        _harcirah_odendi = sum(
-            float(e.get("Tutar", 0))
-            for e in data_store.get("expenses", [])
-            if (str(e.get("Kullanıcı", "")).lower().strip() == user_name.lower().strip()
-                or user_name.lower().strip() in str(e.get("Kullanıcı", "")).lower()
-                or str(e.get("Kullanıcı", "")).lower() in user_name.lower())
-            and str(e.get("Durum", "")).strip() in ("Onaylandı", "Onaylandi", "onaylandi", "onaylandı")
-            and str(e.get("Odeme_Turu", "")).lower().strip() in ("harcirah", "nakit", "kisisel", "harcırahtan düş", "harcirahtan dus")
-        )
-        my_wallet = max(0.0, _avans - _harcirah_odendi)
+        # Kasa bakiyesi: ledger avansları - onaylı harcırah/nakit harcamaları
+        # Negatif = şirkete borç (cebinden ödedi)
+        my_wallet = compute_wallet(user_name, data_store)
         total_tx       = len(_kpi_df) if not _kpi_df.empty else 0
         avg_risk       = _kpi_df['Risk_Skoru'].mean() if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
         
@@ -2556,7 +2574,10 @@ tick();setInterval(tick,1000);
             (c1, "Onaylı Harcama", f"₺{total_approved:,.0f}", "✓", "#007850"),
             (c2, "Onay Bekleyen", f"₺{total_pending:,.0f}", "⏳", "#d97706"),
             (c3, "Kritik Risk", str(crit_risks), "⛔", "#dc2626"),
-            (c4, "Kasa Bakiye", f"₺{my_wallet:,.0f}", "💰", "#007850"),
+            (c4, "Kasa Bakiye",
+             f"{'−' if my_wallet < 0 else ''}₺{abs(my_wallet):,.0f}{'  ⚠️ Borç' if my_wallet < 0 else ''}",
+             "💰" if my_wallet >= 0 else "🔴",
+             "#007850" if my_wallet >= 0 else "#dc2626"),
             (c5, "Toplam İşlem", str(total_tx), "📊", "#283c64"),
             (c6, "Ort. Risk %", f"{avg_risk:.0f}", "🎯", "#ea6c1e"),
         ]
@@ -3173,21 +3194,9 @@ tick();setInterval(tick,1000);
                 st.markdown("### 💳 Personel Kasa Durumları")
                 wallets = data_store.get("wallets",{})
                 
-                _exp_all = data_store.get("expenses", [])
-                _led_all = data_store.get("ledger", [])
-                def _name_match(a, b):
-                    """'Serkan' ile 'Serkan Güzdemir' eşleşsin."""
-                    a, b = str(a).lower().strip(), str(b).lower().strip()
-                    return a == b or a in b or b in a
                 for person, bal in wallets.items():
-                    # Net kasa: verilen avans - onaylı harcırah harcamaları (fuzzy isim eşleşmesi)
-                    _hrc_p = sum(float(e.get("Tutar",0)) for e in _exp_all
-                        if _name_match(e.get("Kullanıcı",""), person)
-                        and str(e.get("Durum","")).strip() in ("Onaylandı","Onaylandi","onaylandi","onaylandı")
-                        and str(e.get("Odeme_Turu","")).lower().strip() in ("harcirah","nakit","kisisel","harcırahtan düş","harcirahtan dus"))
-                    _led_p = sum(float(e.get("miktar",e.get("Miktar",0))) for e in _led_all
-                        if _name_match(e.get("hedef",e.get("Hedef","")), person))
-                    bal = max(0.0, max(bal, _led_p) - _hrc_p)
+                    # compute_wallet ile tutarlı hesaplama
+                    bal = compute_wallet(person, data_store)
                     # "Şenol" → "senol" key ile USERS'dan bul
                     _ukey = person.lower().replace("ş","s").replace("ı","i").replace("ö","o").replace("ü","u").replace("ğ","g").replace("ç","c")
                     person_limit = USERS.get(_ukey, USERS.get(person.lower(), {})).get("monthly_limit", 15000)
@@ -3204,7 +3213,9 @@ tick();setInterval(tick,1000);
                                     <div style="font-size:0.7rem; color:var(--text-muted);">Kasa Bakiyesi</div>
                                 </div>
                             </div>
-                            <div style="font-family:'Bebas Neue'; font-size:1.8rem; color:var(--accent-blue);">₺{bal:,.0f}</div>
+                            <div style="font-family:'Bebas Neue'; font-size:1.8rem; color:{'#dc2626' if bal < 0 else 'var(--accent-blue)'};">
+                                {'−' if bal < 0 else ''}₺{abs(bal):,.0f}{'  🔴 Borç' if bal < 0 else ''}
+                            </div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -3229,18 +3240,13 @@ tick();setInterval(tick,1000);
             else:
                 # Ledger-tabanlı kasa hesabı - avans - onaylı harcırah harcamaları
                 _w2 = data_store.get("wallets", {})
-                def _nm(a,b): a,b=str(a).lower().strip(),str(b).lower().strip(); return a==b or a in b or b in a
-                _avans2_l = sum(float(e.get("miktar", e.get("Miktar", 0))) for e in data_store.get("ledger", []) if _nm(e.get("hedef", e.get("Hedef", "")), user_name))
-                _avans2_a = _wlookup(user_name, _w2)
-                _avans2 = max(_avans2_l, _avans2_a)
-                _hrc2 = sum(float(e.get("Tutar", 0)) for e in data_store.get("expenses", []) if _nm(e.get("Kullanıcı",""), user_name) and str(e.get("Durum","")).strip() in ("Onaylandı","Onaylandi","onaylandi","onaylandı") and str(e.get("Odeme_Turu","")).lower().strip() in ("harcirah","nakit","kisisel","harcırahtan düş","harcirahtan dus"))
-                my_bal = max(0.0, _avans2 - _hrc2)
+                my_bal = compute_wallet(user_name, data_store)
                 st.markdown(f"""
                 <div class="metric-card" style="margin-bottom:16px;">
                     <div style="font-size:1rem; color:var(--text-secondary);">Mevcut Bakiyeniz</div>
                     <div style="font-family:'Bebas Neue'; font-size:3.5rem; color:var(--accent-green); 
                                 text-shadow:0 0 30px rgba(0,255,136,0.4);">
-                        ₺{my_bal:,.0f}
+                        {'−' if my_bal < 0 else ''}₺{abs(my_bal):,.0f}{'  🔴 Şirkete borcunuz var' if my_bal < 0 else ''}
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
