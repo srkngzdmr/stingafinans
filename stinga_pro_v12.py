@@ -886,12 +886,18 @@ YAKIT:
 - Akaryakıt/benzin/motorin: başlangıç risk skoru 1
 - (Günlük birden fazla yakıt fişi Python tarafında kontrol edilecek)
 
-KİŞİSEL GİDERLER (ÇOK ÖNEMLİ):
-- Fişte şu ürünler varsa mutlaka belirt ve risk skoru 40+ yap:
-  çikolata, şeker, şekerleme, sigara, alkol, bira, içki, kozmetik, parfüm, oyuncak,
-  kişisel bakım, şampuan, dizi/film aboneliği, oyun, müzik aleti
-- Bu ürünler tespit edilirse anomali=true yap ve anomali_aciklamasi'nda hangi ürünler olduğunu yaz
-- kisisel_giderler listesine bu ürünleri ekle
+KİŞİSEL GİDERLER (KRİTİK KURAL — ASLA ATLAMA):
+- Fişte veya makbuzdaki kalemler arasında şunlardan herhangi biri varsa MUTLAKA tespit et:
+  sigara, cigarette, tobacco, Marlboro, Winston, Camel, Philip Morris,
+  çikolata, chocolate, Ülker çikolata, Milka, Toblerone, Kit Kat, Snickers,
+  şeker, candy, gummy, Haribo, şekerleme, lollipop,
+  alkol, alcohol, bira, beer, şarap, wine, rakı, viski, whisky, vodka, içki,
+  cips, chips, snack, atıştırmalık, kraker, Red Bull, Monster, energy drink,
+  kozmetik, parfüm, perfume, şampuan, shampoo, deodorant, losyon,
+  oyun, game, oyuncak, toy, müzik aleti, Netflix, Spotify, abonelik
+- Bu ürünleri tespit edersen: risk_skoru minimum 60, anomali=true
+- kisisel_giderler listesine ürün adını yaz (örn: [sigara, çikolata])
+- anomali_aciklamasi'nda hangi ürünün kişisel gider olduğunu AÇIKÇA yaz
 
 GENEL KURALLAR:
 - Tutar makul görünüyorsa düşük risk, şüpheli yüksekse risk artır
@@ -986,28 +992,87 @@ def apply_business_rules(data_ai, data_store, user_name):
                 anomali = True
 
     # ── KİŞİSEL GİDER KURALLARI ───────────────────────────────────
-    kisisel_keywords = [
-        "çikolata","cikolata","şeker","sekerleme","sigara","alkol","bira","içki","icki",
-        "kozmetik","parfüm","parfum","oyuncak","şampuan","sampuan","dizi","film",
-        "abonelik","oyun","müzik","muzik","kişisel","kisisel","atıştırmalık","cips",
-        "snack","fast food","energy drink","kahve kapsül"
-    ]
-    
-    # AI'ın tespit ettiklerine ek olarak kalemlerden de kontrol et
-    tüm_kalemler = " ".join([str(k).lower() for k in data_ai.get("kalemler", [])])
+    # Hem Türkçe hem İngilizce, hem de normalize edilmiş formlar
+    KISISEL_MAP = {
+        # sigara grubu
+        "sigara": "sigara", "cigarette": "sigara", "tobacco": "sigara", "tütün": "sigara",
+        "tutun": "sigara", "marlboro": "sigara", "philip morris": "sigara",
+        "winston": "sigara", "camel": "sigara", "sigaretasi": "sigara",
+        # alkol grubu
+        "alkol": "alkol", "alcohol": "alkol", "bira": "bira", "beer": "bira",
+        "şarap": "alkol", "sarap": "alkol", "wine": "alkol", "rakı": "alkol",
+        "raki": "alkol", "viski": "alkol", "whisky": "alkol", "vodka": "alkol",
+        "içki": "alkol", "icki": "alkol", "spirits": "alkol",
+        # şeker/çikolata grubu
+        "çikolata": "çikolata", "cikolata": "çikolata", "chocolate": "çikolata",
+        "şeker": "şeker", "seker": "şeker", "candy": "şeker", "şekerleme": "şeker",
+        "sekerleme": "şeker", "gummy": "şeker", "lollipop": "şeker",
+        "haribo": "şeker", "ülker çikolata": "çikolata", "ulker cikolata": "çikolata",
+        # atıştırmalık
+        "cips": "atıştırmalık", "chips": "atıştırmalık", "snack": "atıştırmalık",
+        "atıştırmalık": "atıştırmalık", "atistirmalik": "atıştırmalık",
+        "kraker": "atıştırmalık", "cracker": "atıştırmalık",
+        # kozmetik/kişisel bakım
+        "kozmetik": "kozmetik", "cosmetic": "kozmetik", "parfüm": "parfüm",
+        "parfum": "parfüm", "perfume": "parfüm", "şampuan": "kişisel bakım",
+        "sampuan": "kişisel bakım", "shampoo": "kişisel bakım",
+        "kişisel bakım": "kişisel bakım", "kisisel bakim": "kişisel bakım",
+        "deodorant": "kişisel bakım", "losyon": "kişisel bakım",
+        # oyun/eğlence
+        "oyun": "oyun/eğlence", "game": "oyun/eğlence", "oyuncak": "oyun/eğlence",
+        "toy": "oyun/eğlence", "müzik aleti": "oyun/eğlence", "muzik aleti": "oyun/eğlence",
+        # abonelik/dijital
+        "abonelik": "abonelik", "subscription": "abonelik", "netflix": "abonelik",
+        "spotify": "abonelik", "dizi": "abonelik", "film izle": "abonelik",
+        # energy drink / fast food
+        "energy drink": "enerji içeceği", "red bull": "enerji içeceği",
+        "monster": "enerji içeceği", "fast food": "fast food",
+        # market zinciri + genel
+        "kisisel": "kişisel harcama", "kişisel": "kişisel harcama",
+    }
+
+    # Tüm fiş metnini düz string olarak birleştir (AI çıktısının her alanı)
+    _tum_metin = " ".join([
+        str(data_ai.get("firma", "")),
+        str(data_ai.get("kategori", "")),
+        str(data_ai.get("audit_ozeti", "")),
+        str(data_ai.get("anomali_aciklamasi", "")),
+        " ".join([str(k) for k in data_ai.get("kalemler", [])]),
+        " ".join([str(k) for k in data_ai.get("kisisel_giderler", [])]),
+    ]).lower()
+
+    # Türkçe normalize (ı→i, ş→s vb. ile karşılaştırma için ek tarama)
+    def _tr_norm(s):
+        return s.replace("ı","i").replace("ş","s").replace("ğ","g")\
+                .replace("ç","c").replace("ö","o").replace("ü","u")
+
+    _metin_norm = _tr_norm(_tum_metin)
+
     bulunan_kisisel = list(kisisel) if kisisel else []
-    
-    for kw in kisisel_keywords:
-        if kw in tüm_kalemler and kw not in " ".join(bulunan_kisisel).lower():
-            bulunan_kisisel.append(kw)
+
+    for kw, kategori_adi in KISISEL_MAP.items():
+        kw_norm = _tr_norm(kw)
+        # Kelime tam eşleşme (yanlış pozitif önlemek için)
+        if (kw in _tum_metin or kw_norm in _metin_norm):
+            # Zaten listedeyse ekleme
+            if kategori_adi not in bulunan_kisisel and kw not in " ".join(bulunan_kisisel).lower():
+                bulunan_kisisel.append(kategori_adi)
+
+    # AI'ın kisisel_giderler listesini de ekle (AI doğru tespit etmişse)
+    for item in data_ai.get("kisisel_giderler", []):
+        if item and item not in bulunan_kisisel:
+            bulunan_kisisel.append(str(item))
+
+    # Tekrar temizle
+    bulunan_kisisel = list(dict.fromkeys(bulunan_kisisel))  # sıra koruyarak unique
 
     if bulunan_kisisel:
-        risk = max(risk, 45)
+        risk = max(risk, 60)   # 45'ten 60'a yükseltildi — daha sert
         anomali = True
         kisisel_str = ", ".join(bulunan_kisisel)
-        uyari = f"🚫 Kişisel gider tespiti: {kisisel_str}"
+        uyari = f"🚫 KİŞİSEL GİDER TESPİTİ: {kisisel_str}"
         anomali_msg = (anomali_msg + " | " + uyari).strip(" | ")
-        audit += f" | ⚠️ Kişisel gider içeriyor: {kisisel_str}"
+        audit += f" | 🚫 KİŞİSEL GİDER İÇERİYOR: {kisisel_str} — ONAY ÖNCESİ İNCELENMELİ!"
         uyarilar.append(uyari)
         data_ai["kisisel_giderler"] = bulunan_kisisel
 
@@ -2142,52 +2207,79 @@ if(window._sgShowToast) {{
                         else:
                             data_ai = extract_json(res_raw)
                             if data_ai:
-                                # ── Gelişmiş Mükerrer Fiş Kontrolü ──
+                                # ── Mükerrer Fiş Kontrolü (FRESH VERİ — cache bypass) ──
+                                # Cache'i temizle, en güncel veriyi al
+                                st.cache_data.clear()
+                                fresh_store = load_data()
                                 firma_yeni = str(data_ai.get("firma", "")).strip().lower()
                                 tutar_yeni = float(data_ai.get("toplam_tutar", 0))
                                 tarih_yeni = str(data_ai.get("tarih", ""))
 
-                                dup_ayni_gun = None
-                                dup_farkli_kullanici = None
+                                dup_ayni_gun = None        # Aynı kullanıcı VEYA farklı kullanıcı, aynı tarih
+                                dup_farkli_gun = None      # Farklı tarih ama aynı firma+tutar
 
-                                for e in data_store["expenses"]:
+                                def _firma_eslesir(f1, f2):
+                                    """İki firma adını normalize ederek karşılaştır."""
+                                    f1 = f1.strip().lower()
+                                    f2 = f2.strip().lower()
+                                    if f1 == f2:
+                                        return True
+                                    if len(f1) > 3 and len(f2) > 3:
+                                        return f1 in f2 or f2 in f1
+                                    return False
+
+                                for e in fresh_store.get("expenses", []):
                                     firma_eski = str(e.get("Firma", "")).strip().lower()
                                     tutar_eski = float(e.get("Tutar", 0))
                                     tarih_eski = str(e.get("Tarih", ""))
 
-                                    tutar_esit = abs(tutar_eski - tutar_yeni) < 1.0
-                                    firma_esit = firma_eski == firma_yeni or (
-                                        len(firma_yeni) > 3 and (firma_yeni in firma_eski or firma_eski in firma_yeni)
-                                    )
+                                    tutar_esit  = abs(tutar_eski - tutar_yeni) < 1.0
+                                    firma_esit  = _firma_eslesir(firma_eski, firma_yeni)
 
                                     if firma_esit and tutar_esit:
                                         if tarih_eski == tarih_yeni:
+                                            # Aynı gün — kim yüklemiş olursa olsun BLOKE
                                             dup_ayni_gun = e
                                             break
-                                        elif e.get("Kullanıcı") != user_name:
-                                            dup_farkli_kullanici = e
+                                        else:
+                                            # Farklı tarih — uyar ama geçir
+                                            dup_farkli_gun = e
 
                                 if dup_ayni_gun:
-                                    st.error(
-                                        f"⛔ MÜKERRER FİŞ TESPİTİ!\n\n"
-                                        f"Bu fiş **{dup_ayni_gun.get('Kullanıcı')}** tarafından "
-                                        f"aynı tarihte sisteme zaten yüklenmiş.\n\n"
-                                        f"Firma: {dup_ayni_gun.get('Firma')} | "
-                                        f"Tutar: ₺{tutar_eski:,.0f} | Tarih: {tarih_eski}"
-                                    )
-                                elif dup_farkli_kullanici:
+                                    yukleme_sahibi = dup_ayni_gun.get('Kullanıcı', '?')
+                                    if yukleme_sahibi == user_name:
+                                        st.error(
+                                            f"⛔ MÜKERRER FİŞ TESPİTİ!\n\n"
+                                            f"Bu fişi **sen** daha önce aynı tarihte sisteme yükledin.\n\n"
+                                            f"Firma: **{dup_ayni_gun.get('Firma')}** | "
+                                            f"Tutar: ₺{float(dup_ayni_gun.get('Tutar',0)):,.0f} | "
+                                            f"Tarih: {dup_ayni_gun.get('Tarih')} | "
+                                            f"Durum: {dup_ayni_gun.get('Durum','?')}"
+                                        )
+                                    else:
+                                        st.error(
+                                            f"⛔ MÜKERRER FİŞ TESPİTİ!\n\n"
+                                            f"Bu fiş **{yukleme_sahibi}** tarafından "
+                                            f"aynı tarihte sisteme zaten yüklenmiş.\n\n"
+                                            f"Firma: **{dup_ayni_gun.get('Firma')}** | "
+                                            f"Tutar: ₺{float(dup_ayni_gun.get('Tutar',0)):,.0f} | "
+                                            f"Tarih: {dup_ayni_gun.get('Tarih')}"
+                                        )
+                                    # BLOKE — aşağıdaki kayıt kodu çalışmaz
+                                elif dup_farkli_gun:
                                     st.warning(
                                         f"⚠️ OLASI MÜKERRER FİŞ!\n\n"
-                                        f"Aynı firma ve tutarda bir fiş **{dup_farkli_kullanici.get('Kullanıcı')}** "
-                                        f"tarafından {dup_farkli_kullanici.get('Tarih')} tarihinde yüklenmiş. "
-                                        f"Farklı tarihli olduğu için sistem yüklemeye izin verdi, "
-                                        f"ancak yönetici denetimi önerilir."
+                                        f"Aynı firma ve tutarda bir fiş **{dup_farkli_gun.get('Kullanıcı')}** "
+                                        f"tarafından {dup_farkli_gun.get('Tarih')} tarihinde yüklenmiş. "
+                                        f"Farklı tarihli olduğu için sistem devam ediyor, "
+                                        f"ancak yönetici bildirimi gönderildi."
                                     )
-                                    add_notify("Zeynep",
-                                        f"🔴 Olası mükerrer fiş: {data_ai.get('firma')} ₺{tutar_yeni:,.0f} — "
-                                        f"{user_name} ve {dup_farkli_kullanici.get('Kullanıcı')} aynı fişi yüklemiş olabilir.",
-                                        "warning"
-                                    )
+                                    _api_post("/notify", {
+                                        "user": "Zeynep",
+                                        "msg": f"🔴 Olası mükerrer fiş: {data_ai.get('firma')} ₺{tutar_yeni:,.0f} — "
+                                               f"{user_name} ve {dup_farkli_gun.get('Kullanıcı')} aynı fişi yüklemiş olabilir.",
+                                        "type": "warning"
+                                    })
 
                                 if not dup_ayni_gun:
                                     # ── Tarih Doğrulama (Python tarafında) ──
@@ -2199,15 +2291,18 @@ if(window._sgShowToast) {{
                                             # AI yanlış tarih verdiyse bugünün tarihine çek
                                             tarih_str = bugun_dt.strftime("%Y-%m-%d")
                                             data_ai["tarih"] = tarih_str
-                                            data_ai["anomali"] = False
-                                            data_ai["anomali_aciklamasi"] = ""
+                                            # ÖNEMLİ: anomali=False YAPMA — kisisel gider vs. anomalisi kaybolur
+                                            # Sadece tarih anomalisini temizle
+                                            prev_aciklama = data_ai.get("anomali_aciklamasi", "")
+                                            if "gelecek tarih" in prev_aciklama.lower() or "ileri tarih" in prev_aciklama.lower():
+                                                data_ai["anomali_aciklamasi"] = ""
                                             st.info("ℹ️ Fiş tarihi gelecek olarak tespit edildi, bugünün tarihi kullanıldı.")
                                     except:
                                         tarih_str = datetime.now().strftime("%Y-%m-%d")
                                         data_ai["tarih"] = tarih_str
 
-                                    # ── İş Kuralı Motoru Uygula ──
-                                    data_ai = apply_business_rules(data_ai, data_store, user_name)
+                                    # ── İş Kuralı Motoru Uygula (fresh veri ile) ──
+                                    data_ai = apply_business_rules(data_ai, fresh_store, user_name)
                                     uyarilar = data_ai.pop("_uyarilar", [])
 
                                     # Görseli hem lokal hem base64 olarak kaydet
