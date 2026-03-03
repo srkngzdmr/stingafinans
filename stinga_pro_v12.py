@@ -1806,51 +1806,186 @@ if(window._sgShowToast) {{
     else:
         df = df_full.copy()
     
-    # ── AI ROBOT ────────────────────────────────────────────────
-    _rb64 = "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgMTQwIiB3aWR0aD0iOTAiIGhlaWdodD0iMTA1Ij4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYmciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjMTdhODcwIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMGM2MzQ0Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJudiIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMzZDRlOGEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMyRjNDNkUiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImdsIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjAlIiB5Mj0iMTAwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMwMGU4OTYiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMxMTg1NUIiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDwhLS0gQW50ZW4gLS0+CiAgPGxpbmUgeDE9IjYwIiB5MT0iMTMiIHgyPSI2MCIgeTI9IjQiIHN0cm9rZT0iIzAwZTg5NiIgc3Ryb2tlLXdpZHRoPSIyLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxjaXJjbGUgY3g9IjYwIiBjeT0iMyIgcj0iNSIgZmlsbD0iIzAwZTg5NiI+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJyIiB2YWx1ZXM9IjM7NjszIiBkdXI9IjEuOHMiIHJlcGVhdENvdW50PSJpbmRlZmluaXRlIi8+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJvcGFjaXR5IiB2YWx1ZXM9IjE7MC4zOzEiIGR1cj0iMS44cyIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiLz4KICA8L2NpcmNsZT4KICA8IS0tIEJhxZ8gZ8O2bGdlIC0tPgogIDxyZWN0IHg9IjIyIiB5PSIxOCIgd2lkdGg9Ijc4IiBoZWlnaHQ9IjQ4IiByeD0iMTYiIGZpbGw9IiMwYTRmMzQiIG9wYWNpdHk9IjAuMjUiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDIsMykiLz4KICA8IS0tIEJhxZ8gLS0+CiAgPHJlY3QgeD0iMjIiIHk9IjE1IiB3aWR0aD0iNzYiIGhlaWdodD0iNTAiIHJ4PSIxNiIgZmlsbD0idXJsKCNudikiLz4KICA8cmVjdCB4PSIyNiIgeT0iMTciIHdpZHRoPSI2OCIgaGVpZ2h0PSIxOCIgcng9IjEwIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDgpIi8+CiAgPHJlY3QgeD0iMjIiIHk9IjE1IiB3aWR0aD0iNzYiIGhlaWdodD0iNTAiIHJ4PSIxNiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjMpIiBzdHJva2Utd2lkdGg9IjEuNSIvPgogIDwhLS0gU29sIGfDtnogLS0+CiAgPGNpcmNsZSBjeD0iNDMiIGN5PSIzNyIgcj0iMTEiIGZpbGw9IiMwYTE2MjgiLz4KICA8Y2lyY2xlIGN4PSI0MyIgY3k9IjM3IiByPSI4IiBmaWxsPSIjMDkxMDIwIi8+CiAgPGNpcmNsZSBjeD0iNDMiIGN5PSIzNyIgcj0iNi41IiBmaWxsPSJ1cmwoI2dsKSIgb3BhY2l0eT0iMC45NSIvPgogIDxjaXJjbGUgY3g9IjQzIiBjeT0iMzciIHI9IjYuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjUpIiBzdHJva2Utd2lkdGg9IjEiLz4KICA8Y2lyY2xlIGlkPSJwbCIgY3g9IjQzIiBjeT0iMzciIHI9IjMuNSIgZmlsbD0iIzAwMWEwZCIvPgogIDxjaXJjbGUgY3g9IjQ2IiBjeT0iMzQiIHI9IjEuNiIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjcpIi8+CiAgPCEtLSBTYcSfIGfDtnogLS0+CiAgPGNpcmNsZSBjeD0iNzciIGN5PSIzNyIgcj0iMTEiIGZpbGw9IiMwYTE2MjgiLz4KICA8Y2lyY2xlIGN4PSI3NyIgY3k9IjM3IiByPSI4IiBmaWxsPSIjMDkxMDIwIi8+CiAgPGNpcmNsZSBjeD0iNzciIGN5PSIzNyIgcj0iNi41IiBmaWxsPSJ1cmwoI2dsKSIgb3BhY2l0eT0iMC45NSIvPgogIDxjaXJjbGUgY3g9Ijc3IiBjeT0iMzciIHI9IjYuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjUpIiBzdHJva2Utd2lkdGg9IjEiLz4KICA8Y2lyY2xlIGlkPSJwciIgY3g9Ijc3IiBjeT0iMzciIHI9IjMuNSIgZmlsbD0iIzAwMWEwZCIvPgogIDxjaXJjbGUgY3g9IjgwIiBjeT0iMzQiIHI9IjEuNiIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjcpIi8+CiAgPCEtLSBMRUQgYWdpeiAtLT4KICA8cmVjdCB4PSIzMiIgeT0iNTUiIHdpZHRoPSI1NiIgaGVpZ2h0PSI3IiByeD0iMy41IiBmaWxsPSIjMGExNjI4IiBvcGFjaXR5PSIwLjgiLz4KICA8cmVjdCB4PSIzNSIgeT0iNTYuMyIgd2lkdGg9IjciIGhlaWdodD0iNC40IiByeD0iMiIgZmlsbD0iIzAwZTg5NiI+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJvcGFjaXR5IiB2YWx1ZXM9IjE7MC4yOzEiIGR1cj0iMnMiIGJlZ2luPSIwcyIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiLz4KICA8L3JlY3Q+CiAgPHJlY3QgeD0iNDQiIHk9IjU2LjMiIHdpZHRoPSI3IiBoZWlnaHQ9IjQuNCIgcng9IjIiIGZpbGw9IiMwMGU4OTYiPgogICAgPGFuaW1hdGUgYXR0cmlidXRlTmFtZT0ib3BhY2l0eSIgdmFsdWVzPSIxOzAuMjsxIiBkdXI9IjJzIiBiZWdpbj0iMC4yNXMiIHJlcGVhdENvdW50PSJpbmRlZmluaXRlIi8+CiAgPC9yZWN0PgogIDxyZWN0IHg9IjUzIiB5PSI1Ni4zIiB3aWR0aD0iNyIgaGVpZ2h0PSI0LjQiIHJ4PSIyIiBmaWxsPSIjMDBlODk2Ij4KICAgIDxhbmltYXRlIGF0dHJpYnV0ZU5hbWU9Im9wYWNpdHkiIHZhbHVlcz0iMTswLjI7MSIgZHVyPSIycyIgYmVnaW49IjAuNXMiIHJlcGVhdENvdW50PSJpbmRlZmluaXRlIi8+CiAgPC9yZWN0PgogIDxyZWN0IHg9IjYyIiB5PSI1Ni4zIiB3aWR0aD0iNyIgaGVpZ2h0PSI0LjQiIHJ4PSIyIiBmaWxsPSIjMDBlODk2Ij4KICAgIDxhbmltYXRlIGF0dHJpYnV0ZU5hbWU9Im9wYWNpdHkiIHZhbHVlcz0iMTswLjI7MSIgZHVyPSIycyIgYmVnaW49IjAuNzVzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIvPgogIDwvcmVjdD4KICA8cmVjdCB4PSI3MSIgeT0iNTYuMyIgd2lkdGg9IjciIGhlaWdodD0iNC40IiByeD0iMiIgZmlsbD0iIzAwZTg5NiI+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJvcGFjaXR5IiB2YWx1ZXM9IjE7MC4yOzEiIGR1cj0iMnMiIGJlZ2luPSIxcyIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiLz4KICA8L3JlY3Q+CiAgPCEtLSBCb3l1biAtLT4KICA8cmVjdCB4PSI0OSIgeT0iNjQiIHdpZHRoPSIyMiIgaGVpZ2h0PSI5IiByeD0iNC41IiBmaWxsPSIjMGM2MzQ0Ii8+CiAgPCEtLSBHb3ZkZSBnb2xnZSAtLT4KICA8cmVjdCB4PSIxNCIgeT0iNzIiIHdpZHRoPSI5MiIgaGVpZ2h0PSI1MCIgcng9IjE1IiBmaWxsPSIjMGE0ZjM0IiBvcGFjaXR5PSIwLjI1IiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgyLDMpIi8+CiAgPCEtLSBHb3ZkZSAtLT4KICA8cmVjdCB4PSIxNCIgeT0iNzIiIHdpZHRoPSI5MiIgaGVpZ2h0PSI1MCIgcng9IjE1IiBmaWxsPSJ1cmwoI2JnKSIvPgogIDxyZWN0IHg9IjE4IiB5PSI3NCIgd2lkdGg9Ijg0IiBoZWlnaHQ9IjE2IiByeD0iMTAiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wOCkiLz4KICA8cmVjdCB4PSIxNCIgeT0iNzIiIHdpZHRoPSI5MiIgaGVpZ2h0PSI1MCIgcng9IjE1IiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMCwyMzIsMTUwLDAuMjUpIiBzdHJva2Utd2lkdGg9IjEuNSIvPgogIDwhLS0gUGFuZWwgLS0+CiAgPHJlY3QgeD0iMjgiIHk9IjgwIiB3aWR0aD0iNjQiIGhlaWdodD0iMzQiIHJ4PSI5IiBmaWxsPSJyZ2JhKDAsMCwwLDAuMikiLz4KICA8cmVjdCB4PSIyOCIgeT0iODAiIHdpZHRoPSI2NCIgaGVpZ2h0PSIzNCIgcng9IjkiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgwLDIzMiwxNTAsMC4xNSkiIHN0cm9rZS13aWR0aD0iMSIvPgogIDwhLS0gTEVEIG1lcmtleiAtLT4KICA8Y2lyY2xlIGN4PSI0NiIgY3k9IjkyIiByPSI4IiBmaWxsPSIjMDAxNjI4Ii8+CiAgPGNpcmNsZSBjeD0iNDYiIGN5PSI5MiIgcj0iNS41IiBmaWxsPSJ1cmwoI2dsKSI+CiAgICA8YW5pbWF0ZSBhdHRyaWJ1dGVOYW1lPSJyIiB2YWx1ZXM9IjQuNTs2LjU7NC41IiBkdXI9IjJzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIvPgogIDwvY2lyY2xlPgogIDxjaXJjbGUgY3g9IjQ2IiBjeT0iOTIiIHI9IjUuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjQpIiBzdHJva2Utd2lkdGg9IjEiPgogICAgPGFuaW1hdGUgYXR0cmlidXRlTmFtZT0iciIgdmFsdWVzPSI1LjU7MTA7NS41IiBkdXI9IjJzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIvPgogICAgPGFuaW1hdGUgYXR0cmlidXRlTmFtZT0ib3BhY2l0eSIgdmFsdWVzPSIwLjQ7MDswLjQiIGR1cj0iMnMiIHJlcGVhdENvdW50PSJpbmRlZmluaXRlIi8+CiAgPC9jaXJjbGU+CiAgPHRleHQgeD0iNDYiIHk9Ijk2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjUuNSIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC45KSIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSI+QUk8L3RleHQ+CiAgPCEtLSBDdWJ1a2xhciAtLT4KICA8cmVjdCB4PSI2MCIgeT0iODIiIHdpZHRoPSIyNiIgaGVpZ2h0PSIzIiByeD0iMS41IiBmaWxsPSJyZ2JhKDAsMjMyLDE1MCwwLjcpIi8+CiAgPHJlY3QgeD0iNjAiIHk9Ijg4IiB3aWR0aD0iMjAiIGhlaWdodD0iMyIgcng9IjEuNSIgZmlsbD0icmdiYSgwLDIzMiwxNTAsMC41KSIvPgogIDxyZWN0IHg9IjYwIiB5PSI5NCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjMiIHJ4PSIxLjUiIGZpbGw9InJnYmEoNDcsNjAsMTEwLDAuOSkiLz4KICA8cmVjdCB4PSI2MCIgeT0iMTAwIiB3aWR0aD0iMTYiIGhlaWdodD0iMyIgcng9IjEuNSIgZmlsbD0icmdiYSgwLDIzMiwxNTAsMC4zKSIvPgogIDwhLS0gU29sIGtvbCAtLT4KICA8cmVjdCB4PSIyIiB5PSI3NiIgd2lkdGg9IjEzIiBoZWlnaHQ9IjMyIiByeD0iNi41IiBmaWxsPSIjMGM1YzNhIi8+CiAgPHJlY3QgeD0iMiIgeT0iNzYiIHdpZHRoPSIxMyIgaGVpZ2h0PSIzMiIgcng9IjYuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDAsMjMyLDE1MCwwLjE1KSIgc3Ryb2tlLXdpZHRoPSIxIi8+CiAgPGVsbGlwc2UgY3g9IjguNSIgY3k9IjExMCIgcng9IjYuNSIgcnk9IjQuNSIgZmlsbD0iIzBjNWMzYSIvPgogIDwhLS0gU2FnIGtvbCAtLT4KICA8cmVjdCB4PSIxMDUiIHk9Ijc2IiB3aWR0aD0iMTMiIGhlaWdodD0iMzIiIHJ4PSI2LjUiIGZpbGw9IiMwYzVjM2EiLz4KICA8cmVjdCB4PSIxMDUiIHk9Ijc2IiB3aWR0aD0iMTMiIGhlaWdodD0iMzIiIHJ4PSI2LjUiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgwLDIzMiwxNTAsMC4xNSkiIHN0cm9rZS13aWR0aD0iMSIvPgogIDxlbGxpcHNlIGN4PSIxMTEuNSIgY3k9IjExMCIgcng9IjYuNSIgcnk9IjQuNSIgZmlsbD0iIzBjNWMzYSIvPgogIDwhLS0gQmFjYWtsYXIgLS0+CiAgPHJlY3QgeD0iMjgiIHk9IjEyMCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjEzIiByeD0iNi41IiBmaWxsPSIjMGE0ZjM0Ii8+CiAgPHJlY3QgeD0iMjIiIHk9IjEzMCIgd2lkdGg9IjI4IiBoZWlnaHQ9IjciIHJ4PSI0IiBmaWxsPSIjMDgzZDI4Ii8+CiAgPHJlY3QgeD0iNzIiIHk9IjEyMCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjEzIiByeD0iNi41IiBmaWxsPSIjMGE0ZjM0Ii8+CiAgPHJlY3QgeD0iNzAiIHk9IjEzMCIgd2lkdGg9IjI4IiBoZWlnaHQ9IjciIHJ4PSI0IiBmaWxsPSIjMDgzZDI4Ii8+Cjwvc3ZnPg=="
-    _rtips = ["Merhaba! Ho\u015f geldin \ud83d\udc4b", "\ud83d\udcd1 Fi\u015f Tarama ile yeni fi\u015f y\u00fckle!", "\u2696\ufe0f Onay bekleyen fi\u015fleri kontrol et!", "\ud83d\udd2c Anomali Dedekt\u00f6r\u00fc \u015f\u00fcpheli fi\u015fleri bulur!", "\ud83d\udcb0 Kasa bakiyeni Finans ekran\u0131nda g\u00f6r!", "\ud83d\udcc4 Raporlar\u0131 PDF olarak indir!"]
-    _rtips[0] = f"Merhaba {user_name}! Hoş geldin 👋"
+
+    # ── NEXBOT SPLINE ROBOT ──────────────────────────────────
     import json as _rj
-    st.markdown(f"""
+    _rtips_list = [
+        f"Merhaba {user_name}! Hoş geldin 👋",
+        "📑 Fiş Tarama ile yeni fiş yükle!",
+        "⚖️ Onay bekleyen fişleri kontrol et!",
+        "🔬 Anomali Dedektörü şüpheli fişleri bulur!",
+        "💰 Kasa bakiyeni Finans ekranında gör!",
+        "🤖 AI Asistan her konuda yardımcı olur!",
+        "📄 Raporları PDF olarak indirebilirsin!",
+    ]
+    _rtips_json = _rj.dumps(_rtips_list)
+    import streamlit.components.v1 as _stc
+    _stc.html(f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
 <style>
-#sgrw{{position:fixed;bottom:28px;right:28px;z-index:9999;cursor:pointer;}}
-#sgri{{width:88px;animation:sgRF 3.5s ease-in-out infinite;filter:drop-shadow(0 6px 18px rgba(17,133,91,.5));transition:transform .2s,filter .2s;}}
-#sgri:hover{{transform:scale(1.1);filter:drop-shadow(0 10px 28px rgba(17,133,91,.8));}}
-@keyframes sgRF{{0%,100%{{transform:translateY(0)rotate(-.5deg)}}50%{{transform:translateY(-10px)rotate(.5deg)}}}}
-#sgrb{{position:absolute;bottom:100px;right:0;background:linear-gradient(135deg,#fff,#f4f9f6);border:1.5px solid rgba(17,133,91,.28);border-radius:14px 14px 4px 14px;padding:11px 15px;min-width:200px;max-width:260px;font-family:sans-serif;font-size:13px;color:#0f1923;line-height:1.55;box-shadow:0 6px 24px rgba(17,133,91,.13);opacity:0;transform:translateY(6px) scale(.94);transition:all .28s cubic-bezier(.16,1,.3,1);pointer-events:none;}}
-#sgrb.on{{opacity:1;transform:translateY(0) scale(1);}}
-#sgrbadge{{font-size:10px;font-weight:800;color:#11855B;letter-spacing:2px;display:block;margin-bottom:4px;}}
-#sgrb::after{{content:'';position:absolute;bottom:-8px;right:18px;border-left:8px solid transparent;border-right:8px solid transparent;border-top:8px solid #fff;}}
-#sgtc{{position:fixed;bottom:130px;right:28px;z-index:9998;display:flex;flex-direction:column;gap:8px;pointer-events:none;}}
-.sgt{{background:#fff;border-radius:12px;padding:12px 16px;min-width:260px;box-shadow:0 6px 24px rgba(0,0,0,.1);border-left:4px solid #11855B;display:flex;gap:10px;align-items:flex-start;animation:sgTI .35s cubic-bezier(.16,1,.3,1) both,sgTO .3s ease 4.5s forwards;cursor:pointer;pointer-events:all;}}
-.sgt.warning{{border-left-color:#d97706;}}.sgt.error{{border-left-color:#dc2626;}}
-@keyframes sgTI{{from{{transform:translateX(110%);opacity:0}}to{{transform:translateX(0);opacity:1}}}}
-@keyframes sgTO{{to{{transform:translateX(110%);opacity:0}}}}
-.sgti{{font-size:1.2rem;}}.sgtb{{flex:1;}}.sgtt{{font-weight:700;font-size:.82rem;color:#0f1923;margin-bottom:2px;}}.sgtm{{font-size:.73rem;color:#5a7a6a;line-height:1.4;}}
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  html, body {{ background: transparent; overflow: hidden; width:100%; height:100%; }}
+
+  #nxb-wrap {{
+    position: fixed;
+    bottom: 32px; right: 32px;
+    width: 160px; height: 220px;
+    cursor: pointer;
+    z-index: 9999;
+  }}
+
+  /* Spline canvas container */
+  #nxb-spline {{
+    width: 160px; height: 180px;
+    border-radius: 20px;
+    overflow: hidden;
+    animation: nxbFloat 3.8s ease-in-out infinite;
+    filter: drop-shadow(0 8px 24px rgba(17,133,91,0.45));
+  }}
+  @keyframes nxbFloat {{
+    0%,100% {{ transform: translateY(0px); }}
+    50%      {{ transform: translateY(-10px); }}
+  }}
+
+  /* Gölge */
+  #nxb-shadow {{
+    width: 90px; height: 14px; margin: 4px auto 0;
+    background: radial-gradient(ellipse, rgba(17,133,91,0.4) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: nxbShadow 3.8s ease-in-out infinite;
+  }}
+  @keyframes nxbShadow {{
+    0%,100% {{ transform: scaleX(1); opacity:.4; }}
+    50%      {{ transform: scaleX(.55); opacity:.15; }}
+  }}
+
+  /* Konuşma balonu */
+  #nxb-bubble {{
+    position: fixed;
+    bottom: 250px; right: 32px;
+    background: linear-gradient(135deg,#fff,#f4f9f6);
+    border: 1.5px solid rgba(17,133,91,0.28);
+    border-radius: 16px 16px 4px 16px;
+    padding: 12px 16px; min-width: 210px; max-width: 270px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px; color: #0f1923; line-height: 1.55;
+    box-shadow: 0 8px 28px rgba(17,133,91,0.14);
+    opacity: 0; transform: translateY(8px) scale(.93);
+    transition: all .3s cubic-bezier(.16,1,.3,1);
+    pointer-events: none;
+  }}
+  #nxb-bubble.on {{ opacity:1; transform:translateY(0) scale(1); }}
+  #nxb-badge {{
+    font-size: 10px; font-weight: 800; color: #11855B;
+    letter-spacing: 2px; display: block; margin-bottom: 5px;
+  }}
+  #nxb-bubble::after {{
+    content:''; position:absolute; bottom:-8px; right:20px;
+    border-left:8px solid transparent; border-right:8px solid transparent;
+    border-top:8px solid #fff;
+  }}
+
+  /* Toastlar */
+  #nxb-toasts {{
+    position: fixed; bottom: 270px; right: 32px;
+    display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none; z-index: 9998;
+  }}
+  .nxb-toast {{
+    background: #fff; border-radius: 12px;
+    padding: 12px 16px; min-width: 260px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.1);
+    border-left: 4px solid #11855B;
+    display: flex; gap: 10px; align-items: flex-start;
+    animation: nxbTI .35s cubic-bezier(.16,1,.3,1) both,
+               nxbTO .3s ease 4.5s forwards;
+    cursor: pointer; pointer-events: all;
+  }}
+  .nxb-toast.warning {{ border-left-color:#d97706; }}
+  .nxb-toast.error   {{ border-left-color:#dc2626; }}
+  @keyframes nxbTI {{ from{{transform:translateX(110%);opacity:0}} to{{transform:translateX(0);opacity:1}} }}
+  @keyframes nxbTO {{ to{{transform:translateX(110%);opacity:0}} }}
+  .nxb-ti {{ font-size:1.2rem; flex-shrink:0; }}
+  .nxb-tb {{ flex:1; }}
+  .nxb-tt {{ font-weight:700; font-size:.82rem; color:#0f1923; margin-bottom:2px; }}
+  .nxb-tm {{ font-size:.73rem; color:#5a7a6a; line-height:1.4; }}
 </style>
-<div id="sgrw">
-  <div id="sgrb"><span id="sgrbadge">⚡ STINGA AI</span><span id="sgrtxt"></span></div>
-  <img id="sgri" src="data:image/svg+xml;base64,{_rb64}" alt="AI"/>
+</head>
+<body>
+
+<div id="nxb-bubble">
+  <span id="nxb-badge">⚡ STINGA AI</span>
+  <span id="nxb-text">Merhaba!</span>
 </div>
-<div id="sgtc"></div>
+
+<div id="nxb-wrap">
+  <div id="nxb-spline">
+    <iframe
+      src="https://my.spline.design/nexbot-dNjbkzTI3RlFWURP/"
+      frameborder="0"
+      width="100%"
+      height="100%"
+      allow="autoplay"
+      style="background:transparent;"
+    ></iframe>
+  </div>
+  <div id="nxb-shadow"></div>
+</div>
+
+<div id="nxb-toasts"></div>
+
 <script>
-(function(){{
-  var tips={_rj.dumps(_rtips)};
-  var ti=0,bub=document.getElementById('sgrb'),txt=document.getElementById('sgrtxt'),img=document.getElementById('sgri');
-  function show(t){{if(txt)txt.textContent=t;if(bub){{bub.classList.add('on');setTimeout(()=>bub.classList.remove('on'),4500);}}}}
-  if(img)img.addEventListener('click',function(){{show(tips[ti%tips.length]);ti++;}});
-  setTimeout(()=>show(tips[0]),1400);
-  window._sgShowToast=function(title,msg,type){{
-    var c=document.getElementById('sgtc');if(!c)return;
-    var el=document.createElement('div');el.className='sgt '+(type||'');
-    var ic={{success:'✅',warning:'⚠️',error:'🚨',info:'🔔'}};
-    el.innerHTML='<div class="sgti">'+(ic[type]||'📌')+'</div><div class="sgtb"><div class="sgtt">'+title+'</div><div class="sgtm">'+msg+'</div></div>';
-    el.onclick=()=>el.remove();c.appendChild(el);
-    setTimeout(()=>{{if(el.parentNode)el.remove();}},5000);
-  }};
+(function() {{
+  var tips = {_rtips_json};
+  var ti = 0;
+  var bubble = document.getElementById('nxb-bubble');
+  var txt    = document.getElementById('nxb-text');
+  var wrap   = document.getElementById('nxb-wrap');
+
+  function showTip(t) {{
+    if (txt)    txt.textContent = t;
+    if (bubble) {{
+      bubble.classList.add('on');
+      clearTimeout(wrap._bt);
+      wrap._bt = setTimeout(function() {{ bubble.classList.remove('on'); }}, 4800);
+    }}
+  }}
+
+  if (wrap) wrap.addEventListener('click', function() {{
+    showTip(tips[ti % tips.length]);
+    ti++;
+  }});
+
+  // İlk karşılama
+  setTimeout(function() {{ showTip(tips[0]); ti=1; }}, 1500);
+
+  // Toast sistemi — parent window'a expose et
+  function postToast(title, msg, type) {{
+    try {{
+      window.parent.postMessage({{type:'nxb-toast', title:title, msg:msg, ttype:type}}, '*');
+    }} catch(e) {{}}
+    // Kendi içinde de göster
+    var c = document.getElementById('nxb-toasts');
+    if (!c) return;
+    var el = document.createElement('div');
+    el.className = 'nxb-toast ' + (type||'');
+    var ic = {{success:'✅',warning:'⚠️',error:'🚨',info:'🔔'}};
+    el.innerHTML = '<div class="nxb-ti">'+(ic[type]||'📌')+'</div>'
+      + '<div class="nxb-tb"><div class="nxb-tt">'+title+'</div>'
+      + '<div class="nxb-tm">'+msg+'</div></div>';
+    el.onclick = function() {{ el.remove(); }};
+    c.appendChild(el);
+    setTimeout(function() {{ if(el.parentNode) el.remove(); }}, 5000);
+  }}
+  window._sgShowToast = postToast;
+
 }})();
 </script>
-""", unsafe_allow_html=True)
+</body>
+</html>
+""", height=220, scrolling=False)
 
     # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
