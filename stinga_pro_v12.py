@@ -8,6 +8,14 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 from datetime import datetime, timedelta
+
+# ─── İSTANBUL SAAT DİLİMİ ──────────────────────────────────────
+def now_ist():
+    """UTC+3 Istanbul saati döndürür (pytz gerektirmez, Streamlit Cloud uyumlu)."""
+    import time as _time
+    # os.environ TZ'ye güvenmek yerine direkt UTC offset kullan
+    from datetime import timezone as _tz
+    return datetime.now(_tz.utc).replace(tzinfo=None) + timedelta(hours=3)
 import os
 import json
 import re
@@ -712,8 +720,8 @@ def add_xp(user_name, amount, reason="", d=None):
         "user": target,
         "msg": message,
         "type": notif_type,
-        "time": datetime.now().strftime("%H:%M"),
-        "date": datetime.now().strftime("%Y-%m-%d"),
+        "time": now_ist().strftime("%H:%M"),
+        "date": now_ist().strftime("%Y-%m-%d"),
         "read": False
     })
     if _own:
@@ -730,8 +738,8 @@ def add_xp(user_name, amount, reason="", d=None):
             "user": user_name,
             "msg": f"🏆 +{amount} XP kazandın! ({reason})",
             "type": "xp",
-            "time": datetime.now().strftime("%H:%M"),
-            "date": datetime.now().strftime("%Y-%m-%d"),
+            "time": now_ist().strftime("%H:%M"),
+            "date": now_ist().strftime("%Y-%m-%d"),
             "read": False
         })
     if _own:
@@ -944,24 +952,24 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
                 _w, _h = _img.size; _s = min(_w,_h)
                 _img = _img.crop(((_w-_s)//2,(_h-_s)//2,(_w+_s)//2,(_h+_s)//2)).resize((400,400), _PI.LANCZOS)
                 _lb = _bio.BytesIO(); _img.save(_lb, format='PNG'); _lb.seek(0)
-                logo_cell = RLImage(_lb, width=3*cm, height=3*cm)
+                logo_cell = RLImage(_lb, width=4*cm, height=4*cm)
             except:
                 pass
-        _logo_w = 4.5*cm
+        _logo_w = 5.2*cm
         _title_w = W - _logo_w
         hdr_items = [
-            Spacer(1,0.15*cm),
+            Spacer(1,0.05*cm),
             _ph("STİNGA ENERJİ A.Ş.", ST["title"]),
             _ph("GİDER VE KDV RAPORU", ST["title"]),
-            _ph(f"Dönem: {donem}  |  {datetime.now().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v15.0", ST["sub"]),
+            _ph(f"Dönem: {donem}  |  {now_ist().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v15.0", ST["sub"]),
         ]
         hdr = Table([[logo_cell, hdr_items]], colWidths=[_logo_w, _title_w])
         hdr.setStyle(TableStyle([
             ("BACKGROUND",  (0,0),(0,0), rl_colors.white),
             ("ALIGN",       (0,0),(0,0), "CENTER"),
             ("VALIGN",      (0,0),(0,0), "MIDDLE"),
-            ("TOPPADDING",  (0,0),(0,0), 8), ("BOTTOMPADDING",(0,0),(0,0), 8),
-            ("LEFTPADDING", (0,0),(0,0), 8), ("RIGHTPADDING", (0,0),(0,0), 8),
+            ("TOPPADDING",  (0,0),(0,0), 3), ("BOTTOMPADDING",(0,0),(0,0), 3),
+            ("LEFTPADDING", (0,0),(0,0), 6), ("RIGHTPADDING", (0,0),(0,0), 6),
             ("BACKGROUND",  (1,0),(1,0), _R_DARK),
             ("ALIGN",       (1,0),(1,0), "CENTER"),
             ("VALIGN",      (1,0),(1,0), "MIDDLE"),
@@ -1164,7 +1172,7 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
         ws1.row_dimensions[1].height=70
         ws1.merge_cells("B1:C1"); ws1["B1"].value="STİNGA ENERJİ A.Ş. — GİDER VE KDV RAPORU"
         ws1["B1"].font=XLFont(name="Calibri",bold=True,size=15,color="1B3A5C"); ws1["B1"].alignment=C
-        ws1.merge_cells("A2:C2"); ws1["A2"].value=f"Dönem: {donem}  |  {datetime.now().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v15.0"
+        ws1.merge_cells("A2:C2"); ws1["A2"].value=f"Dönem: {donem}  |  {now_ist().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v15.0"
         ws1["A2"].font=XLFont(name="Calibri",size=10,italic=True,color="6B7280"); ws1["A2"].alignment=C
         r=4
         for lbl,b,n,k,clr in [
@@ -1251,7 +1259,7 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
         ws4.merge_cells("A1:E1"); ws4["A1"].value="KDV İADE BAŞVURU TABLOSU — ONAYLANAN GİDERLER"
         ws4["A1"].font=XLFont(name="Calibri",bold=True,size=13,color="FFFFFF")
         ws4["A1"].fill=PatternFill("solid",fgColor="1D7A5F"); ws4["A1"].alignment=C; ws4.row_dimensions[1].height=30
-        ws4.merge_cells("A2:E2"); ws4["A2"].value=f"STİNGA ENERJİ A.Ş.  |  Dönem: {donem}  |  Tarih: {datetime.now().strftime('%d.%m.%Y')}"
+        ws4.merge_cells("A2:E2"); ws4["A2"].value=f"STİNGA ENERJİ A.Ş.  |  Dönem: {donem}  |  Tarih: {now_ist().strftime('%d.%m.%Y')}"
         ws4["A2"].font=XLFont(name="Calibri",size=10,italic=True,color="6B7280"); ws4["A2"].alignment=C
         for ci,h in enumerate(["KATEGORİ","FİŞ SAYISI","MATRAH (KDV HARİÇ)","HESAPLANAN KDV","KDV ORANI"],1):
             hc(ws4,3,ci,h,"1D7A5F")
@@ -1279,7 +1287,7 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
 
 # ─── AI FONKSİYONLARI ─────────────────────────────────────────
 def analyze_receipt_pro(image, model):
-    bugun = datetime.now().strftime("%Y-%m-%d")
+    bugun = now_ist().strftime("%Y-%m-%d")
     prompt = f"""Sen Stinga Enerji şirketinin kıdemli mali denetçisisin. Fişi tara ve iş kurallarına göre risk skoru belirle.
 
 Bugünün tarihi: {bugun}. Fişteki tarih bu tarihten ÖNCE olmalı. Sonraki tarihse anomali=true.
@@ -1340,7 +1348,7 @@ def apply_business_rules(data_ai, data_store, user_name):
     AI'ın verdiği skoru bu kurallarla günceller.
     """
     kategori    = str(data_ai.get("kategori", "")).lower()
-    tarih       = data_ai.get("tarih", datetime.now().strftime("%Y-%m-%d"))
+    tarih       = data_ai.get("tarih", now_ist().strftime("%Y-%m-%d"))
     risk        = int(data_ai.get("risk_skoru", 5))
     anomali     = data_ai.get("anomali", False)
     anomali_msg = data_ai.get("anomali_aciklamasi", "")
@@ -2059,7 +2067,7 @@ else:
     ]
     st.markdown(f"""
 <style>
-#SGNX{{position:fixed;bottom:28px;right:28px;z-index:2147483647;cursor:pointer;width:92px;animation:SGNXF 3.8s ease-in-out infinite;filter:drop-shadow(0 8px 24px rgba(17,133,91,.45));}}
+#SGNX{{position:fixed;bottom:28px;right:28px;z-index:2147483647;cursor:pointer;width:92px;position:relative;animation:SGNXF 3.8s ease-in-out infinite;filter:drop-shadow(0 8px 24px rgba(17,133,91,.45));}}
 #SGNX:hover{{filter:drop-shadow(0 12px 36px rgba(17,133,91,.8));transform:scale(1.07);}}
 @keyframes SGNXF{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-11px)}}}}
 #SGNXSH{{width:56px;height:11px;margin:3px auto 0;background:radial-gradient(ellipse,rgba(17,133,91,.38) 0%,transparent 70%);border-radius:50%;animation:SGNXS 3.8s ease-in-out infinite;}}
@@ -2107,7 +2115,7 @@ else:
 
 /* ── ROBOT DUYGU ANİMASYONLARI ── */
 /* SEVİNÇ: kollar yukarı + zıplama */
-#SGNX.joy{{animation:SGNXJOY .7s ease-out 4 forwards!important;}}
+#SGNX.joy{{animation:SGNXJOY .7s ease-out 7 forwards!important;}}
 @keyframes SGNXJOY{{
   0%  {{transform:translateY(0) scale(1);}}
   20% {{transform:translateY(-22px) scale(1.08);}}
@@ -2191,6 +2199,8 @@ else:
   animation:SGNXOVFS .4s ease forwards;
 }}
 @keyframes SGNXOVFS{{from{{background:rgba(220,38,38,.12)}}to{{background:rgba(0,0,0,0)}}}}
+#SGNXNOTIF-BADGE{{position:absolute;top:-10px;right:-10px;background:#dc2626;color:#fff;font-size:10px;font-weight:800;min-width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;animation:SGNXBADGEP 1.2s ease-in-out infinite;z-index:9999;pointer-events:none;padding:0 3px;}}
+@keyframes SGNXBADGEP{{0%,100%{{transform:scale(1);box-shadow:0 0 0 0 rgba(220,38,38,.6)}}50%{{transform:scale(1.18);box-shadow:0 0 0 6px rgba(220,38,38,0)}}}}
 </style>
 <div id="SGNXBUB"><span class="badge">⚡ STINGA AI</span><span id="SGNXBT">Merhaba!</span></div>
 <div id="SGNXTC"></div>
@@ -2211,11 +2221,16 @@ else:
     <div id="SGNXCHEST"><div class="SGNXLED"></div><div class="SGNXLED"></div><div class="SGNXLED"></div><div class="SGNXLED"></div></div>
   </div>
   <div id="SGNXSH"></div>
+  <div id="SGNXNOTIF-BADGE" style="display:none;">0</div>
 </div>
 """, unsafe_allow_html=True)
     _stc.html(f"""<!DOCTYPE html><html><head></head><body><script>
 (function(){{
   var tips={_rj.dumps(_rtips)},ti=0,cRX=0,cRY=0,cEX=0,cEY=0,mx=window.innerWidth/2,my=window.innerHeight/2;
+  // Bildirim badge
+  var _nb=document.getElementById("SGNXNOTIF-BADGE");
+  var _nc={notif_count};
+  if(_nb){{_nb.textContent=_nc;_nb.style.display=_nc>0?"flex":"none";}}
   var head=document.getElementById('SGNXH'),iL=document.getElementById('SGNXIL'),iR=document.getElementById('SGNXIR'),
       bub=document.getElementById('SGNXBUB'),bt=document.getElementById('SGNXBT'),wrap=document.getElementById('SGNX');
   function tick(){{
@@ -2237,6 +2252,7 @@ else:
     mx=e.clientX-ol;my=e.clientY-ot;
   }});}}catch(x){{}}
   if(wrap)wrap.addEventListener('click',function(){{
+    if(_nb)_nb.style.display='none';
     if(bt)bt.textContent=tips[ti%tips.length];ti++;
     if(bub){{bub.classList.add('on');clearTimeout(wrap._t);wrap._t=setTimeout(function(){{bub.classList.remove('on');}},4800);}}
   }});
@@ -2294,7 +2310,7 @@ else:
       r.classList.remove('joy');
       if(ov.parentNode)ov.remove();
       if(bub)bub.classList.remove('on');
-    }},2200);
+    }},5000);
   }};
 
   // ── ROBOT ÜZÜNTÜ (ret) ───────────────────────────────────
@@ -2401,6 +2417,16 @@ else:
             </div>
             """, unsafe_allow_html=True)
             with st.expander("Bildirimleri Gör"):
+                # Bildirimleri okundu olarak işaretle
+                store = load_store()
+                for n in store.get("notifications", []):
+                    if (str(n.get("user","")) == user_name or str(n.get("user","")) == "Hepsi"
+                            or str(n.get("user","")).lower() == user_name.lower()):
+                        n["read"] = True
+                save_store(store)
+                # Lokal bildirimleri de temizle
+                for n in st.session_state.get("local_notifications", []):
+                    n["read"] = True
                 for n in reversed(my_notifs[-5:]):
                     icon = {"xp": "🏆", "info": "ℹ️", "warning": "⚠️", "success": "✅"}.get(n.get("type", "info"), "📌")
                     st.markdown(f"""
@@ -2710,17 +2736,17 @@ else:
 
                                 if not dup_blok:
                                     # ── Tarih Doğrulama (Python tarafında) ──
-                                    tarih_str = data_ai.get("tarih", datetime.now().strftime("%Y-%m-%d"))
+                                    tarih_str = data_ai.get("tarih", now_ist().strftime("%Y-%m-%d"))
                                     try:
                                         tarih_dt = datetime.strptime(tarih_str, "%Y-%m-%d")
-                                        bugun_dt = datetime.now()
+                                        bugun_dt = now_ist()
                                         if tarih_dt > bugun_dt:
                                             # AI yanlış tarih verdiyse bugünün tarihine çek
                                             tarih_str = bugun_dt.strftime("%Y-%m-%d")
                                             data_ai["tarih"] = tarih_str
                                             st.info("ℹ️ Fiş tarihi gelecek olarak tespit edildi, bugünün tarihi kullanıldı.")
                                     except:
-                                        tarih_str = datetime.now().strftime("%Y-%m-%d")
+                                        tarih_str = now_ist().strftime("%Y-%m-%d")
                                         data_ai["tarih"] = tarih_str
 
                                     # ── İş Kuralı Motoru Uygula ──
@@ -2729,10 +2755,10 @@ else:
 
                                     # Görseli hem lokal hem base64 olarak kaydet
                                     # base64 → bot'tan gelen WhatsApp fişlerinde de görsel görünsün
-                                    yukleme_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                    path = f"arsiv/{datetime.now().strftime('%Y_%m')}"
+                                    yukleme_zamani = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+                                    path = f"arsiv/{now_ist().strftime('%Y_%m')}"
                                     os.makedirs(path, exist_ok=True)
-                                    f_path = os.path.join(path, f"{datetime.now().strftime('%H%M%S')}_{f.name}")
+                                    f_path = os.path.join(path, f"{now_ist().strftime('%H%M%S')}_{f.name}")
                                     img_bytes = f.getbuffer()
                                     with open(f_path, "wb") as fp:
                                         fp.write(img_bytes)
@@ -2744,8 +2770,8 @@ else:
                                     gorsel_data_uri = f"data:{mime};base64,{gorsel_b64}"
 
                                     new_e = {
-                                        "ID": datetime.now().strftime("%Y%m%d%H%M%S"),
-                                        "Tarih": data_ai.get("tarih", datetime.now().strftime("%Y-%m-%d")),
+                                        "ID": now_ist().strftime("%Y%m%d%H%M%S"),
+                                        "Tarih": data_ai.get("tarih", now_ist().strftime("%Y-%m-%d")),
                                         "Saat": data_ai.get("saat", ""),
                                         "Yukleme_Zamani": yukleme_zamani,
                                         "Kullanıcı": user_name,
@@ -3346,7 +3372,7 @@ else:
                         if "ai_insights" not in st.session_state:
                             st.session_state.ai_insights = []
                         st.session_state.ai_insights.append({
-                            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "date": now_ist().strftime("%Y-%m-%d %H:%M"),
                             "type": "anomaly_scan",
                             "content": response.text
                         })
@@ -3481,7 +3507,7 @@ else:
                         
                         if pred:
                             current_month_spend = df[
-                                pd.to_datetime(df['Tarih'], errors='coerce').dt.strftime('%Y-%m') == datetime.now().strftime('%Y-%m')
+                                pd.to_datetime(df['Tarih'], errors='coerce').dt.strftime('%Y-%m') == now_ist().strftime('%Y-%m')
                             ]['Tutar'].sum() if 'Tarih' in df.columns else 0
                             
                             st.markdown(f"""
