@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║         STINGA PRO v14 — WhatsApp AI Harcama Asistanı                   ║
+║         STINGA PRO v13 — WhatsApp AI Harcama Asistanı                   ║
 ║  • Psikolojik harcama profili & davranış analizi                         ║
 ║  • Gamification: rozet, seviye, ekip yarışması                           ║
 ║  • Dinamik AI karakter modu (dedektif / koç / muhaseci)                  ║
@@ -9,8 +9,6 @@
 ║  • Harcama kehaneti & erken uyarı sistemi                                ║
 ║  • Kişiselleştirilmiş yaratıcı fiş yorumu                                ║
 ║  • Anomali tespiti, döviz, NL2Query                                       ║
-║  ★ BEB — Davranışsal Harcama Biyometriği (Patent #1)                    ║
-║  ★ MAEV — Çok Ajanlı Adversarial Fiş Doğrulama (Patent #2)             ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -38,65 +36,9 @@ TWILIO_SID   = os.getenv("TWILIO_SID")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
 twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
 
-# DB_FILE — lokal fallback (Railway ephemeral, sadece cache olarak kullanılır)
+# DB_FILE mutlak yol — Railway'de çalışma dizini kaymaları için
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stinga_v13_db.json")
 DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
-
-# ─── SUPABASE KALICI DB ───────────────────────────────────────
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-SUPABASE_BUCKET  = "stinga-db"
-SUPABASE_DB_FILE = "stinga_v13_db.json"
-
-def _supa_headers():
-    return {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-    }
-
-def _supa_available():
-    return bool(SUPABASE_URL and SUPABASE_KEY)
-
-def _supa_load() -> dict | None:
-    """Supabase Storage'dan DB JSON'unu indir. Başarısızsa None döndür."""
-    if not _supa_available():
-        return None
-    try:
-        url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{SUPABASE_DB_FILE}"
-        r = requests.get(url, headers=_supa_headers(), timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            print(f"Supabase DB yüklendi: {len(data.get('expenses',[]))} fiş", flush=True)
-            return data
-        print(f"Supabase DB yok (status {r.status_code}), default başlatılıyor", flush=True)
-        return None
-    except Exception as e:
-        print(f"Supabase load hatası: {e}", flush=True)
-        return None
-
-def _supa_save(d: dict) -> bool:
-    """DB JSON'unu Supabase Storage'a yükle. Başarı True/False döndür."""
-    if not _supa_available():
-        return False
-    try:
-        url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{SUPABASE_DB_FILE}"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type": "application/json",
-            "x-upsert": "true",
-        }
-        payload = json.dumps(d, ensure_ascii=False).encode("utf-8")
-        r = requests.post(url, data=payload, headers=headers, timeout=15)
-        if r.status_code in (200, 201):
-            print(f"Supabase DB kaydedildi: {len(d.get('expenses',[]))} fiş", flush=True)
-            return True
-        print(f"Supabase save hata: {r.status_code} {r.text[:200]}", flush=True)
-        return False
-    except Exception as e:
-        print(f"Supabase save exception: {e}", flush=True)
-        return False
 
 PHONE_DIRECTORY = {
     "whatsapp:+905350328406": {
@@ -156,13 +98,16 @@ SEVIYELER = [
 def load_data() -> dict:
     default = {
         "expenses": [],
+        # Harcırah bakiyeleri (dashboard Finans&Kasa bölümü)
         "wallets":  {"Zeynep Özyaman": 50000, "Serkan Güzdemir": 25000, "Okan İlhan": 5000, "Şenol Özyaman": 30000},
+        # Proje bazlı bütçe (dashboard ultra-card göstergeleri)
         "budgets": {
             "Maden Sahası":   {"limit": 100000, "spent": 0},
             "Aktif Karbon":   {"limit": 80000,  "spent": 0},
             "Enerji Hatları": {"limit": 60000,  "spent": 0},
             "Genel Merkez":   {"limit": 40000,  "spent": 0},
         },
+        # WhatsApp uyarıları için kişi limitleri
         "user_limits": {"Zeynep Özyaman": 50000, "Serkan Güzdemir": 10000, "Okan İlhan": 5000, "Şenol Özyaman": 30000},
         "anomaly_log": [],
         "duplicate_hashes": [],
@@ -170,60 +115,45 @@ def load_data() -> dict:
         "rozetler": {"Zeynep Özyaman": [], "Serkan Güzdemir": [], "Okan İlhan": [], "Şenol Özyaman": []},
         "fis_sayaci": {"Zeynep Özyaman": 0, "Serkan Güzdemir": 0, "Okan İlhan": 0, "Şenol Özyaman": 0},
         "karakter_modu": {},
+        # Dashboard ek alanları
         "xp": {"Zeynep Özyaman": 0, "Serkan Güzdemir": 0, "Okan İlhan": 0, "Şenol Özyaman": 0},
         "notifications": [],
         "ledger": [],
     }
-
-    def _normalize(data):
-        """Eksik alanları default ile tamamla."""
-        for k, v in default.items():
-            data.setdefault(k, v)
-        for field in ["wallets", "user_limits", "rozetler", "fis_sayaci", "xp"]:
-            if "Şenol Özyaman" not in data.get(field, {}):
-                data[field]["Şenol Özyaman"] = default[field].get("Şenol Özyaman", 0 if field != "rozetler" else [])
-        budgets = data.get("budgets", {})
-        if budgets and isinstance(list(budgets.values())[0], (int, float)):
-            data["budgets"] = default["budgets"]
-        return data
-
-    # 1. Supabase'den yükle (kalıcı)
-    supa_data = _supa_load()
-    if supa_data:
-        return _normalize(supa_data)
-
-    # 2. Lokal dosyadan yükle (cache / Supabase yoksa)
+    # Önce ana, bozuksa backup dene
     for try_file in [DB_FILE, DB_FILE + ".bak"]:
         if not os.path.exists(try_file):
             continue
         try:
             with open(try_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            print(f"Lokal DB yüklendi ({try_file}): {len(data.get('expenses',[]))} fiş", flush=True)
-            return _normalize(data)
-        except Exception as e:
-            print(f"Lokal DB okuma hatası ({try_file}): {e}", flush=True)
-
-    print("UYARI: DB bulunamadı, default ile başlatılıyor", flush=True)
+            for k, v in default.items():
+                data.setdefault(k, v)
+            # Yeni tam isimlerle eksik alt-alanlara ekle
+            for field in ["wallets", "user_limits", "rozetler", "fis_sayaci", "xp"]:
+                if "Şenol Özyaman" not in data.get(field, {}):
+                    data[field]["Şenol Özyaman"] = default[field].get("Şenol Özyaman", 0 if field != "rozetler" else [])
+            # budgets eski flat formattan migrate et
+            budgets = data.get("budgets", {})
+            if budgets and isinstance(list(budgets.values())[0], (int, float)):
+                data["budgets"] = default["budgets"]
+            print(f"DB yüklendi ({try_file}): {len(data.get('expenses',[]))} fiş", flush=True)
+            return data
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"DB okuma hatası ({try_file}): {e}", flush=True)
+            continue
+    print("UYARI: Geçerli DB bulunamadı, default döndürülüyor", flush=True)
     return default
-
 
 import threading as _threading
 _DB_LOCK = _threading.Lock()
 
-
 def save_data(d: dict):
-    """
-    Önce Supabase'e kaydet (kalıcı), sonra lokal dosyaya yaz (cache).
-    Thread-safe.
-    """
+    """Thread-safe atomik kayıt. Lock + tmp dosya → veri bozulmasını önler."""
+    tmp = DB_FILE + ".tmp"
     with _DB_LOCK:
-        # 1. Supabase'e kaydet
-        supa_ok = _supa_save(d)
-
-        # 2. Lokal cache'e kaydet (her durumda)
-        tmp = DB_FILE + ".tmp"
         try:
+            # Mevcut dosyayı backup al
             if os.path.exists(DB_FILE):
                 try:
                     os.replace(DB_FILE, DB_FILE + ".bak")
@@ -232,10 +162,14 @@ def save_data(d: dict):
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(d, f, ensure_ascii=False, indent=2)
             os.replace(tmp, DB_FILE)
-            if not supa_ok:
-                print(f"Supabase kapalı — sadece lokal kaydedildi: {len(d.get('expenses',[]))} fiş", flush=True)
+            print(f"DB kaydedildi: {len(d.get('expenses',[]))} fiş", flush=True)
         except Exception as e:
-            print(f"Lokal kayıt hatası: {e}", flush=True)
+            print(f"KAYIT HATASI: {e}", flush=True)
+            try:
+                with open(DB_FILE, "w", encoding="utf-8") as f:
+                    json.dump(d, f, ensure_ascii=False, indent=2)
+            except Exception as e2:
+                print(f"FALLBACK KAYIT HATASI: {e2}", flush=True)
 
 def load_data_safe() -> dict:
     """Thread-safe okuma. Bozuk JSON'a karşı .bak dosyasından restore."""
@@ -554,455 +488,6 @@ def anomali_tespit(user_name: str, tutar: float, data: dict) -> list[str]:
     return uyarilar
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  ★ BEB — BEHAVIORAL EXPENDITURE BIOMETRICS (Patent #1)
-#  Kullanıcının harcama davranış örüntüsünden biyometrik kimlik profili
-#  oluşturur. Anormallik tespit edilirse gizli WhatsApp sorusu gönderir.
-# ═══════════════════════════════════════════════════════════════════════════
-
-def beb_profil_guncelle(user_name: str, fis: dict, saat: int, data: dict):
-    """Her fiş girişinde BEB profilini günceller."""
-    data.setdefault("beb_profiller", {})
-    profil = data["beb_profiller"].get(user_name, {
-        "saat_dagilimi": [],          # Son 50 fişin gönderilme saatleri
-        "tutar_dagilimi": [],         # Son 50 tutar
-        "kategori_dagilimi": [],      # Son 50 kategori
-        "odeme_yontemi_sayac": {},    # Ödeme yöntemi kullanım sayısı
-        "foto_sayac": 0,              # Toplam fiş sayısı
-        "onay_alinan_tutarlar": [],   # Onaylanan son 20 tutar
-    })
-    # Güncelle
-    profil["saat_dagilimi"].append(saat)
-    profil["saat_dagilimi"] = profil["saat_dagilimi"][-50:]
-    profil["tutar_dagilimi"].append(float(fis.get("toplam_tutar", 0)))
-    profil["tutar_dagilimi"] = profil["tutar_dagilimi"][-50:]
-    profil["kategori_dagilimi"].append(fis.get("fis_turu", "diger"))
-    profil["kategori_dagilimi"] = profil["kategori_dagilimi"][-50:]
-    odeme = fis.get("odeme_yontemi", "bilinmiyor")
-    profil["odeme_yontemi_sayac"][odeme] = profil["odeme_yontemi_sayac"].get(odeme, 0) + 1
-    profil["foto_sayac"] += 1
-    data["beb_profiller"][user_name] = profil
-
-
-def beb_anomali_skoru(user_name: str, fis: dict, saat: int, data: dict) -> dict:
-    """
-    Yeni fişi kullanıcının BEB profiline göre değerlendirir.
-    Döner: {"skor": 0-100, "anomaliler": [...], "kimlik_dogrulama_gerekli": bool}
-    Profil için en az 5 fiş gereklidir.
-    """
-    profil = data.get("beb_profiller", {}).get(user_name)
-    if not profil or profil.get("foto_sayac", 0) < 5:
-        return {"skor": 0, "anomaliler": [], "kimlik_dogrulama_gerekli": False}
-
-    anomaliler = []
-    skor = 0
-
-    # 1. SAAT ANALİZİ — Kullanıcı normal olarak hangi saatlerde gönderir?
-    saatler = profil.get("saat_dagilimi", [])
-    if saatler:
-        ort_saat = statistics.mean(saatler)
-        std_saat = statistics.stdev(saatler) if len(saatler) > 1 else 4
-        std_saat = max(std_saat, 2)  # minimum 2 saat std
-        sapma_saat = abs(saat - ort_saat)
-        if sapma_saat > 2 * std_saat:
-            puan = min(35, int(sapma_saat * 4))
-            skor += puan
-            anomaliler.append(
-                f"🕐 Olağandışı saat: {saat:02d}:xx (normalde {ort_saat:.0f}:xx civarında)"
-            )
-
-    # 2. TUTAR ANALİZİ — Kullanıcının tutar aralığı dışında mı?
-    tutarlar = profil.get("tutar_dagilimi", [])
-    yeni_tutar = float(fis.get("toplam_tutar", 0))
-    if tutarlar and len(tutarlar) >= 3:
-        ort_tutar = statistics.mean(tutarlar)
-        std_tutar = statistics.stdev(tutarlar) if len(tutarlar) > 1 else ort_tutar * 0.5
-        std_tutar = max(std_tutar, ort_tutar * 0.2)
-        if std_tutar > 0:
-            z_skor = (yeni_tutar - ort_tutar) / std_tutar
-            if z_skor > 2.5:
-                puan = min(30, int(z_skor * 8))
-                skor += puan
-                anomaliler.append(
-                    f"💰 Olağandışı tutar: {yeni_tutar:,.0f} ₺ (normal aralık: {max(0,ort_tutar-std_tutar):,.0f}–{ort_tutar+std_tutar:,.0f} ₺)"
-                )
-
-    # 3. ÖDEME YÖNTEMİ — Hiç kullanmadığı bir yöntem mi?
-    odeme_sayac = profil.get("odeme_yontemi_sayac", {})
-    yeni_odeme = fis.get("odeme_yontemi", "bilinmiyor")
-    toplam_odeme = sum(odeme_sayac.values())
-    if toplam_odeme > 5 and yeni_odeme not in odeme_sayac:
-        skor += 15
-        en_cok = max(odeme_sayac, key=odeme_sayac.get) if odeme_sayac else "?"
-        anomaliler.append(
-            f"💳 Alışılmadık ödeme yöntemi: {yeni_odeme} (normalde {en_cok})"
-        )
-
-    # 4. KATEGORİ ANALİZİ — Hiç girilmeyen kategori mi?
-    kategoriler = profil.get("kategori_dagilimi", [])
-    yeni_kat = fis.get("fis_turu", "diger")
-    if kategoriler and len(kategoriler) >= 10:
-        kat_sayac = {}
-        for k in kategoriler:
-            kat_sayac[k] = kat_sayac.get(k, 0) + 1
-        if yeni_kat not in kat_sayac:
-            skor += 20
-            anomaliler.append(
-                f"🏷️ Daha önce hiç girilmemiş kategori: {yeni_kat}"
-            )
-
-    kimlik_gerekli = skor >= 55
-
-    return {
-        "skor": min(100, skor),
-        "anomaliler": anomaliler,
-        "kimlik_dogrulama_gerekli": kimlik_gerekli
-    }
-
-
-def beb_gizli_soru_uret(user_name: str, data: dict) -> dict:
-    """
-    Yalnızca gerçek kullanıcının bilebileceği bir doğrulama sorusu üretir.
-    Döner: {"soru": str, "cevap": str, "ipucu": str}
-    """
-    harcamalar = [e for e in data.get("expenses", []) if e["Kullanıcı"] == user_name]
-    if not harcamalar:
-        return None
-
-    secenekler = []
-
-    # Seçenek 1: Son onaylı fişin tutarının son 2 hanesi
-    onaylananlar = [e for e in harcamalar if e.get("Durum") == "Onaylandı"]
-    if onaylananlar:
-        son_onay = onaylananlar[-1]
-        tutar_str = f"{son_onay['Tutar']:.0f}"
-        cevap = tutar_str[-2:] if len(tutar_str) >= 2 else tutar_str
-        secenekler.append({
-            "soru": "Son onaylanan fişinizin tutarının son 2 rakamı nedir?",
-            "cevap": cevap,
-            "ipucu": f"({son_onay['Firma']} fişiniz)"
-        })
-
-    # Seçenek 2: Bu ay en çok harcama yapılan kategori
-    bu_ay = datetime.now().strftime("%Y-%m")
-    ay_fisler = [e for e in harcamalar if e.get("Tarih", "").startswith(bu_ay)]
-    if ay_fisler:
-        kat_toplam = {}
-        for e in ay_fisler:
-            k = e.get("Kategori", "diger")
-            kat_toplam[k] = kat_toplam.get(k, 0) + e["Tutar"]
-        en_cok_kat = max(kat_toplam, key=kat_toplam.get)
-        secenekler.append({
-            "soru": "Bu ay en çok harcama yaptığınız kategori hangisi?",
-            "cevap": en_cok_kat.lower(),
-            "ipucu": "(yemek / ulasim / ofis / konaklama / eglence / saglik / diger)"
-        })
-
-    # Seçenek 3: Toplam fiş sayısı
-    fis_sayisi = data.get("fis_sayaci", {}).get(user_name, 0)
-    if fis_sayisi > 0:
-        secenekler.append({
-            "soru": "Sisteme şimdiye kadar kaç fiş girdiniz?",
-            "cevap": str(fis_sayisi),
-            "ipucu": "(tam sayı)"
-        })
-
-    if not secenekler:
-        return None
-
-    return random.choice(secenekler)
-
-
-def beb_dogrulama_baslat(user_name: str, sender_phone: str,
-                           beb_sonuc: dict, fis_id: str, data: dict):
-    """
-    BEB anomali tespit edildiğinde kimlik doğrulama sürecini başlatır.
-    Gizli soru WhatsApp'tan gönderilir, yanıt bekleme durumuna girilir.
-    """
-    soru_data = beb_gizli_soru_uret(user_name, data)
-    if not soru_data:
-        return  # Soru üretilemezse devam et
-
-    # Doğrulama bekleyen durumu kaydet
-    data.setdefault("beb_bekleyen", {})[sender_phone] = {
-        "fis_id"   : fis_id,
-        "soru"     : soru_data["soru"],
-        "cevap"    : soru_data["cevap"],
-        "zaman"    : datetime.now().isoformat(),
-        "deneme"   : 0,
-        "skor"     : beb_sonuc["skor"],
-        "anomaliler": beb_sonuc["anomaliler"],
-    }
-
-    anomali_str = "\n".join(f"  • {a}" for a in beb_sonuc["anomaliler"])
-    mesaj = (
-        f"🔐 *BEB Kimlik Doğrulama Gerekli*\n"
-        f"{'─'*28}\n"
-        f"⚠️ Bu fiş profilinizden *%{beb_sonuc['skor']} sapma* gösteriyor:\n"
-        f"{anomali_str}\n\n"
-        f"🔒 Kimliğinizi doğrulamak için aşağıdaki soruyu cevaplayın:\n\n"
-        f"*{soru_data['soru']}*\n"
-        f"_{soru_data['ipucu']}_\n\n"
-        f"(Yanlış cevap fişi askıya alır. 3 deneme hakkınız var.)"
-    )
-    twilio_client.messages.create(
-        body=mesaj,
-        from_="whatsapp:+14155238886",
-        to=sender_phone
-    )
-
-
-def beb_cevap_kontrol(sender_phone: str, cevap_metin: str, data: dict) -> bool:
-    """
-    Kullanıcının BEB doğrulama sorusuna verdiği cevabı kontrol eder.
-    True → doğru, False → yanlış. Geçersiz durum → None döner.
-    """
-    bekleyen = data.get("beb_bekleyen", {}).get(sender_phone)
-    if not bekleyen:
-        return None
-
-    # Zaman aşımı: 10 dakika
-    zaman = datetime.fromisoformat(bekleyen["zaman"])
-    if (datetime.now() - zaman).total_seconds() > 600:
-        data["beb_bekleyen"].pop(sender_phone, None)
-        return None
-
-    dogru_cevap = str(bekleyen["cevap"]).strip().lower()
-    verilen_cevap = cevap_metin.strip().lower()
-
-    bekleyen["deneme"] = bekleyen.get("deneme", 0) + 1
-
-    if verilen_cevap == dogru_cevap:
-        # Doğru → fişi onayla, durumu temizle
-        fis_id = bekleyen["fis_id"]
-        for e in data.get("expenses", []):
-            if str(e.get("ID")) == str(fis_id):
-                e["BEB_Dogrulandi"] = True
-                break
-        data["beb_bekleyen"].pop(sender_phone, None)
-        return True
-
-    if bekleyen["deneme"] >= 3:
-        # 3 başarısız → fişi askıya al
-        fis_id = bekleyen["fis_id"]
-        for e in data.get("expenses", []):
-            if str(e.get("ID")) == str(fis_id):
-                e["Durum"] = "BEB Askıya Alındı"
-                e["BEB_Dogrulandi"] = False
-                break
-        data["beb_bekleyen"].pop(sender_phone, None)
-        return False
-
-    return False  # Yanlış ama deneme hakkı var
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  ★ MAEV — MULTI-AGENT ADVERSARIAL EXPENSE VALIDATION (Patent #2)
-#  Her fişi 3 rakip AI ajan değerlendirir: Savcı 🔴 | Avukat 🟢 | Hakim ⚖️
-#  Şeffaf karar + itiraz mekanizması
-# ═══════════════════════════════════════════════════════════════════════════
-
-def maev_degerlendir(fis: dict, user_name: str, data: dict) -> dict:
-    """
-    3 ajan paralel çalışır: savcı argümanı, avukat argümanı, hakim kararı.
-    Döner: {"karar": str, "guven": int, "ozet": str, "savcı": str, "avukat": str}
-    """
-    # Kullanıcı geçmiş istatistikleri
-    gecmis = [e for e in data.get("expenses", []) if e["Kullanıcı"] == user_name]
-    fis_sayisi = len(gecmis)
-    red_orani = 0
-    if fis_sayisi > 0:
-        reddedilenler = sum(1 for e in gecmis if e.get("Durum") == "Reddedildi")
-        red_orani = int(reddedilenler / fis_sayisi * 100)
-
-    bu_ay = datetime.now().strftime("%Y-%m")
-    bu_ay_toplam = sum(e["Tutar"] for e in gecmis if e.get("Tarih", "").startswith(bu_ay))
-    butce = data.get("user_limits", {}).get(user_name, 0)
-    butce_kalan = max(0, butce - bu_ay_toplam)
-
-    fis_ozet = f"""
-Firma: {fis.get('firma', '?')}
-Tutar: {fis.get('toplam_tutar', 0)} TL
-Ödeme: {fis.get('odeme_yontemi', '?')}
-Kategori: {fis.get('fis_turu', '?')}
-Tarih: {fis.get('tarih', '?')}
-Risk skoru: {fis.get('risk_skoru', 0)}/100
-KDV tutarı: {fis.get('kdv_tutari', 0)} TL
-Risk nedenleri: {', '.join(fis.get('risk_nedenleri', [])[:3])}
-Kullanıcı: {user_name} | Toplam fiş: {fis_sayisi} | Red oranı: %{red_orani}
-Bu ay harcama: {bu_ay_toplam:,.0f} ₺ | Kalan bütçe: {butce_kalan:,.0f} ₺
-"""
-
-    # AJAN 1 — SAVCI 🔴 (şüpheci, reddetmeye eğilimli)
-    savci_prompt = f"""Sen kurumsal harcama denetçisisin. Görüşün her zaman şüpheci ve redde meyillidir.
-Bu fişi REDDETMEK için en güçlü 2-3 argümanı bul.
-Türkçe, tek paragraf, maksimum 60 kelime. Emoji kullanma.
-
-Fiş bilgileri:
-{fis_ozet}
-
-Sadece red argümanlarını yaz. "Reddedilmeli" kelimesiyle bitir."""
-
-    # AJAN 2 — AVUKAT 🟢 (savunucu, onaylamaya eğilimli)
-    avukat_prompt = f"""Sen çalışan haklarını koruyan kurumsal avukatsın. Görüşün her zaman destekleyici ve onaya meyillidir.
-Bu fişi ONAYLAMAK için en güçlü 2-3 argümanı bul.
-Türkçe, tek paragraf, maksimum 60 kelime. Emoji kullanma.
-
-Fiş bilgileri:
-{fis_ozet}
-
-Sadece onay argümanlarını yaz. "Onaylanmalı" kelimesiyle bitir."""
-
-    try:
-        # Savcı ve avukat paralel çalışsın
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            f_savci  = executor.submit(ai_call, savci_prompt)
-            f_avukat = executor.submit(ai_call, avukat_prompt)
-            savci_arg  = f_savci.result(timeout=20)
-            avukat_arg = f_avukat.result(timeout=20)
-    except Exception as e:
-        print(f"MAEV ajan hatası: {e}", flush=True)
-        savci_arg  = "Fişin risk skoru yüksek ve belge kalitesi yetersiz. Reddedilmeli"
-        avukat_arg = "Kullanıcı dürüst geçmişe sahip, kategori iş amaçlı. Onaylanmalı"
-
-    # AJAN 3 — HAKİM ⚖️ (tarafsız, nihai karar)
-    hakim_prompt = f"""Sen adil ve tarafsız bir kurumsal harcama hakimisin.
-Savcı ve avukat argümanlarını değerlendirerek KARAR ver.
-
-SAVCI argümanı: {savci_arg}
-
-AVUKAT argümanı: {avukat_arg}
-
-Fiş bilgileri:
-{fis_ozet}
-
-Şu formatta yanıt ver (JSON):
-{{
-  "karar": "ONAYLA" veya "REDDET" veya "İNSANA_ESKALAT",
-  "guven": 0-100 (karardan ne kadar emin olduğun),
-  "ozet": "2 cümle Türkçe gerekçe. Emoji kullanabilirsin."
-}}
-Sadece JSON döndür, başka hiçbir şey yazma."""
-
-    try:
-        hakim_raw = ai_call(hakim_prompt)
-        hakim_json = re.sub(r"```json?|```", "", hakim_raw).strip()
-        _m = re.search(r'\{.*\}', hakim_json, re.DOTALL)
-        hakim = json.loads(_m.group() if _m else hakim_json)
-    except Exception as e:
-        print(f"MAEV hakim hatası: {e}", flush=True)
-        # Fallback: risk skoruna göre karar
-        risk = int(fis.get("risk_skoru", 0))
-        hakim = {
-            "karar": "REDDET" if risk >= 70 else "ONAYLA" if risk < 30 else "İNSANA_ESKALAT",
-            "guven": 50,
-            "ozet": "Otomatik değerlendirme tamamlandı. Manuel kontrol önerilir."
-        }
-
-    return {
-        "karar"  : hakim.get("karar", "İNSANA_ESKALAT"),
-        "guven"  : int(hakim.get("guven", 50)),
-        "ozet"   : hakim.get("ozet", ""),
-        "savci"  : savci_arg,
-        "avukat" : avukat_arg,
-    }
-
-
-def maev_itiraz_isle(sender_phone: str, user_name: str,
-                      itiraz_metni: str, data: dict) -> str:
-    """
-    Kullanıcı 'itiraz' yazdığında son fişin MAEV kararını 4. ajan (itiraz hakimi) ile tekrar değerlendirir.
-    """
-    # Son fişi bul
-    kullanici_fisler = [e for e in data.get("expenses", []) if e["Kullanıcı"] == user_name]
-    if not kullanici_fisler:
-        return "❌ İtiraz edilecek fiş bulunamadı."
-
-    son_fis = kullanici_fisler[-1]
-    maev_karar = son_fis.get("MAEV_Karar", "")
-    maev_ozet  = son_fis.get("MAEV_Ozet", "")
-    maev_savci = son_fis.get("MAEV_Savci", "")
-
-    if not maev_karar:
-        return "❌ Son fişinizde MAEV kararı bulunamadı."
-
-    if maev_karar == "ONAYLA":
-        return "✅ Son fişiniz zaten ONAYLA kararı aldı. İtiraz gerekmez."
-
-    # İtiraz hakimi prompt
-    itiraz_prompt = f"""Sen bir üst mahkeme hakimisin. Aşağıdaki karara itiraz edildi.
-İtiraz gerekçesini, savcı argümanını ve iş normlarını dikkate alarak yeniden değerlendir.
-
-Orijinal karar: {maev_karar}
-Orijinal gerekçe: {maev_ozet}
-Savcı argümanı: {maev_savci}
-İtiraz gerekçesi: {itiraz_metni}
-
-Firma: {son_fis.get('Firma','?')} | Tutar: {son_fis.get('Tutar',0):,.0f} ₺
-Kullanıcı geçmişi: {len(kullanici_fisler)} fiş, genel dürüst profil
-
-Kararı gözden geçir. Şu formatta yanıt ver:
-{{
-  "yeni_karar": "ONAYLA" veya "REDDET" veya "İNSANA_ESKALAT",
-  "degisti_mi": true/false,
-  "itiraz_ozeti": "2 cümle Türkçe karar özeti. Hangi argüman galip geldi?"
-}}
-Sadece JSON döndür."""
-
-    try:
-        itiraz_raw  = ai_call(itiraz_prompt)
-        itiraz_json = re.sub(r"```json?|```", "", itiraz_raw).strip()
-        _m = re.search(r'\{.*\}', itiraz_json, re.DOTALL)
-        itiraz_sonuc = json.loads(_m.group() if _m else itiraz_json)
-    except Exception as e:
-        print(f"MAEV itiraz hatası: {e}", flush=True)
-        return "❌ İtiraz işlemi sırasında hata oluştu. Lütfen tekrar deneyin."
-
-    yeni_karar    = itiraz_sonuc.get("yeni_karar", maev_karar)
-    degisti_mi    = itiraz_sonuc.get("degisti_mi", False)
-    itiraz_ozeti  = itiraz_sonuc.get("itiraz_ozeti", "")
-
-    # Fişi güncelle
-    son_fis["MAEV_Karar"]  = yeni_karar
-    son_fis["MAEV_Itiraz"] = itiraz_metni
-    if yeni_karar == "ONAYLA":
-        son_fis["Durum"] = "Onay Bekliyor"
-
-    save_data(data)
-
-    karar_emoji = {"ONAYLA": "✅", "REDDET": "❌", "İNSANA_ESKALAT": "👤"}.get(yeni_karar, "⚖️")
-    degisim_str = "🔄 *Karar değiştirildi!*" if degisti_mi else "📌 Orijinal karar korundu."
-
-    return (
-        f"⚖️ *İtiraz Sonucu*\n"
-        f"{'─'*28}\n"
-        f"{degisim_str}\n\n"
-        f"{karar_emoji} Yeni Karar: *{yeni_karar}*\n\n"
-        f"📋 Gerekçe:\n{itiraz_ozeti}\n\n"
-        f"{'✅ Fişiniz onay sürecine geri alındı.' if yeni_karar == 'ONAYLA' else '❌ Ret kararı devam ediyor. Yöneticinizle iletişime geçin.' if yeni_karar == 'REDDET' else '👤 İnsan onayına yönlendirildi.'}"
-    )
-
-
-def maev_mesaj_uret(maev: dict) -> str:
-    """MAEV kararını kullanıcıya gösterilecek WhatsApp mesajına dönüştürür."""
-    karar_emoji = {"ONAYLA": "✅", "REDDET": "❌", "İNSANA_ESKALAT": "👤"}.get(maev["karar"], "⚖️")
-    guven_bar   = "█" * (maev["guven"] // 10) + "░" * (10 - maev["guven"] // 10)
-
-    return (
-        f"\n\n⚖️ *MAEV — AI Jüri Kararı*\n"
-        f"{'─'*22}\n"
-        f"🔴 Savcı: _{maev['savci'][:80]}..._\n"
-        f"🟢 Avukat: _{maev['avukat'][:80]}..._\n"
-        f"{'─'*22}\n"
-        f"{karar_emoji} Karar: *{maev['karar']}*\n"
-        f"📊 Güven: [{guven_bar}] %{maev['guven']}\n"
-        f"💬 _{maev['ozet']}_\n"
-        f"{'─'*22}\n"
-        f"{'_İtiraz için \"itiraz [gerekçe]\" yazın._' if maev['karar'] != 'ONAYLA' else ''}"
-    )
-
-
 def butce_durumu_str(user_name: str, data: dict) -> str:
     bu_ay    = datetime.now().strftime("%Y-%m")
     ay_top   = sum(e["Tutar"] for e in data["expenses"]
@@ -1049,44 +534,6 @@ def whatsapp_webhook():
     data = load_data()
     mesaj_lower = incoming_msg.lower()
 
-    # ── BEB: Bekleyen kimlik doğrulama var mı? ─────────────────────────────
-    beb_bekleyen = data.get("beb_bekleyen", {}).get(sender_phone)
-    if beb_bekleyen:
-        sonuc = beb_cevap_kontrol(sender_phone, incoming_msg, data)
-        if sonuc is True:
-            save_data(data)
-            msg.body(
-                "✅ *Kimlik Doğrulandı!*\n"
-                "BEB analizi başarıyla tamamlandı. "
-                "Fişiniz onay sürecine alındı. 🔐"
-            )
-            return str(resp)
-        elif sonuc is False:
-            deneme = data.get("beb_bekleyen", {}).get(sender_phone, {}).get("deneme", 3)
-            if deneme >= 3:
-                save_data(data)
-                msg.body(
-                    "🚫 *Kimlik Doğrulaması Başarısız*\n"
-                    "3 başarısız deneme. Fişiniz yönetici incelemesine alındı. "
-                    "Sorularınız için yöneticinizle iletişime geçin."
-                )
-            else:
-                save_data(data)
-                kalan = 3 - deneme
-                msg.body(
-                    f"❌ Yanlış cevap. {kalan} deneme hakkınız kaldı.\n"
-                    f"Tekrar deneyin:"
-                )
-            return str(resp)
-        # sonuc None ise (zaman aşımı) → normal akışa devam
-
-    # ── MAEV: İtiraz komutu ─────────────────────────────────────────────
-    if mesaj_lower.startswith("itiraz"):
-        itiraz_metni = incoming_msg[6:].strip() or "Gerekçesiz itiraz"
-        yanit = maev_itiraz_isle(sender_phone, user_name, itiraz_metni, data)
-        msg.body(yanit)
-        return str(resp)
-
     # ── KOMUTLAR ────────────────────────────────────────────────
 
     # YARDIM
@@ -1096,7 +543,7 @@ def whatsapp_webhook():
         rozet_str = " ".join([ROZETLER[r]["emoji"] for r in rozetler]) if rozetler else "henüz yok"
         yetki_str = "👑 Yönetici" if is_admin else "👤 Personel"
         msg.body(
-            f"🤖 *STINGA PRO v14*\n"
+            f"🤖 *STINGA PRO v13*\n"
             f"{user_info['emoji']} {user_name} | {yetki_str} | {seviye}\n"
             f"🏅 Rozetler: {rozet_str}\n"
             f"{'─'*28}\n"
@@ -1112,10 +559,7 @@ def whatsapp_webhook():
             f"🔍 *ara [kelime]* → Fiş ara\n"
             f"❓ *soru [metin]* → AI sorgu\n"
             f"💱 *döviz [miktar] [KOD]* → Çevir\n"
-            f"🏅 *rozetler* → Tüm rozetlerim\n"
-            f"{'─'*28}\n"
-            f"🔐 *BEB* — Davranış biyometriği aktif\n"
-            f"⚖️ *itiraz [gerekçe]* → MAEV kararına itiraz"
+            f"🏅 *rozetler* → Tüm rozetlerim"
         )
         return str(resp)
 
@@ -1349,13 +793,6 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                     # Derinleştirilmiş sahtelik analizi
                     sahtelik = derin_sahtelik_analizi(fis, image)
 
-                    # ── BEB: Davranışsal biyometrik kontrol ──────────────────
-                    saat_simdi = datetime.now().hour
-                    beb_sonuc = beb_anomali_skoru(user_name, fis, saat_simdi, data)
-
-                    # ── MAEV: Çok ajanlı adversarial değerlendirme ───────────
-                    maev_sonuc = maev_degerlendir(fis, user_name, data)
-
                     # Anomali
                     anomaliler = anomali_tespit(user_name, tutar_try, data)
 
@@ -1378,13 +815,9 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                     data.setdefault("notifications", [])
                     data.setdefault("rozetler", {})
                     data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
-                    # Durum — MAEV + sahtelik birlikte değerlendirilir
+                    # Durum — dashboard ile uyumlu değerler
                     if sahtelik["sahte_mi"] or sahtelik["guvensizlik_skoru"] >= 70:
                         durum = "Sahte Şüphesi"
-                    elif maev_sonuc["karar"] == "REDDET":
-                        durum = "MAEV Reddetti"
-                    elif maev_sonuc["karar"] == "İNSANA_ESKALAT":
-                        durum = "İnsan İncelemesinde"
                     else:
                         durum = "Onay Bekliyor"
 
@@ -1431,16 +864,6 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         "Kaynak"             : "WhatsApp",
                         "Dosya_Yolu"         : "",
                         "Gorsel_B64"         : gorsel_data_uri,
-                        # ── BEB alanları
-                        "BEB_Skor"           : beb_sonuc["skor"],
-                        "BEB_Anomaliler"     : beb_sonuc["anomaliler"],
-                        "BEB_Dogrulandi"     : not beb_sonuc["kimlik_dogrulama_gerekli"],
-                        # ── MAEV alanları
-                        "MAEV_Karar"         : maev_sonuc["karar"],
-                        "MAEV_Guven"         : maev_sonuc["guven"],
-                        "MAEV_Ozet"          : maev_sonuc["ozet"],
-                        "MAEV_Savci"         : maev_sonuc["savci"],
-                        "MAEV_Avukat"        : maev_sonuc["avukat"],
                     }
 
                     # ── Firma+Tutar+Tarih bazlı mükerrer fiş kontrolü (AI sonrası, kayıttan önce)
@@ -1508,17 +931,7 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                             )
 
                     # Tek seferde kaydet — tüm değişiklikler (expenses, xp, notifications, rozetler)
-                    # BEB profilini güncelle (kayıttan önce)
-                    beb_profil_guncelle(user_name, fis, saat_simdi, data)
                     save_data(data)
-
-                    # BEB kimlik doğrulama gerekiyorsa WhatsApp'tan soru gönder
-                    if beb_sonuc["kimlik_dogrulama_gerekli"]:
-                        beb_dogrulama_baslat(
-                            user_name, sender_phone, beb_sonuc,
-                            new_expense["ID"], data
-                        )
-                        save_data(data)  # beb_bekleyen kaydı için
 
                     # Yanıt oluştur
                     risk = sahtelik["guvensizlik_skoru"]
@@ -1550,20 +963,6 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                     # Güncel kasa bakiyesi
                     kasa_bakiye = data.get("wallets", {}).get(user_name, 0)
 
-                    # BEB uyarısı
-                    beb_str = ""
-                    if beb_sonuc["skor"] > 0 and beb_sonuc["anomaliler"]:
-                        beb_emoji = "🟡" if beb_sonuc["skor"] < 55 else "🔴"
-                        beb_str = (
-                            f"\n\n🔐 *BEB Davranış Analizi* {beb_emoji}\n"
-                            + "\n".join(f"  • {a}" for a in beb_sonuc["anomaliler"])
-                        )
-                        if beb_sonuc["kimlik_dogrulama_gerekli"]:
-                            beb_str += "\n  ⚠️ _Kimlik doğrulama sorusu gönderildi._"
-
-                    # MAEV kararı
-                    maev_str = maev_mesaj_uret(maev_sonuc)
-
                     yanit = (
                         f"✅ *FİŞ SİSTEME KAYDEDİLDİ — ONAYA GÖNDERİLDİ.*\n"
                         f"{'─'*13}\n"
@@ -1577,8 +976,6 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         + kalemler_str
                         + ilginc_str
                         + f"\n\n💬 *{karakter.upper()} YORUMU:*\n{yorum}"
-                        + beb_str
-                        + maev_str
                         + f"\n\n📊 Bütçe: {butce_durumu_str(user_name, data)}"
                         + f"\n💳 Kasa Bakiyeniz: *{kasa_bakiye:,.0f} ₺*"
                         + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
