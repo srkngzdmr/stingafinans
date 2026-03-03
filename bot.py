@@ -914,8 +914,38 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                             data["budgets"][proje].get("spent", 0) + tutar_try
                         )
 
-                    # Rozet kontrolü
+                    # Rozet DB'ye kaydedilir ama mesajda gösterilmez
                     yeni_rozetler = rozet_kontrol(user_name, data, new_expense)
+
+                    # AI kişisel espri — rozet yerine
+                    try:
+                        bugun_fisler = [e for e in data["expenses"]
+                                        if e["Kullanıcı"] == user_name
+                                        and e.get("Tarih","") == datetime.now().strftime("%Y-%m-%d")]
+                        bu_ay_fisler = [e for e in data["expenses"]
+                                        if e["Kullanıcı"] == user_name
+                                        and e.get("Tarih","").startswith(datetime.now().strftime("%Y-%m"))]
+                        bu_ay_toplam = sum(e["Tutar"] for e in bu_ay_fisler)
+                        espri_prompt = f"""Sen esprili, sivri dilli ama sevecen bir muhasebe asistanısın.
+Kullanıcı: {user_name}
+Firma: {fis.get('firma','?')}
+Tutar: {tutar_try:.0f} TL
+Kategori: {kategori}
+Risk skoru: {risk}/100
+Bugün gönderilen fiş sayısı: {len(bugun_fisler)}
+Bu ay toplam harcama: {bu_ay_toplam:.0f} TL
+Sahte şüphesi: {'Evet' if sahtelik['sahte_mi'] or risk >= 70 else 'Hayır'}
+
+Duruma özel, 1-2 cümle Türkçe yorum yaz. Kurallara göre:
+- Risk yüksekse (70+) şüpheci/uyarıcı ama esprili ol
+- Bugün 2+ fiş varsa harcama sıklığını esprili vurgula
+- Tutar büyükse (1000+) dramatik tepki ver
+- Normal fişse hafif esprili veya teşvik edici ol
+- İsmi kullan, robotik olma, klişeden kaç
+Sadece yorumu yaz, başka hiçbir şey ekleme."""
+                        ai_espri = ai_call(espri_prompt)
+                    except:
+                        ai_espri = "Fiş sisteme düştü, onay bekleniyor. 📋"
 
                     # XP ve bildirimler — save_data'dan ÖNCE, aynı data objesi üzerinde
                     add_xp(user_name, 50, "WhatsApp fiş tarama", data=data)
@@ -952,11 +982,7 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                     ilginc = fis.get("ilginc_detay", "")
                     ilginc_str = f"\n💡 _{ilginc}_" if ilginc and ilginc not in ["", "null", "None"] else ""
 
-                    rozet_str = ""
-                    if yeni_rozetler:
-                        for r in yeni_rozetler:
-                            if r in ROZETLER:
-                                rozet_str += f"\n\n🎊 *YENİ ROZET: {ROZETLER[r]['emoji']} {ROZETLER[r]['ad']}!*\n{ROZETLER[r]['aciklama']}"
+                    rozet_str = ""  # rozet DB'ye kaydedilir ama mesajda gösterilmez
 
                     seviye = seviye_hesapla(data["fis_sayaci"].get(user_name, 0))
 
@@ -964,7 +990,7 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                     kasa_bakiye = data.get("wallets", {}).get(user_name, 0)
 
                     yanit = (
-                        f"✅ *FİŞ SİSTEME KAYDEDİLDİ — ONAYA GÖNDERİLDİ.*\n"
+                        f"✅ *FİŞ KAYDEDİLDİ — ONAYA GÖNDERİLDİ*\n"
                         f"{'─'*13}\n"
                         f"🏢 {fis.get('firma','?')}\n"
                         f"💰 {tutar_try:,.2f} ₺"
@@ -975,14 +1001,12 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         + f"\n{risk_emoji} Risk: {risk}/100"
                         + kalemler_str
                         + ilginc_str
-                        + f"\n\n💬 *{karakter.upper()} YORUMU:*\n{yorum}"
-                        + f"\n\n📊 Bütçe: {butce_durumu_str(user_name, data)}"
-                        + f"\n💳 Kasa Bakiyeniz: *{kasa_bakiye:,.0f} ₺*"
+                        + f"\n\n💬 _{ai_espri}_"
+                        + f"\n\n💳 Kasa: *{kasa_bakiye:,.0f} ₺*"
                         + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
                         + sahte_str
                         + anomali_str
-                        + rozet_str
-                        + f"\n\n📨 Fişiniz yönetici onayına gönderildi."
+                        + f"\n\n📨 Yönetici onayından sonra bildirim alacaksınız."
                         + f"\n🔖 `{new_expense['ID']}`"
                     )
                     twilio_client.messages.create(
@@ -1012,7 +1036,14 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
             analiz_et_gonder._lock = threading.Lock()
         t = threading.Thread(target=analiz_et_gonder, daemon=True)
         t.start()
-        msg.body("⏳ *Stinga Yapay Zeka* fişinizi analiz ediyor, lütfen bekleyin...")
+        beklemeler = [
+            "🔍 *STINGA AI* devreye girdi — fiş mercek altına alındı, sonuç geliyor...",
+            "🧠 *STINGA AI* fişinizi inceliyor — rakamlar, tarih, KDV... hiçbir şey kaçmaz.",
+            "⚡ *STINGA AI* analiz başladı — biraz sabredin, her kuruşu tartyoruz.",
+            "🕵️ *STINGA AI* sahneye çıktı — fişiniz şu an sorgulanıyor, sonuç geliyor.",
+            "📡 *STINGA AI* bağlandı — fiş taranıyor, az sonra değerlendirme hazır.",
+        ]
+        msg.body(random.choice(beklemeler))
         return str(resp)
 
     # ── VARSAYILAN
@@ -1208,27 +1239,80 @@ def approve_endpoint():
 
         # WhatsApp bildirimi gönder (onay veya red)
         try:
-            # Kullanıcı adından telefon numarasını bul
             target_phone = None
             for phone, info in PHONE_DIRECTORY.items():
                 if info.get("ad") == kullanici:
                     target_phone = phone
                     break
             if target_phone:
+                # Onaylanan fişin kategorisini bul
+                fis_kategori = ""
+                fis_id_str = fis_id
+                for e in data.get("expenses", []):
+                    if str(e.get("ID","")) == fis_id_str:
+                        fis_kategori = e.get("Kategori", "")
+                        break
+
+                # Bu ay aynı kategoride kaç fiş var
+                bu_ay = datetime.now().strftime("%Y-%m")
+                kat_fis = [e for e in data.get("expenses", [])
+                           if e.get("Kullanıcı") == kullanici
+                           and e.get("Kategori") == fis_kategori
+                           and e.get("Tarih","").startswith(bu_ay)
+                           and e.get("Durum") == "Onaylandı"]
+
                 if action == "approve":
-                    mesaj = f"✅ {firma} (₺{tutar:,.0f}) harcamanız onaylandı."
+                    try:
+                        onay_prompt = f"""Sen esprili, kişisel ve sıcak bir muhasebe asistanısın.
+Kullanıcı adı: {kullanici}
+Firma: {firma}
+Tutar: {tutar:.0f} TL
+Kategori: {fis_kategori}
+Bu ay bu kategoride onaylanan toplam fiş sayısı (bu dahil): {len(kat_fis)}
+Muhasebe kayıt no: {fis_id}
+
+Onay bildirimi yaz. Kurallar:
+- Kullanıcıya ismiyle hitap et, "sana harika bir haber var" gibi giriş yap (her seferinde farklı)
+- Fiş onaylandığını bildir, firma adını ve tutarı belirt
+- Eğer bu kategoride 2+ fiş onaylandıysa buna dair esprili bir yorum ekle (ör: "bugün 2. yemek fişin...")
+- Muhasebe kayıt numarasını 🔖 ile belirt
+- Toplamda 3-4 cümle, samimi ve esprili
+Sadece mesajı yaz."""
+                        mesaj = ai_call(onay_prompt)
+                    except:
+                        mesaj = (f"✅ *{kullanici}, harika haber!*\n"
+                                 f"*{firma}* ({tutar:,.0f} ₺) harcamanız onaylandı. 🎉\n"
+                                 f"🔖 `{fis_id}`")
                 else:
-                    mesaj = f"❌ {firma} (₺{tutar:,.0f}) harcamanız reddedildi."
+                    try:
+                        red_prompt = f"""Sen esprili ama nazik bir muhasebe asistanısın.
+Kullanıcı adı: {kullanici}
+Firma: {firma}
+Tutar: {tutar:.0f} TL
+Reddeden: {approver}
+
+Red bildirimi yaz. Kurallar:
+- Kullanıcıya ismiyle hitap et
+- Fişin reddedildiğini nazikçe ama net söyle
+- Yöneticiyle iletişime geçmesini öner
+- Hafifçe esprili ama kırıcı olma
+- 2-3 cümle
+Sadece mesajı yaz."""
+                        mesaj = ai_call(red_prompt)
+                    except:
+                        mesaj = (f"❌ *{kullanici}*, üzgünüm...\n"
+                                 f"*{firma}* ({tutar:,.0f} ₺) harcamanız reddedildi.\n"
+                                 f"Detay için {approver} ile iletişime geçin.")
+
                 twilio_client.messages.create(
                     body=mesaj,
                     from_="whatsapp:+14155238886",
                     to=target_phone
                 )
-                print(f"WhatsApp bildirimi gönderildi: {kullanici} - {mesaj}", flush=True)
+                print(f"WhatsApp bildirimi gönderildi: {kullanici} - {action}", flush=True)
             else:
                 print(f"Uyarı: {kullanici} için telefon numarası bulunamadı.", flush=True)
         except Exception as e:
-            # WhatsApp gönderilemezse sadece logla, işlem devam etsin
             print(f"WhatsApp bildirimi gönderilemedi: {e}", flush=True)
 
         save_data(data)
