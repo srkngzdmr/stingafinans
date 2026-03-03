@@ -2546,9 +2546,32 @@ tick();setInterval(tick,1000);
         total_approved = _kpi_df[_kpi_df['Durum']=='Onaylandı']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         total_pending  = _kpi_df[_kpi_df['Durum']=='Onay Bekliyor']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         crit_risks     = len(_kpi_df[_kpi_df['Risk_Skoru'] > 70]) if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
-        # Kasa bakiyesi: avans - onaylı harcırah/nakit harcamalar
-        # Kasa: API wallets degerini direkt kullan (Railway net tutari tutuyor)
-        my_wallet = data_store.get("wallets", {}).get(user_name, 0)
+        # Kasa bakiyesi: ledger'dan verilen avanslar - onaylı harcırah harcamaları
+        def _wlookup(nm, wl):
+            if nm in wl: return wl[nm]
+            for k,v in wl.items():
+                if nm.lower() in k.lower() or k.lower() in nm.lower(): return v
+            return 0
+        _wallets = data_store.get("wallets", {})
+        # Avans: ledger'dan bu kişiye yapılan transferlerin toplamı
+        _ledger = data_store.get("ledger", [])
+        _avans_ledger = sum(
+            float(e.get("miktar", e.get("Miktar", 0)))
+            for e in _ledger
+            if str(e.get("hedef", e.get("Hedef", ""))).lower() == user_name.lower()
+        )
+        # Wallet API değeri varsa onu da deneyelim (fuzzy match)
+        _avans_api = _wlookup(user_name, _wallets)
+        _avans = max(_avans_ledger, _avans_api)
+        # Onaylı harcırah/nakit harcamalar kasadan düşülür
+        _harcirah_odendi = sum(
+            float(e.get("Tutar", 0))
+            for e in data_store.get("expenses", [])
+            if str(e.get("Kullanıcı", "")).lower() == user_name.lower()
+            and e.get("Durum") in ("Onaylandı", "Onaylandi")
+            and str(e.get("Odeme_Turu", "")).lower() in ("harcirah", "nakit", "kisisel", "harcırahtan düş")
+        )
+        my_wallet = max(0.0, _avans - _harcirah_odendi)
         total_tx       = len(_kpi_df) if not _kpi_df.empty else 0
         avg_risk       = _kpi_df['Risk_Skoru'].mean() if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
         
@@ -2869,20 +2892,7 @@ tick();setInterval(tick,1000);
                                             st.error("❌ Fiş API'ye gönderilemedi. Railway bağlantısını kontrol edin.")
                                         else:
                                             # Robot tarama animasyonu
-                                            _stc.html('''<script>
-(function(){
-  var pd=window.parent.document;
-  var r=pd.getElementById('SGNX'),bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
-  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},3500);}
-  if(bt)bt.textContent='Fis islendi!';
-  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},3800);}
-  var cv=pd.createElement('canvas');cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2147483641;';
-  cv.width=window.parent.innerWidth;cv.height=window.parent.innerHeight;pd.body.appendChild(cv);
-  var ctx=cv.getContext('2d'),p=[];
-  for(var i=0;i<80;i++)p.push({x:Math.random()*cv.width,y:-10,vx:(Math.random()-.5)*6,vy:Math.random()*4+2,r:Math.random()*5+2,angle:Math.random()*360,av:(Math.random()-.5)*8,color:['#00e896','#17a870','#f0a500','#ffffff'][Math.floor(Math.random()*4)]});
-  var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/80);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.6);ctx.restore();});fr++;if(fr<90)requestAnimationFrame(draw);else cv.remove();}draw();
-})();
-</script>''', height=0, scrolling=False)
+                                            _stc.html('<html><body style="margin:0"><script>(function(){var pd=window.parent.document,r=pd.getElementById("SGNX"),bt=pd.getElementById("SGNXBT"),bub=pd.getElementById("SGNXBUB");if(r){r.classList.remove("sad");r.classList.add("joy");setTimeout(function(){r.classList.remove("joy");},3500);}if(bt)bt.textContent="Fis islendi!";if(bub){bub.classList.add("on");setTimeout(function(){bub.classList.remove("on");if(bt)bt.textContent="Merhaba!";},3800);}var cv=pd.createElement("canvas");cv.id="SGC";cv.style.cssText="position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483641;";cv.width=pd.documentElement.clientWidth;cv.height=pd.documentElement.clientHeight;pd.body.appendChild(cv);var ctx=cv.getContext("2d"),p=[],i;for(i=0;i<80;i++)p.push({x:Math.random()*cv.width,y:-20,vx:(Math.random()-.5)*6,vy:Math.random()*4+2,r:Math.random()*5+2,a:Math.random()*360,av:(Math.random()-.5)*8,c:["#00e896","#17a870","#f0a500","#fff"][Math.floor(Math.random()*4)]});var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.a+=q.av;q.vy+=.12;var al=Math.max(0,1-fr/60);if(al>0){ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.a*Math.PI/180);ctx.fillStyle=q.c;ctx.globalAlpha=al;ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.6);ctx.restore();}});fr++;if(fr<80)requestAnimationFrame(draw);else{var old=pd.getElementById("SGC");if(old)old.remove();}}draw();})()</script></body></html>', height=1, scrolling=False)
                                             # Show result
                                             risk = int(data_ai.get("risk_skoru", 0))
                                             anomali = data_ai.get("anomali", False)
@@ -2925,6 +2935,7 @@ tick();setInterval(tick,1000);
                                         </div>
                                         """, unsafe_allow_html=True)
                                     
+                                        time.sleep(4.0)
                                         st.rerun()
                                 else:
                                     st.error("AI fişi okuyamadı. Daha net bir fotoğraf deneyin.")
@@ -2984,7 +2995,8 @@ tick();setInterval(tick,1000);
                         "Akaryakıt","Market / Gıda","Kırtasiye","Elektrik / Donanım",
                         "Ulaşım","Konaklama","Yemek","Diğer"])
                     m_proje    = st.selectbox("Proje", ["Maden Sahası","Aktif Karbon","Enerji Hatları","Genel Merkez"])
-                    m_odeme    = st.radio("Ödeme Yöntemi", ["💳 Kredi Kartı", "💵 Nakit"], horizontal=True)
+                    m_odeme = st.radio("Bu harcama nasil odendi?", ["Harcirahtan Dus", "Sirket Kredi Karti"], horizontal=True)
+                    m_odeme_turu = "harcirah" if "Harcirahtan" in m_odeme else "sirket_karti"
                 m_tarih = st.date_input("Tarih", value=now_ist().date())
                 m_notlar = st.text_area("Açıklama / Not", height=70, placeholder="Harcama hakkında kısa not...")
                 m_submit = st.form_submit_button("✅ Kaydet ve Onaya Gönder", use_container_width=True)
@@ -3006,7 +3018,7 @@ tick();setInterval(tick,1000);
                             "KDV_Orani":     int(m_kdv),
                             "KDV_Tutari":    kdv_tutar,
                             "Net_Tutar":     net_tutar,
-                            "Odeme_Yontemi": "Kredi Kartı" if "Kredi" in m_odeme else "Nakit",
+                            "Odeme_Turu": m_odeme_turu,
                             "Proje":         m_proje,
                             "Notlar":        m_notlar.strip(),
                             "Kullanıcı":     user_name,
@@ -3186,7 +3198,13 @@ tick();setInterval(tick,1000);
                 st.markdown("### 💳 Personel Kasa Durumları")
                 wallets = data_store.get("wallets",{})
                 
+                _exp_all = data_store.get("expenses", [])
+                _led_all = data_store.get("ledger", [])
                 for person, bal in wallets.items():
+                    # Net kasa: verilen avans - onaylı harcırah harcamaları
+                    _hrc_p = sum(float(e.get("Tutar",0)) for e in _exp_all if str(e.get("Kullanıcı","")).lower()==person.lower() and e.get("Durum") in ("Onaylandı","Onaylandi") and str(e.get("Odeme_Turu","")).lower() in ("harcirah","nakit","kisisel","harcırahtan düş"))
+                    _led_p = sum(float(e.get("miktar",e.get("Miktar",0))) for e in _led_all if str(e.get("hedef",e.get("Hedef",""))).lower()==person.lower())
+                    bal = max(0.0, max(bal, _led_p) - _hrc_p)
                     # "Şenol" → "senol" key ile USERS'dan bul
                     _ukey = person.lower().replace("ş","s").replace("ı","i").replace("ö","o").replace("ü","u").replace("ğ","g").replace("ç","c")
                     person_limit = USERS.get(_ukey, USERS.get(person.lower(), {})).get("monthly_limit", 15000)
@@ -3226,7 +3244,13 @@ tick();setInterval(tick,1000);
                             else:
                                 st.error("Transfer başarısız, tekrar deneyin")
             else:
-                my_bal = data_store.get('wallets',{}).get(user_name, 0)
+                # Ledger-tabanlı kasa hesabı - avans - onaylı harcırah harcamaları
+                _w2 = data_store.get("wallets", {})
+                _avans2_l = sum(float(e.get("miktar", e.get("Miktar", 0))) for e in data_store.get("ledger", []) if str(e.get("hedef", e.get("Hedef", ""))).lower() == user_name.lower())
+                _avans2_a = _wlookup(user_name, _w2)
+                _avans2 = max(_avans2_l, _avans2_a)
+                _hrc2 = sum(float(e.get("Tutar", 0)) for e in data_store.get("expenses", []) if str(e.get("Kullanıcı", "")).lower() == user_name.lower() and e.get("Durum") in ("Onaylandı", "Onaylandi") and str(e.get("Odeme_Turu", "")).lower() in ("harcirah", "nakit", "kisisel", "harcırahtan düş"))
+                my_bal = max(0.0, _avans2 - _hrc2)
                 st.markdown(f"""
                 <div class="metric-card" style="margin-bottom:16px;">
                     <div style="font-size:1rem; color:var(--text-secondary);">Mevcut Bakiyeniz</div>
