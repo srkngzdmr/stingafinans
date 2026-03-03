@@ -184,9 +184,9 @@ html, body, [class*="css"] {
 .slogo-core {
     background: transparent; border-radius: 50%; padding: 4px;
     display: flex; align-items: center; justify-content: center;
-    width: 96px; height: 96px;
+    width: 192px; height: 192px;
 }
-.slogo-core img { width: 88px; height: 88px; object-fit: contain; border-radius: 50%; }
+.slogo-core img { width: 176px; height: 176px; object-fit: contain; border-radius: 50%; }
 
 /* ── USER CARD ───────────────────────── */
 .suser-card {
@@ -2376,7 +2376,7 @@ else:
             </div>
             <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:0.88rem; font-weight:900;
                         letter-spacing:0.3em; color:#0f1923; margin-top:13px; text-transform:uppercase;">
-                STINGA PRO
+                VELA
             </div>
             <div style="font-family:'JetBrains Mono',monospace; font-size:0.51rem; color:#a0b8ae;
                         letter-spacing:0.18em; margin-top:4px; text-transform:uppercase;">
@@ -3050,7 +3050,7 @@ tick();setInterval(tick,1000);
                                 <div class="ai-bubble">🤖 {clean_audit(row.get('AI_Audit',''))}</div>
                                 {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','Normal')} · Ödeme: {row.get('Odeme_Turu', row.get('OdemeTipi','?'))}
+                                    Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','Normal')} · Ödeme: {'Kredi Kartı' if str(row.get('Odeme_Turu',row.get('OdemeTipi',''))).lower() in ('kredi_karti','kredi kartı') else 'Nakit' if str(row.get('Odeme_Turu',row.get('OdemeTipi',''))).lower()=='nakit' else str(row.get('Odeme_Turu',row.get('OdemeTipi','?')))}
                                 </div>
                                 {f"<div style='margin-top:6px; font-size:0.75rem;'>📝 {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
                             </div>
@@ -3271,7 +3271,7 @@ tick();setInterval(tick,1000);
                                 </div>
                                 {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','Normal')} · Ödeme: {row.get('Odeme_Turu','?')}
+                                    Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','Normal')} · Ödeme: {'Kredi Kartı' if str(row.get('Odeme_Turu','')).lower() in ('kredi_karti','kredi kartı') else 'Nakit' if str(row.get('Odeme_Turu','')).lower()=='nakit' else str(row.get('Odeme_Turu','?'))}
                                 </div>
                                 {f"<div style='margin-top:6px; font-size:0.75rem; color:var(--text-secondary);'>📝 Not: {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
                             </div>
@@ -3853,7 +3853,7 @@ tick();setInterval(tick,1000);
                                 <div><span style="color:var(--text-muted); font-size:0.75rem;">PROJE</span><br><strong>{satir.get('Proje','?')}</strong></div>
                                 <div><span style="color:var(--text-muted); font-size:0.75rem;">TUTAR</span><br><strong style="font-family:'Bebas Neue'; font-size:1.5rem; color:var(--accent-blue);">₺{float(satir.get('Tutar',0)):,.2f}</strong></div>
                                 <div><span style="color:var(--text-muted); font-size:0.75rem;">KDV</span><br><strong>₺{float(satir.get('KDV',0)):,.2f}</strong></div>
-                                <div><span style="color:var(--text-muted); font-size:0.75rem;">ÖDEME</span><br><strong>{satir.get('Odeme_Turu','?')}</strong></div>
+                                <div><span style="color:var(--text-muted); font-size:0.75rem;">ÖDEME</span><br><strong>{'Kredi Kartı' if str(satir.get('Odeme_Turu','')).lower() in ('kredi_karti','kredi kartı') else 'Nakit' if str(satir.get('Odeme_Turu','')).lower()=='nakit' else str(satir.get('Odeme_Turu','?'))}</strong></div>
                                 <div><span style="color:var(--text-muted); font-size:0.75rem;">DURUM</span><br>{get_status_html(satir.get('Durum','?'))}</div>
                                 <div><span style="color:var(--text-muted); font-size:0.75rem;">RİSK</span><br>{get_risk_html(satir.get('Risk_Skoru',0))}</div>
                             </div>
