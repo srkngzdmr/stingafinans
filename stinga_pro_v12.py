@@ -1601,148 +1601,6 @@ def logout():
 # ─── ANA UYGULAMA ─────────────────────────────────────────────
 init_db()
 
-# ── GLOBAL: AI Robot + Toast + Auto-refresh JS ───────────────
-_ROBOT_TIPS = [
-    "Yeni fiş taramak için 📑 Fiş Tarama bölümünü kullan!",
-    "Onay bekleyen fişleri kontrol etmeyi unutma ⚖️",
-    "Dashboard'da günlük AI brifingini başlatabilirsin 🤖",
-    "Anomali Dedektörü şüpheli işlemleri otomatik bulur 🔬",
-    "Raporları PDF olarak indirebilirsin 📄",
-    "Kasa bakiyeni 💰 Finans ekranından takip et",
-]
-import json as _json
-_robot_tips_js = _json.dumps(_ROBOT_TIPS)
-
-st.markdown(f"""
-<!-- STINGA PRO: Robot + Toast + Auto-refresh -->
-<div id="sg-robot-wrap">
-  <div id="sg-robot-bubble"></div>
-  <svg id="sg-robot-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <radialGradient id="rg1" cx="50%" cy="30%" r="70%">
-        <stop offset="0%" stop-color="#00e896"/>
-        <stop offset="100%" stop-color="#0c6344"/>
-      </radialGradient>
-      <filter id="rglow"><feGaussianBlur stdDeviation="2" result="b"/>
-        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-    </defs>
-    <!-- Body -->
-    <rect x="22" y="38" width="56" height="44" rx="10" fill="url(#rg1)" filter="url(#rglow)"/>
-    <!-- Head -->
-    <rect x="28" y="14" width="44" height="30" rx="9" fill="#0f6b45"/>
-    <rect x="30" y="16" width="40" height="26" rx="7" fill="url(#rg1)" opacity="0.9"/>
-    <!-- Antenna -->
-    <line x1="50" y1="14" x2="50" y2="6" stroke="rgba(0,232,150,0.7)" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="50" cy="5" r="3" fill="#00e896">
-      <animate attributeName="r" values="3;5;3" dur="1.5s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Eyes -->
-    <ellipse cx="39" cy="27" rx="5" ry="5.5" fill="#001f12"/>
-    <ellipse cx="61" cy="27" rx="5" ry="5.5" fill="#001f12"/>
-    <circle cx="40" cy="26" r="2" fill="#00e896" id="reye-l"/>
-    <circle cx="62" cy="26" r="2" fill="#00e896" id="reye-r"/>
-    <!-- Mouth -->
-    <path d="M38 36 Q50 42 62 36" stroke="rgba(0,232,150,0.8)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-    <!-- Chest panel -->
-    <rect x="32" y="46" width="36" height="22" rx="6" fill="rgba(0,0,0,0.2)"/>
-    <circle cx="42" cy="57" r="4" fill="rgba(0,232,150,0.7)">
-      <animate attributeName="opacity" values="0.7;1;0.7" dur="2s" repeatCount="indefinite"/>
-    </circle>
-    <rect x="50" y="53" width="14" height="3" rx="2" fill="rgba(0,232,150,0.5)"/>
-    <rect x="50" y="59" width="10" height="3" rx="2" fill="rgba(0,232,150,0.3)"/>
-    <!-- Arms -->
-    <rect x="8" y="44" width="14" height="30" rx="7" fill="#0f6b45"/>
-    <rect x="78" y="44" width="14" height="30" rx="7" fill="#0f6b45"/>
-    <!-- Legs -->
-    <rect x="32" y="78" width="14" height="18" rx="7" fill="#0c6344"/>
-    <rect x="54" y="78" width="14" height="18" rx="7" fill="#0c6344"/>
-    <!-- Feet -->
-    <rect x="28" y="92" width="22" height="8" rx="4" fill="#0a5236"/>
-    <rect x="50" y="92" width="22" height="8" rx="4" fill="#0a5236"/>
-  </svg>
-</div>
-<div id="sg-toast-container"></div>
-
-<script>
-(function(){{
-  // ── ROBOT: fare takip + mesaj ─────────────────────────────
-  const wrap   = document.getElementById('sg-robot-wrap');
-  const bubble = document.getElementById('sg-robot-bubble');
-  const eyeL   = document.getElementById('reye-l');
-  const eyeR   = document.getElementById('reye-r');
-  const tips   = {_robot_tips_js};
-  let tipIdx = 0;
-
-  // Mevcut pozisyon
-  let rx = 28, ry = window.innerHeight - 100;
-
-  // Robot'un gözleri fareyi takip eder (küçük offset)
-  document.addEventListener('mousemove', function(e) {{
-    const svgRect = wrap.getBoundingClientRect();
-    const cx = svgRect.left + svgRect.width/2;
-    const cy = svgRect.top  + svgRect.height/2;
-    const dx = (e.clientX - cx) / window.innerWidth  * 6;
-    const dy = (e.clientY - cy) / window.innerHeight * 5;
-    if(eyeL) {{ eyeL.setAttribute('cx', 40 + dx); eyeL.setAttribute('cy', 26 + dy); }}
-    if(eyeR) {{ eyeR.setAttribute('cx', 62 + dx); eyeR.setAttribute('cy', 26 + dy); }}
-
-    // Robot hafifçe fareye yönelir (çok yavaş)
-    const targetX = Math.max(8, Math.min(window.innerWidth - 100, e.clientX * 0.05 + 8));
-    const targetY = Math.max(80, Math.min(window.innerHeight - 100, 
-                    window.innerHeight - 100 + (e.clientY - window.innerHeight/2) * 0.04));
-    wrap.style.left   = targetX  + 'px';
-    wrap.style.bottom = (window.innerHeight - targetY - 72) + 'px';
-  }});
-
-  // Robot tıklanınca mesaj göster
-  document.getElementById('sg-robot-svg').addEventListener('click', function() {{
-    bubble.textContent = tips[tipIdx % tips.length];
-    tipIdx++;
-    bubble.classList.add('visible');
-    setTimeout(() => bubble.classList.remove('visible'), 3500);
-  }});
-
-  // ── TOAST SİSTEMİ ────────────────────────────────────────
-  window._sgShowToast = function(title, msg, type) {{
-    const c = document.getElementById('sg-toast-container');
-    if(!c) return;
-    const icons = {{success:'✅', warning:'⚠️', error:'🚨', info:'🔔'}};
-    const t = document.createElement('div');
-    t.className = 'sg-toast ' + (type||'');
-    t.innerHTML = `<div class="sg-toast-icon">${{icons[type]||'📌'}}</div>
-                   <div class="sg-toast-body">
-                     <div class="sg-toast-title">${{title}}</div>
-                     <div class="sg-toast-msg">${{msg}}</div>
-                   </div>`;
-    t.onclick = () => t.remove();
-    c.appendChild(t);
-    setTimeout(() => {{ if(t.parentNode) t.remove(); }}, 5000);
-  }};
-
-  // ── OTOMATİK YENİLEME (10 sn) ───────────────────────────
-  // Son bilinen bildirim sayısını localStorage'da sakla
-  let lastNotifCount = parseInt(sessionStorage.getItem('sg_notif_count')||'0');
-  
-  setInterval(function() {{
-    // Streamlit rerun'u tetiklemek için gizli bir hidden input tıkla
-    // Streamlit'in kendi auto-rerun mekanizması yoktur doğrudan,
-    // ama window.location.reload() yerine Streamlit'in internal API'sini kullanıyoruz
-    try {{
-      // Streamlit'e "veri güncelle" sinyali: query_params değiştir
-      const url = new URL(window.location.href);
-      const ts = Date.now();
-      url.searchParams.set('_sgr', ts);
-      window.history.replaceState(null, '', url.toString());
-      // Streamlit bunu query_params değişikliği olarak algılar → rerun
-      window.parent.postMessage({{type: 'streamlit:rerun'}}, '*');
-    }} catch(e) {{}}
-  }}, 10000);
-
-}})();
-</script>
-""", unsafe_allow_html=True)
 
 if not st.session_state.authenticated:
     login()
@@ -1753,38 +1611,7 @@ else:
     model = configure_ai()
     user_info = st.session_state.user_info
 
-    # ── 10 SN OTOMATİK YENİLEME ─────────────────────────────
-    # Son yenileme zamanını session_state'de sakla
-    if 'last_refresh' not in st.session_state:
-        st.session_state.last_refresh = time.time()
-    if 'last_notif_count' not in st.session_state:
-        st.session_state.last_notif_count = 0
 
-    now_ts = time.time()
-    if now_ts - st.session_state.last_refresh >= 10:
-        # Bildirim sayısını kontrol et
-        _new_notifs = [n for n in data_store.get("notifications", [])
-                       if (n.get("user") == st.session_state.user_info.get("name","") 
-                           or n.get("user") == "Hepsi") and not n.get("read", False)]
-        _new_count = len(_new_notifs)
-        _prev_count = st.session_state.last_notif_count
-
-        if _new_count > _prev_count:
-            # Yeni bildirim var — toast göster
-            _diff = _new_count - _prev_count
-            st.markdown(f"""
-<script>
-if(window._sgShowToast) {{
-  window._sgShowToast('🔔 {_diff} Yeni Bildirim', 
-    '{_new_notifs[-1].get("msg","Yeni bir bildirim var.")[:80]}', 'info');
-}}
-</script>
-""", unsafe_allow_html=True)
-            st.session_state.last_notif_count = _new_count
-
-        st.session_state.last_refresh = now_ts
-        st.cache_data.clear()
-        st.rerun()
 
     # ── Eski bozuk AI_Audit kayıtlarını sessizce onar (tek seferlik) ──
     if not st.session_state.get("audit_fixed"):
@@ -1807,314 +1634,125 @@ if(window._sgShowToast) {{
         df = df_full.copy()
     
 
-    # ── NEXBOT STİLE ROBOT (CSS/JS, components.html height=1) ──
-    import json as _rj, streamlit.components.v1 as _stc
+
+    # ── ROBOT: st.markdown + parent window inject ────────────
+    import json as _rj
     _rtips = [
         f"Merhaba {user_name}! Hoş geldin 👋",
-        "📑 Yeni fiş taramak için Fiş Tarama'ya git!",
+        "📑 Yeni fiş yüklemek için Fiş Tarama!",
         "⚖️ Onay bekleyen fişleri kontrol et!",
         "🔬 Anomali Dedektörü şüpheli fişleri bulur!",
         "💰 Kasa bakiyeni Finans ekranında gör!",
         "🤖 AI Asistan her konuda yardımcı olur!",
         "📄 Raporları PDF olarak indirebilirsin!",
     ]
-    _stc.html(f"""<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
-*{{margin:0;padding:0;box-sizing:border-box;}}
-html,body{{background:transparent;overflow:hidden;}}
-
-/* ─── WRAP ─── */
-#R{{
-  position:fixed; bottom:28px; right:28px;
-  width:96px; cursor:pointer; z-index:2147483647;
-  animation: RF 3.8s ease-in-out infinite;
-  filter: drop-shadow(0 8px 24px rgba(17,133,91,.45));
-}}
-#R:hover {{ filter: drop-shadow(0 12px 32px rgba(17,133,91,.75)); }}
-@keyframes RF{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-11px)}}}}
-
-/* ─── GÖLGE ─── */
-#RS{{
-  width:58px; height:12px; margin:4px auto 0;
-  background:radial-gradient(ellipse,rgba(17,133,91,.38) 0%,transparent 70%);
-  border-radius:50%;
-  animation:RSA 3.8s ease-in-out infinite;
-}}
-@keyframes RSA{{0%,100%{{transform:scaleX(1);opacity:.38}}50%{{transform:scaleX(.5);opacity:.12}}}}
-
-/* ─── BAŞ ─── */
-#RH{{
-  width:78px; height:78px; border-radius:50%; margin:0 auto;
-  background:linear-gradient(145deg,#3d4e8a 0%,#2F3C6E 55%,#1a2540 100%);
-  box-shadow:
-    inset 0 4px 10px rgba(255,255,255,.13),
-    inset 0 -4px 10px rgba(0,0,0,.3),
-    0 6px 20px rgba(47,60,110,.55),
-    0 0 0 2px rgba(0,232,150,.22);
-  position:relative;
-  transition:transform .08s ease-out;
-  transform-style:preserve-3d;
-}}
-/* Baş parlama */
-#RH::before{{
-  content:'';position:absolute;top:12px;left:16px;
-  width:26px;height:16px;border-radius:50%;
-  background:radial-gradient(ellipse,rgba(255,255,255,.2) 0%,transparent 70%);
-  transform:rotate(-20deg);
-}}
-/* Kulaklar */
-.RE{{
-  position:absolute;top:50%;transform:translateY(-50%);
-  width:9px;height:20px;border-radius:5px;
-  background:linear-gradient(180deg,#2F3C6E,#1a2540);
-  border:1px solid rgba(0,232,150,.15);
-}}
-.REL{{left:-5px;}}.RER{{right:-5px;}}
-.RE::after{{
-  content:'';position:absolute;top:50%;left:50%;
-  transform:translate(-50%,-50%);
-  width:4px;height:4px;border-radius:50%;
-  background:#00e896;box-shadow:0 0 4px #00e896;
-  animation:RB 2.2s ease-in-out infinite;
-}}
-
-/* ─── ANTEN ─── */
-#RA{{
-  position:absolute;top:-20px;left:50%;transform:translateX(-50%);
-  display:flex;flex-direction:column;align-items:center;gap:0;
-}}
-#RAB{{
-  width:11px;height:11px;border-radius:50%;
-  background:#00e896;
-  box-shadow:0 0 10px #00e896,0 0 20px rgba(0,232,150,.4);
-  animation:RAA 1.6s ease-in-out infinite;
-}}
-@keyframes RAA{{
-  0%,100%{{box-shadow:0 0 8px #00e896,0 0 16px rgba(0,232,150,.4);transform:scale(1);}}
-  50%{{box-shadow:0 0 16px #00e896,0 0 32px rgba(0,232,150,.6);transform:scale(1.25);}}
-}}
-#RAS{{width:3px;height:14px;background:linear-gradient(180deg,#00e896,#11855B);border-radius:2px;}}
-
-/* ─── GÖZLER ─── */
-#REYES{{
-  position:absolute;top:28px;left:50%;transform:translateX(-50%);
-  width:58px;display:flex;justify-content:space-between;
-}}
-.REY{{
-  width:24px;height:24px;border-radius:50%;
-  background:#060d1a;
-  box-shadow:inset 0 2px 6px rgba(0,0,0,.8),0 0 0 2px rgba(0,232,150,.3);
-  position:relative;overflow:hidden;
-  animation:RBLINK 7s ease-in-out infinite;
-}}
-.REY:nth-child(2){{animation-delay:.08s;}}
-@keyframes RBLINK{{0%,44%,56%,100%{{transform:scaleY(1)}}50%{{transform:scaleY(.06)}}}}
-/* İris */
-.RI{{
-  width:18px;height:18px;border-radius:50%;
-  background:radial-gradient(circle at 35% 35%,#00e896 0%,#11855B 50%,#063d25 100%);
-  position:absolute;top:3px;left:3px;
-  box-shadow:0 0 8px rgba(0,232,150,.5);
-  transition:transform .07s ease-out;
-}}
-/* Pupil */
-.RP{{
-  width:9px;height:9px;border-radius:50%;
-  background:#000;position:absolute;top:4.5px;left:4.5px;
-  transition:transform .07s ease-out;
-}}
-/* Parlaklık */
-.REY::after{{
-  content:'';position:absolute;top:3px;right:3px;
-  width:5px;height:5px;border-radius:50%;
-  background:rgba(255,255,255,.8);pointer-events:none;
-  z-index:2;
-}}
-
-/* ─── GÖVDE ─── */
-#RB{{
-  width:72px;height:64px;border-radius:22px 22px 18px 18px;
-  background:linear-gradient(145deg,#17a870 0%,#0c6344 60%,#2F3C6E 100%);
-  margin:2px auto 0;position:relative;
-  box-shadow:
-    inset 0 3px 8px rgba(255,255,255,.14),
-    inset 0 -3px 8px rgba(0,0,0,.2),
-    0 6px 20px rgba(12,99,68,.45);
-  border:1.5px solid rgba(0,232,150,.22);
-}}
-#RB::before{{
-  content:'';position:absolute;top:6px;left:10px;right:10px;height:18px;
-  background:linear-gradient(180deg,rgba(255,255,255,.14) 0%,transparent 100%);
-  border-radius:10px;
-}}
-/* Göğüs paneli */
-#RC{{
-  position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
-  width:42px;height:20px;
-  background:rgba(0,0,0,.25);border-radius:7px;
-  border:1px solid rgba(0,232,150,.18);
-  display:flex;align-items:center;justify-content:center;gap:4px;
-}}
-.RL{{
-  width:6px;height:6px;border-radius:50%;
-  background:#00e896;box-shadow:0 0 5px #00e896;
-  animation:RB 1.8s ease-in-out infinite;
-}}
-.RL:nth-child(2){{animation-delay:.3s;background:#11855B;}}
-.RL:nth-child(3){{animation-delay:.6s;}}
-.RL:nth-child(4){{animation-delay:.9s;background:#2F3C6E;box-shadow:0 0 5px #3d4e8a;}}
-@keyframes RB{{0%,100%{{opacity:1}}50%{{opacity:.2}}}}
-/* Kollar */
-.RARM{{
-  position:absolute;top:10px;
-  width:13px;height:40px;border-radius:6.5px;
-  background:linear-gradient(180deg,#17a870,#0c6344);
-  border:1px solid rgba(0,232,150,.15);
-  box-shadow:inset 0 2px 4px rgba(255,255,255,.1);
-}}
-.RARML{{left:-15px;animation:RARMA 3.8s ease-in-out infinite;transform-origin:top center;}}
-.RARMR{{right:-15px;animation:RARMB 3.8s ease-in-out infinite;transform-origin:top center;}}
-@keyframes RARMA{{0%,100%{{transform:rotate(-6deg)}}50%{{transform:rotate(9deg)}}}}
-@keyframes RARMB{{0%,100%{{transform:rotate(6deg)}}50%{{transform:rotate(-9deg)}}}}
-.RHAND{{
-  position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
-  width:13px;height:13px;border-radius:50%;
-  background:linear-gradient(135deg,#17a870,#0c6344);
-  border:1px solid rgba(0,232,150,.2);
-}}
-/* Bacaklar */
-.RLEG{{
-  position:absolute;bottom:-20px;
-  width:17px;height:22px;border-radius:5px 5px 3px 3px;
-  background:linear-gradient(180deg,#0c6344,#083d28);
-  border:1px solid rgba(0,232,150,.12);
-}}
-.RLEGL{{left:10px;}}.RLEGR{{right:10px;}}
-.RFOOT{{
-  position:absolute;bottom:-7px;left:50%;transform:translateX(-50%);
-  width:22px;height:8px;border-radius:3px;
-  background:#083d28;border:1px solid rgba(0,232,150,.1);
-}}
-
-/* ─── BALON ─── */
-#BB{{
-  position:fixed;bottom:200px;right:28px;
-  background:linear-gradient(135deg,#fff,#f4f9f6);
-  border:1.5px solid rgba(17,133,91,.28);
-  border-radius:16px 16px 4px 16px;
-  padding:12px 16px;min-width:210px;max-width:270px;
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  font-size:13px;color:#0f1923;line-height:1.55;
-  box-shadow:0 8px 28px rgba(17,133,91,.14);
-  opacity:0;transform:translateY(8px) scale(.93);
-  transition:all .3s cubic-bezier(.16,1,.3,1);
-  pointer-events:none;
-}}
-#BB.on{{opacity:1;transform:translateY(0) scale(1);}}
-#BBG{{font-size:10px;font-weight:800;color:#11855B;letter-spacing:2px;display:block;margin-bottom:5px;}}
-#BB::after{{
-  content:'';position:absolute;bottom:-8px;right:18px;
-  border-left:8px solid transparent;border-right:8px solid transparent;
-  border-top:8px solid #fff;
-}}
-
-/* ─── TOAST ─── */
-#TC{{position:fixed;bottom:220px;right:28px;display:flex;flex-direction:column;gap:8px;pointer-events:none;}}
-.TT{{
-  background:#fff;border-radius:12px;padding:12px 16px;min-width:260px;
-  box-shadow:0 6px 24px rgba(0,0,0,.1);border-left:4px solid #11855B;
-  display:flex;gap:10px;align-items:flex-start;
-  animation:TTI .35s cubic-bezier(.16,1,.3,1) both,TTO .3s ease 4.5s forwards;
-  cursor:pointer;pointer-events:all;
-}}
-.TT.warning{{border-left-color:#d97706;}}.TT.error{{border-left-color:#dc2626;}}
-@keyframes TTI{{from{{transform:translateX(110%);opacity:0}}to{{transform:translateX(0);opacity:1}}}}
-@keyframes TTO{{to{{transform:translateX(110%);opacity:0}}}}
-</style></head><body>
-
-<div id="BB"><span id="BBG">⚡ STINGA AI</span><span id="BT">Merhaba!</span></div>
-<div id="TC"></div>
-
-<div id="R">
-  <div id="RH">
-    <div id="RA"><div id="RAB"></div><div id="RAS"></div></div>
-    <div class="RE REL"></div>
-    <div class="RE RER"></div>
-    <div id="REYES">
-      <div class="REY"><div class="RI" id="IRL"><div class="RP" id="PL"></div></div></div>
-      <div class="REY"><div class="RI" id="IRR"><div class="RP" id="PR"></div></div></div>
+    st.markdown(f"""
+<style>
+#SGNX{{position:fixed;bottom:28px;right:28px;z-index:2147483647;cursor:pointer;width:92px;animation:SGNXF 3.8s ease-in-out infinite;filter:drop-shadow(0 8px 24px rgba(17,133,91,.45));}}
+#SGNX:hover{{filter:drop-shadow(0 12px 36px rgba(17,133,91,.8));transform:scale(1.07);}}
+@keyframes SGNXF{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-11px)}}}}
+#SGNXSH{{width:56px;height:11px;margin:3px auto 0;background:radial-gradient(ellipse,rgba(17,133,91,.38) 0%,transparent 70%);border-radius:50%;animation:SGNXS 3.8s ease-in-out infinite;}}
+@keyframes SGNXS{{0%,100%{{transform:scaleX(1);opacity:.38}}50%{{transform:scaleX(.45);opacity:.1}}}}
+#SGNXH{{width:74px;height:74px;border-radius:50%;margin:0 auto;background:linear-gradient(145deg,#3d4e8a 0%,#2F3C6E 55%,#1a2540 100%);box-shadow:inset 0 4px 10px rgba(255,255,255,.13),inset 0 -4px 10px rgba(0,0,0,.3),0 6px 20px rgba(47,60,110,.55),0 0 0 2px rgba(0,232,150,.22);position:relative;transition:transform .1s ease-out;}}
+#SGNXH::before{{content:'';position:absolute;top:11px;left:15px;width:24px;height:15px;border-radius:50%;background:radial-gradient(ellipse,rgba(255,255,255,.2) 0%,transparent 70%);transform:rotate(-20deg);}}
+.SGNXEAR{{position:absolute;top:50%;transform:translateY(-50%);width:8px;height:18px;border-radius:4px;background:linear-gradient(180deg,#2F3C6E,#1a2540);border:1px solid rgba(0,232,150,.15);}}
+.SGNXEAR::after{{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:4px;height:4px;border-radius:50%;background:#00e896;box-shadow:0 0 4px #00e896;animation:SGNXBL 2.2s ease-in-out infinite;}}
+.SGNXEARL{{left:-5px;}}.SGNXEARR{{right:-5px;}}
+#SGNXANT{{position:absolute;top:-18px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;}}
+#SGNXANTB{{width:10px;height:10px;border-radius:50%;background:#00e896;box-shadow:0 0 10px #00e896,0 0 20px rgba(0,232,150,.4);animation:SGNXANTA 1.6s ease-in-out infinite;}}
+@keyframes SGNXANTA{{0%,100%{{box-shadow:0 0 8px #00e896,0 0 16px rgba(0,232,150,.4);transform:scale(1)}}50%{{box-shadow:0 0 16px #00e896,0 0 32px rgba(0,232,150,.6);transform:scale(1.3)}}}}
+#SGNXANTS{{width:3px;height:13px;background:linear-gradient(180deg,#00e896,#11855B);border-radius:2px;}}
+#SGNXEYES{{position:absolute;top:26px;left:50%;transform:translateX(-50%);width:56px;display:flex;justify-content:space-between;}}
+.SGNXEYE{{width:23px;height:23px;border-radius:50%;background:#060d1a;box-shadow:inset 0 2px 6px rgba(0,0,0,.8),0 0 0 2px rgba(0,232,150,.3);position:relative;overflow:hidden;animation:SGNXBLINK 7s ease-in-out infinite;}}
+.SGNXEYE:nth-child(2){{animation-delay:.08s;}}
+@keyframes SGNXBLINK{{0%,44%,56%,100%{{transform:scaleY(1)}}50%{{transform:scaleY(.05)}}}}
+.SGNXIRIS{{width:17px;height:17px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#00e896 0%,#11855B 50%,#063d25 100%);position:absolute;top:3px;left:3px;box-shadow:0 0 8px rgba(0,232,150,.5);transition:transform .08s ease-out;}}
+.SGNXPUPIL{{width:8px;height:8px;border-radius:50%;background:#000;position:absolute;top:4.5px;left:4.5px;}}
+.SGNXEYE::after{{content:'';position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.8);pointer-events:none;z-index:2;}}
+#SGNXBODY{{width:68px;height:60px;border-radius:20px 20px 16px 16px;background:linear-gradient(145deg,#17a870 0%,#0c6344 60%,#2F3C6E 100%);margin:2px auto 0;position:relative;box-shadow:inset 0 3px 8px rgba(255,255,255,.14),inset 0 -3px 8px rgba(0,0,0,.2),0 6px 20px rgba(12,99,68,.45);border:1.5px solid rgba(0,232,150,.22);}}
+#SGNXBODY::before{{content:'';position:absolute;top:6px;left:9px;right:9px;height:16px;background:linear-gradient(180deg,rgba(255,255,255,.14) 0%,transparent 100%);border-radius:9px;}}
+#SGNXCHEST{{position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:40px;height:18px;background:rgba(0,0,0,.25);border-radius:6px;border:1px solid rgba(0,232,150,.18);display:flex;align-items:center;justify-content:center;gap:4px;}}
+.SGNXLED{{width:5px;height:5px;border-radius:50%;background:#00e896;box-shadow:0 0 5px #00e896;animation:SGNXBL 1.8s ease-in-out infinite;}}
+.SGNXLED:nth-child(2){{animation-delay:.3s;background:#11855B;}}.SGNXLED:nth-child(3){{animation-delay:.6s;}}.SGNXLED:nth-child(4){{animation-delay:.9s;background:#2F3C6E;box-shadow:0 0 5px #3d4e8a;}}
+@keyframes SGNXBL{{0%,100%{{opacity:1}}50%{{opacity:.2}}}}
+.SGNXARM{{position:absolute;top:9px;width:12px;height:38px;border-radius:6px;background:linear-gradient(180deg,#17a870,#0c6344);border:1px solid rgba(0,232,150,.15);box-shadow:inset 0 2px 4px rgba(255,255,255,.1);}}
+.SGNXARML{{left:-14px;animation:SGNXARMA 3.8s ease-in-out infinite;transform-origin:top center;}}
+.SGNXARMR{{right:-14px;animation:SGNXARMB 3.8s ease-in-out infinite;transform-origin:top center;}}
+@keyframes SGNXARMA{{0%,100%{{transform:rotate(-6deg)}}50%{{transform:rotate(9deg)}}}}
+@keyframes SGNXARMB{{0%,100%{{transform:rotate(6deg)}}50%{{transform:rotate(-9deg)}}}}
+.SGNXHAND{{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;background:linear-gradient(135deg,#17a870,#0c6344);border:1px solid rgba(0,232,150,.2);}}
+.SGNXLEG{{position:absolute;bottom:-19px;width:16px;height:20px;border-radius:5px 5px 3px 3px;background:linear-gradient(180deg,#0c6344,#083d28);border:1px solid rgba(0,232,150,.12);}}
+.SGNXLEGL{{left:9px;}}.SGNXLEGR{{right:9px;}}
+.SGNXFOOT{{position:absolute;bottom:-7px;left:50%;transform:translateX(-50%);width:21px;height:7px;border-radius:3px;background:#083d28;border:1px solid rgba(0,232,150,.1);}}
+#SGNXBUB{{position:fixed;bottom:196px;right:28px;background:linear-gradient(135deg,#fff,#f4f9f6);border:1.5px solid rgba(17,133,91,.28);border-radius:16px 16px 4px 16px;padding:12px 16px;min-width:210px;max-width:270px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#0f1923;line-height:1.55;box-shadow:0 8px 28px rgba(17,133,91,.14);opacity:0;transform:translateY(8px) scale(.93);transition:all .3s cubic-bezier(.16,1,.3,1);pointer-events:none;z-index:2147483646;}}
+#SGNXBUB.on{{opacity:1;transform:translateY(0) scale(1);}}
+#SGNXBUB span.badge{{font-size:10px;font-weight:800;color:#11855B;letter-spacing:2px;display:block;margin-bottom:5px;}}
+#SGNXBUB::after{{content:'';position:absolute;bottom:-8px;right:18px;border-left:8px solid transparent;border-right:8px solid transparent;border-top:8px solid #fff;}}
+#SGNXTC{{position:fixed;bottom:220px;right:28px;display:flex;flex-direction:column;gap:8px;pointer-events:none;z-index:2147483645;}}
+.SGNXTOAST{{background:#fff;border-radius:12px;padding:12px 16px;min-width:260px;box-shadow:0 6px 24px rgba(0,0,0,.1);border-left:4px solid #11855B;display:flex;gap:10px;align-items:flex-start;animation:SGNXTI .35s cubic-bezier(.16,1,.3,1) both,SGNXTO .3s ease 4.5s forwards;cursor:pointer;pointer-events:all;}}
+.SGNXTOAST.warning{{border-left-color:#d97706;}}.SGNXTOAST.error{{border-left-color:#dc2626;}}
+@keyframes SGNXTI{{from{{transform:translateX(110%);opacity:0}}to{{transform:translateX(0);opacity:1}}}}
+@keyframes SGNXTO{{to{{transform:translateX(110%);opacity:0}}}}
+</style>
+<div id="SGNXBUB"><span class="badge">⚡ STINGA AI</span><span id="SGNXBT">Merhaba!</span></div>
+<div id="SGNXTC"></div>
+<div id="SGNX">
+  <div id="SGNXH">
+    <div id="SGNXANT"><div id="SGNXANTB"></div><div id="SGNXANTS"></div></div>
+    <div class="SGNXEAR SGNXEARL"></div><div class="SGNXEAR SGNXEARR"></div>
+    <div id="SGNXEYES">
+      <div class="SGNXEYE"><div class="SGNXIRIS" id="SGNXIL"><div class="SGNXPUPIL"></div></div></div>
+      <div class="SGNXEYE"><div class="SGNXIRIS" id="SGNXIR"><div class="SGNXPUPIL"></div></div></div>
     </div>
   </div>
-  <div id="RB">
-    <div class="RARM RARML"><div class="RHAND"></div></div>
-    <div class="RARM RARMR"><div class="RHAND"></div></div>
-    <div class="RLEG RLEGL"><div class="RFOOT"></div></div>
-    <div class="RLEG RLEGR"><div class="RFOOT"></div></div>
-    <div id="RC">
-      <div class="RL"></div><div class="RL"></div>
-      <div class="RL"></div><div class="RL"></div>
-    </div>
+  <div id="SGNXBODY">
+    <div class="SGNXARM SGNXARML"><div class="SGNXHAND"></div></div>
+    <div class="SGNXARM SGNXARMR"><div class="SGNXHAND"></div></div>
+    <div class="SGNXLEG SGNXLEGL"><div class="SGNXFOOT"></div></div>
+    <div class="SGNXLEG SGNXLEGR"><div class="SGNXFOOT"></div></div>
+    <div id="SGNXCHEST"><div class="SGNXLED"></div><div class="SGNXLED"></div><div class="SGNXLED"></div><div class="SGNXLED"></div></div>
   </div>
-  <div id="RS"></div>
+  <div id="SGNXSH"></div>
 </div>
-
 <script>
 (function(){{
-  var tips={_rj.dumps(_rtips)};
-  var ti=0,head=document.getElementById('RH'),
-      iL=document.getElementById('IRL'),iR=document.getElementById('IRR'),
-      pL=document.getElementById('PL'),pR=document.getElementById('PR'),
-      bb=document.getElementById('BB'),bt=document.getElementById('BT'),
-      wrap=document.getElementById('R');
-  var cRX=0,cRY=0,cEX=0,cEY=0,rafId;
-
-  function tick(mx,my){{
-    // Baş dönüşü
-    var tRX=-(my/window.innerHeight-.5)*28;
-    var tRY= (mx/window.innerWidth -.5)*28;
-    cRX+=(tRX-cRX)*.1; cRY+=(tRY-cRY)*.1;
-    if(head) head.style.transform='rotateX('+cRX.toFixed(1)+'deg) rotateY('+cRY.toFixed(1)+'deg)';
-    // Göz iris
-    var tEX=(mx/window.innerWidth -.5)*7;
-    var tEY=(my/window.innerHeight-.5)*7;
-    cEX+=(tEX-cEX)*.12; cEY+=(tEY-cEY)*.12;
+  var tips={_rj.dumps(_rtips)},ti=0,cRX=0,cRY=0,cEX=0,cEY=0,mx=window.innerWidth/2,my=window.innerHeight/2;
+  var head=document.getElementById('SGNXH'),iL=document.getElementById('SGNXIL'),iR=document.getElementById('SGNXIR'),
+      bub=document.getElementById('SGNXBUB'),bt=document.getElementById('SGNXBT'),wrap=document.getElementById('SGNX');
+  function tick(){{
+    var tRX=-(my/window.innerHeight-.5)*26,tRY=(mx/window.innerWidth-.5)*26;
+    cRX+=(tRX-cRX)*.1;cRY+=(tRY-cRY)*.1;
+    if(head)head.style.transform='rotateX('+cRX.toFixed(1)+'deg) rotateY('+cRY.toFixed(1)+'deg)';
+    var tEX=(mx/window.innerWidth-.5)*6,tEY=(my/window.innerHeight-.5)*6;
+    cEX+=(tEX-cEX)*.12;cEY+=(tEY-cEY)*.12;
     var tr='translate('+cEX.toFixed(1)+'px,'+cEY.toFixed(1)+'px)';
-    if(iL)iL.style.transform=tr; if(iR)iR.style.transform=tr;
+    if(iL)iL.style.transform=tr;if(iR)iR.style.transform=tr;
+    requestAnimationFrame(tick);
   }}
-
-  var mx=window.innerWidth/2, my=window.innerHeight/2;
-  function loop(){{ tick(mx,my); rafId=requestAnimationFrame(loop); }}
-  loop();
-
-  // Parent frame fare — cross-origin olabilir, try/catch
-  document.addEventListener('mousemove',function(e){{ mx=e.clientX; my=e.clientY; }});
-  try{{
-    window.parent.document.addEventListener('mousemove',function(e){{
-      var fs=window.parent.document.querySelectorAll('iframe');
-      var ol=0,ot=0;
-      fs.forEach(function(f){{ try{{ if(f.contentWindow===window){{ var r=f.getBoundingClientRect(); ol=r.left; ot=r.top; }} }}catch(x){{}} }});
-      mx=e.clientX-ol; my=e.clientY-ot;
-    }});
-  }}catch(x){{}}
-
-  // Tıklama balonu
-  if(wrap) wrap.addEventListener('click',function(){{
-    if(bt) bt.textContent=tips[ti%tips.length]; ti++;
-    if(bb){{ bb.classList.add('on'); clearTimeout(wrap._t); wrap._t=setTimeout(function(){{bb.classList.remove('on');}},4800); }}
+  tick();
+  document.addEventListener('mousemove',function(e){{mx=e.clientX;my=e.clientY;}});
+  // Parent window fare takibi (Streamlit iframe'i dışına çıkar)
+  try{{window.parent.document.addEventListener('mousemove',function(e){{
+    var fs=window.parent.document.querySelectorAll('iframe'),ol=0,ot=0;
+    fs.forEach(function(f){{try{{if(f.contentWindow===window){{var r=f.getBoundingClientRect();ol=r.left;ot=r.top;}}}}catch(x){{}}}});
+    mx=e.clientX-ol;my=e.clientY-ot;
+  }});}}catch(x){{}}
+  if(wrap)wrap.addEventListener('click',function(){{
+    if(bt)bt.textContent=tips[ti%tips.length];ti++;
+    if(bub){{bub.classList.add('on');clearTimeout(wrap._t);wrap._t=setTimeout(function(){{bub.classList.remove('on');}},4800);}}
   }});
-  setTimeout(function(){{ if(bt)bt.textContent=tips[0]; ti=1; if(bb){{bb.classList.add('on');setTimeout(function(){{bb.classList.remove('on');}},5000);}} }},1200);
-
-  // Toast
+  setTimeout(function(){{if(bt)bt.textContent=tips[0];ti=1;if(bub){{bub.classList.add('on');setTimeout(function(){{bub.classList.remove('on');}},5000);}};}},1200);
   window._sgShowToast=function(title,msg,type){{
-    var c=document.getElementById('TC'); if(!c)return;
-    var el=document.createElement('div'); el.className='TT '+(type||'');
+    var c=document.getElementById('SGNXTC');if(!c)return;
+    var el=document.createElement('div');el.className='SGNXTOAST '+(type||'');
     var ic={{success:'✅',warning:'⚠️',error:'🚨',info:'🔔'}};
     el.innerHTML='<span style="font-size:1.2rem">'+(ic[type]||'📌')+'</span><div><div style="font-weight:700;font-size:.82rem;margin-bottom:2px">'+title+'</div><div style="font-size:.73rem;color:#5a7a6a">'+msg+'</div></div>';
-    el.onclick=function(){{el.remove();}};
-    c.appendChild(el);
+    el.onclick=function(){{el.remove();}};c.appendChild(el);
     setTimeout(function(){{if(el.parentNode)el.remove();}},5000);
   }};
 }})();
-</script></body></html>""", height=1, scrolling=False)
+</script>
+""", unsafe_allow_html=True)
 
     # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
