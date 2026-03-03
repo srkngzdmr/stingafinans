@@ -2,4 +2,7 @@ flask
 google-genai
 twilio
 pillow
+
 requests
+streamlit-autorefresh
+scikit-learn
