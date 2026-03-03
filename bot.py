@@ -26,6 +26,32 @@ from twilio.rest import Client as TwilioClient
 
 app = Flask(__name__)
 
+# ── STARTUP: DB_JSON env var'dan geri yükle (Railway restart sonrası) ──
+def _startup_restore():
+    """
+    Eğer DB_JSON environment variable set edilmişse (base64 encoded JSON),
+    container restart sonrası DB'yi bu veriden geri yükle.
+    Bu, Railway'de Volume olmadan da veriyi korur — ama her deploy'da
+    DB_JSON değişkeni güncel tutulmalı (admin panelinden export edilmeli).
+    """
+    db_b64 = os.environ.get("DB_JSON_B64", "")
+    if not db_b64:
+        return
+    if os.path.exists(DB_FILE) and os.path.getsize(DB_FILE) > 100:
+        print("DB zaten mevcut, env restore atlandı.", flush=True)
+        return
+    try:
+        import base64
+        raw = base64.b64decode(db_b64).decode("utf-8")
+        data = json.loads(raw)
+        if "expenses" in data:
+            save_data(data)
+            print(f"DB env var'dan restore edildi: {len(data.get('expenses',[]))} fiş", flush=True)
+    except Exception as e:
+        print(f"DB restore hatası: {e}", flush=True)
+
+_startup_restore()
+
 # ─────────────────────────────────────────────
 #  YAPILANDIRMA
 # ─────────────────────────────────────────────
@@ -36,14 +62,36 @@ TWILIO_SID   = os.getenv("TWILIO_SID")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
 twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
 
-# DB_FILE — Railway Volume öncelikli, yoksa script dizini
-# Railway'de Volume ekle: Mount Path = /data
-_DATA_DIR = os.environ.get("DATA_DIR", "")
-if not _DATA_DIR:
-    # Railway volume varsayılan mount noktası
-    _DATA_DIR = "/data" if os.path.isdir("/data") else os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(_DATA_DIR, "stinga_v13_db.json")
-print(f"DB yolu: {DB_FILE}", flush=True)
+# ── DB YOLU: Birden fazla konum dene, hangisi yazılabilirse onu kullan ──
+def _find_writable_dir():
+    candidates = [
+        os.environ.get("DATA_DIR", ""),          # 1. Env var
+        "/data",                                   # 2. Railway Volume
+        "/var/data",                               # 3. Alternatif volume
+        "/tmp",                                    # 4. Geçici (restart'ta sıfırlanır ama en azından çalışır)
+        os.path.dirname(os.path.abspath(__file__)), # 5. Script dizini
+    ]
+    for d in candidates:
+        if not d:
+            continue
+        try:
+            os.makedirs(d, exist_ok=True)
+            test_file = os.path.join(d, ".write_test")
+            with open(test_file, "w") as f:
+                f.write("test")
+            os.remove(test_file)
+            print(f"DB dizini: {d}", flush=True)
+            return d
+        except Exception as e:
+            print(f"Dizin yazılamıyor ({d}): {e}", flush=True)
+            continue
+    return "/tmp"
+
+_DATA_DIR = _find_writable_dir()
+DB_FILE   = os.path.join(_DATA_DIR, "stinga_v13_db.json")
+# /tmp kullanılıyorsa script dizinine de yedek yaz
+DB_FILE_BACKUP2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stinga_v13_db.json")
+print(f"Ana DB: {DB_FILE}", flush=True)
 DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
 
 PHONE_DIRECTORY = {
@@ -126,8 +174,12 @@ def load_data() -> dict:
         "notifications": [],
         "ledger": [],
     }
-    # Önce ana, bozuksa backup dene
-    for try_file in [DB_FILE, DB_FILE + ".bak"]:
+    # Tüm olası konumları dene
+    all_candidates = []
+    for f in [DB_FILE, DB_FILE + ".bak", DB_FILE_BACKUP2, DB_FILE_BACKUP2 + ".bak"]:
+        if f not in all_candidates:
+            all_candidates.append(f)
+    for try_file in all_candidates:
         if not os.path.exists(try_file):
             continue
         try:
@@ -170,7 +222,16 @@ def save_data(d: dict):
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(d, f, ensure_ascii=False, indent=2)
             os.replace(tmp, DB_FILE)
-            print(f"DB kaydedildi: {len(d.get('expenses',[]))} fiş", flush=True)
+            print(f"DB kaydedildi: {len(d.get('expenses',[]))} fiş → {DB_FILE}", flush=True)
+            # İkincil yedek (script dizini farklıysa)
+            if DB_FILE_BACKUP2 != DB_FILE:
+                try:
+                    os.makedirs(os.path.dirname(DB_FILE_BACKUP2) or ".", exist_ok=True)
+                    with open(DB_FILE_BACKUP2, "w", encoding="utf-8") as _f2:
+                        json.dump(d, _f2, ensure_ascii=False)
+                    print(f"DB yedek: {DB_FILE_BACKUP2}", flush=True)
+                except Exception as _e2:
+                    print(f"Yedek yazılamadı: {_e2}", flush=True)
         except Exception as e:
             print(f"KAYIT HATASI: {e}", flush=True)
             try:
@@ -1173,10 +1234,26 @@ def healthz():
 @app.route("/backup-db", methods=["GET"])
 def backup_db():
     """DB JSON dosyasını indir (yedek almak için)."""
-    if os.path.exists(DB_FILE):
-        from flask import send_file
-        return send_file(DB_FILE, as_attachment=True, download_name="stinga_backup.json")
+    for f in [DB_FILE, DB_FILE_BACKUP2]:
+        if os.path.exists(f) and os.path.getsize(f) > 10:
+            from flask import send_file
+            return send_file(f, as_attachment=True, download_name="stinga_backup.json")
     return jsonify({"error": "DB bulunamadı"}), 404
+
+@app.route("/export-b64", methods=["GET"])
+def export_b64():
+    """DB'yi base64 string olarak döndür — Railway DB_JSON_B64 env var için kopyala."""
+    import base64
+    data = load_data()
+    raw  = json.dumps(data, ensure_ascii=False)
+    b64  = base64.b64encode(raw.encode("utf-8")).decode("utf-8")
+    fis_sayisi = len(data.get("expenses", []))
+    return jsonify({
+        "ok": True,
+        "fis_sayisi": fis_sayisi,
+        "b64": b64,
+        "kullanim": "Bu 'b64' değerini Railway → Variables → DB_JSON_B64 olarak ekle"
+    }), 200
 
 @app.route("/restore-db", methods=["POST"])
 def restore_db():
