@@ -1107,9 +1107,9 @@ Sadece yorumu yaz, başka hiçbir şey ekleme."""
         t.start()
         beklemeler = [
 
-            "📡 **STİNGA YAPAY ZEKA** yüklemiş olduğunuz fişi, dijital veri merkezine gönderdi. Analiz için lütfen bekleyin.⌛",
-            "🏢 **STINGA YAPAY ZEKA** arşivlere daldı — fişiniz dijital dünyaya aktarılıyor, sonuçlar yükleniyor. Gözünü ekrandan ayırma!⌛",
-            "🛰️ **STINGA YAPAY ZEKA** GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz.🚩",
+            "📡 *STİNGA YAPAY ZEKA* yüklemiş olduğunuz fişi, dijital veri merkezine gönderdi. Analiz için lütfen bekleyiniz!⏳",
+            "🏢 *STINGA YAPAY ZEKA* arşivlere daldı — fişiniz dijital dünyaya aktarılıyor, sonuçlar yükleniyor. Gözünü ekrandan ayırma!⏳",
+            "🛰️ *STINGA YAPAY ZEKA* GPS radarlarını açtı — Fişin tam olarak hangi koordinatta kesildiğini harita üzerinde işaretliyoruz. Analiz için bekleyiniz!⏳🚩",
                     ]
         msg.body(random.choice(beklemeler))
         return str(resp)
