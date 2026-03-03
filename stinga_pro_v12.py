@@ -1621,6 +1621,473 @@ def predict_monthly_spend(df, model):
     except:
         return None
 
+
+# ══════════════════════════════════════════════════════════════
+# ██ İNOVASYON 1: TEMPORAL EXPENSE DNA FİNGERPRINTING ████████
+# ══════════════════════════════════════════════════════════════
+# Patent: "User-specific time-series expense rhythm model generating
+# pre-approval risk scores by comparing incoming expenses against
+# personal behavioral baseline"
+# ─────────────────────────────────────────────────────────────
+
+def compute_temporal_dna(user_name: str, data_store: dict) -> dict:
+    """
+    Kullanıcının geçmiş harcama davranışından 'DNA baseline' çıkarır.
+    Zaman ritmi, gün dağılımı, kategori alışkanlıkları ve tutar bandını analiz eder.
+    Minimum 3 geçmiş fiş gerekir; yoksa None döner.
+    """
+    expenses = [
+        e for e in data_store.get("expenses", [])
+        if e.get("Kullanıcı") == user_name
+        and e.get("Durum") in ("Onaylandı", "Onay Bekliyor")
+    ]
+    if len(expenses) < 3:
+        return None
+
+    hours, weekdays, amounts, cats = [], [], [], []
+    for e in expenses:
+        # Saat bilgisi
+        saat_str = str(e.get("Saat", "") or e.get("Yukleme_Zamani", ""))
+        try:
+            if ":" in saat_str:
+                h = int(saat_str.split(":")[0][-2:])
+                hours.append(h)
+        except:
+            pass
+        # Gün
+        tarih_str = str(e.get("Tarih", ""))
+        try:
+            dt = datetime.strptime(tarih_str, "%Y-%m-%d")
+            weekdays.append(dt.weekday())  # 0=Pzt, 6=Pzr
+        except:
+            pass
+        # Tutar
+        try:
+            amounts.append(float(e.get("Tutar", 0)))
+        except:
+            pass
+        # Kategori
+        cats.append(str(e.get("Kategori", "Diğer")))
+
+    if not amounts:
+        return None
+
+    import statistics
+    dna = {
+        "sample_count": len(expenses),
+        "avg_hour": round(statistics.mean(hours), 1) if hours else 12.0,
+        "std_hour": round(statistics.stdev(hours), 1) if len(hours) > 1 else 3.0,
+        "common_days": sorted(set(weekdays), key=weekdays.count, reverse=True)[:3] if weekdays else [0,1,2,3,4],
+        "avg_amount": round(statistics.mean(amounts), 2),
+        "std_amount": round(statistics.stdev(amounts), 2) if len(amounts) > 1 else amounts[0] * 0.3,
+        "top_category": max(set(cats), key=cats.count) if cats else "Diğer",
+        "weekday_ratio": round(sum(1 for d in weekdays if d < 5) / len(weekdays), 2) if weekdays else 1.0,
+    }
+    return dna
+
+
+def score_temporal_anomaly(new_expense: dict, dna: dict) -> dict:
+    """
+    Yeni bir fişi kullanıcının DNA baseline'ı ile karşılaştırır.
+    0-100 arası Temporal Anomali Skoru ve açıklama döner.
+    Yüksek skor = davranış dışı = daha fazla inceleme gerekir.
+    """
+    if not dna:
+        return {"score": 0, "flags": [], "verdict": "Baseline yok — yeni kullanıcı"}
+
+    flags = []
+    score = 0
+
+    # ── 1. SAAT ANALİZİ ─────────────────────────────────────
+    saat_str = str(new_expense.get("Saat", "") or "")
+    try:
+        hour = int(saat_str.split(":")[0][-2:]) if ":" in saat_str else None
+        if hour is not None:
+            avg_h = dna["avg_hour"]
+            std_h = max(dna["std_hour"], 2.0)
+            deviation = abs(hour - avg_h)
+            if deviation > 2 * std_h:
+                score += 35
+                flags.append(f"⏰ Alışılmadık saat ({hour:02d}:00) — normalin {deviation:.0f} saat dışında (ort. {avg_h:.0f}:00)")
+            elif deviation > std_h:
+                score += 15
+                flags.append(f"⏰ Saat normalden sapıyor ({hour:02d}:00 vs ort. {avg_h:.0f}:00)")
+    except:
+        pass
+
+    # ── 2. GÜN ANALİZİ ──────────────────────────────────────
+    tarih_str = str(new_expense.get("Tarih", ""))
+    try:
+        dt = datetime.strptime(tarih_str, "%Y-%m-%d")
+        weekday = dt.weekday()
+        is_weekend = weekday >= 5
+        if is_weekend and dna["weekday_ratio"] > 0.85:
+            score += 25
+            days_tr = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"]
+            flags.append(f"📅 {days_tr[weekday]} günü fiş — bu kullanıcı normalde hafta içi harcama yapar (%{dna['weekday_ratio']*100:.0f})")
+        elif weekday not in dna["common_days"] and not is_weekend:
+            score += 10
+            days_tr = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"]
+            flags.append(f"📅 {days_tr[weekday]} günü bu kullanıcı için nadir — olağandışı gün")
+    except:
+        pass
+
+    # ── 3. TUTAR ANALİZİ ────────────────────────────────────
+    try:
+        amount = float(new_expense.get("Tutar", 0))
+        avg_a = dna["avg_amount"]
+        std_a = max(dna["std_amount"], avg_a * 0.15)
+        if amount > avg_a + 3 * std_a:
+            score += 40
+            flags.append(f"💰 Tutar olağandışı yüksek (₺{amount:,.0f} — ortalama ₺{avg_a:,.0f}, 3σ üstü)")
+        elif amount > avg_a + 2 * std_a:
+            score += 20
+            flags.append(f"💰 Tutar normalin 2x üstünde (₺{amount:,.0f} vs ort. ₺{avg_a:,.0f})")
+    except:
+        pass
+
+    # ── 4. KATEGORİ ANALİZİ ─────────────────────────────────
+    kat = str(new_expense.get("Kategori", "Diğer"))
+    if kat != dna["top_category"] and score > 20:
+        score += 10
+        flags.append(f"📂 Farklı kategori ({kat}) — bu kullanıcı genelde {dna['top_category']} fişi yükler")
+
+    score = min(score, 100)
+
+    if score >= 60:
+        verdict = "🔴 Yüksek davranışsal sapma — detaylı inceleme önerilir"
+    elif score >= 30:
+        verdict = "🟡 Orta davranışsal sapma — dikkate alınmalı"
+    else:
+        verdict = "🟢 Normal davranış aralığında"
+
+    return {
+        "score": score,
+        "flags": flags,
+        "verdict": verdict,
+        "baseline_samples": dna["sample_count"]
+    }
+
+
+def render_dna_panel(user_name: str, new_expense: dict, data_store: dict):
+    """Fiş Tarama sayfasında DNA analiz panelini render eder."""
+    dna = compute_temporal_dna(user_name, data_store)
+    result = score_temporal_anomaly(new_expense, dna)
+
+    score = result["score"]
+    color = "#dc2626" if score >= 60 else "#d97706" if score >= 30 else "#11855B"
+
+    st.markdown(f"""
+    <div style="background:var(--bg-card,#fff);border:1px solid {color}40;border-left:4px solid {color};
+                border-radius:12px;padding:16px 20px;margin:12px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-weight:700;font-size:0.95rem;">🧬 Temporal DNA Analizi</div>
+            <div style="font-size:1.4rem;font-weight:900;color:{color};">{score}/100</div>
+        </div>
+        <div style="font-size:0.82rem;color:{color};margin:6px 0 10px;">{result['verdict']}</div>
+        {"".join(f'<div style="font-size:0.78rem;padding:3px 0;color:var(--t2,#555);">{f}</div>' for f in result['flags']) if result['flags'] else '<div style="font-size:0.78rem;color:#11855B;">✓ Davranışsal profil ile uyumlu</div>'}
+        <div style="font-size:0.72rem;color:var(--t3,#999);margin-top:8px;">📊 {result.get('baseline_samples', 0)} geçmiş fiş analiz edildi</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════
+# ██ İNOVASYON 2: CONVERSATIONAL EXPENSE NEGOTIATION AGENT ███
+# ══════════════════════════════════════════════════════════════
+# Patent: "Multi-turn AI-mediated negotiation protocol between
+# expense document and user, enabling partial approvals and
+# document enrichment before administrative review"
+# ─────────────────────────────────────────────────────────────
+
+def run_negotiation_agent(expense_data: dict, user_name: str, model) -> dict:
+    """
+    Fiş miktarı veya risk skoru yüksekse AI bir tur soru sorar.
+    Kullanıcının cevabına göre fişi zenginleştirir (açıklama, kişi sayısı, proje bağlantısı).
+    Dönen dict: {"needs_negotiation": bool, "question": str, "enrichment_key": str}
+    """
+    risk = int(expense_data.get("risk_skoru", 0))
+    tutar = float(expense_data.get("toplam_tutar", 0))
+    kategori = str(expense_data.get("kategori", "")).lower()
+    kisisel = expense_data.get("kisisel_giderler", [])
+
+    # Müzakere tetikleyicileri
+    triggers = []
+    enrichment_key = None
+
+    if tutar > 500 and "yemek" in kategori:
+        triggers.append(f"Yemek fişi tutarı ₺{tutar:,.0f} — bu yemekte kaç kişi vardı?")
+        enrichment_key = "kisi_sayisi"
+    elif tutar > 2000 and "konaklama" in kategori:
+        triggers.append(f"Konaklama bedeli ₺{tutar:,.0f} — kaç gecelik konaklamaydı?")
+        enrichment_key = "gece_sayisi"
+    elif tutar > 1000 and "yakıt" in kategori:
+        triggers.append(f"Yakıt tutarı ₺{tutar:,.0f} — bu seyahatin amacı neydi?")
+        enrichment_key = "seyahat_amaci"
+    elif risk >= 50 and not kisisel:
+        triggers.append(f"Risk skoru {risk}/100 — bu harcamanın iş amacını kısaca açıklar mısınız?")
+        enrichment_key = "is_amaci"
+    elif kisisel:
+        triggers.append(f"Fişte kişisel harcama kalemleri tespit edildi ({', '.join(kisisel)}). Bu kalemler iş amacıyla mı alındı?")
+        enrichment_key = "kisisel_aciklama"
+
+    if not triggers:
+        return {"needs_negotiation": False, "question": None, "enrichment_key": None}
+
+    return {
+        "needs_negotiation": True,
+        "question": triggers[0],
+        "enrichment_key": enrichment_key
+    }
+
+
+def process_negotiation_answer(answer: str, enrichment_key: str, expense_data: dict, model) -> dict:
+    """
+    Kullanıcının müzakere cevabını AI ile değerlendirir.
+    Fişe 'Musait_Not' ekler ve risk skorunu düzeltir.
+    Döner: {"accepted": bool, "note": str, "risk_adjustment": int}
+    """
+    prompt = f"""Sen bir kurumsal gider denetçisisin.
+Çalışan şu fişi yükledi:
+- Firma: {expense_data.get('firma', '?')}
+- Kategori: {expense_data.get('kategori', '?')}  
+- Tutar: ₺{expense_data.get('toplam_tutar', 0):,.0f}
+- Risk Skoru: {expense_data.get('risk_skoru', 0)}/100
+
+Senin soruya verilen cevap: "{answer}"
+Soru konusu: {enrichment_key}
+
+Cevabı değerlendir ve SADECE JSON döndür:
+{{
+  "mantikli": true/false,
+  "risk_dusurme": 0-30 (cevap mantıklıysa risk puanı ne kadar düşürülsün),
+  "ozet_not": "Yönetici için tek cümle özet (Türkçe)",
+  "kabul": true/false
+}}"""
+
+    try:
+        resp = model.generate_content(prompt)
+        raw = resp.text.strip()
+        clean = re.sub(r'```json|```', '', raw).strip()
+        result = json.loads(clean)
+        return {
+            "accepted": result.get("kabul", True),
+            "note": result.get("ozet_not", answer[:100]),
+            "risk_adjustment": -int(result.get("risk_dusurme", 0))
+        }
+    except:
+        # Fallback: cevabı olduğu gibi not olarak ekle
+        return {
+            "accepted": True,
+            "note": f"Kullanıcı açıklaması: {answer[:150]}",
+            "risk_adjustment": -5
+        }
+
+
+def render_negotiation_ui(expense_data: dict, user_name: str, model, data_key: str = "neg_state"):
+    """
+    Fiş Tarama sayfasında müzakere arayüzünü render eder.
+    data_key: session_state key prefix (farklı fişler için izolasyon)
+    Döner: (enriched_expense_data, negotiation_complete: bool)
+    """
+    neg_info = run_negotiation_agent(expense_data, user_name, model)
+
+    if not neg_info["needs_negotiation"]:
+        return expense_data, True
+
+    q_key = f"{data_key}_answered"
+    ans_key = f"{data_key}_answer"
+    note_key = f"{data_key}_note"
+    adj_key = f"{data_key}_adj"
+
+    if not st.session_state.get(q_key, False):
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#2F3C6E15,#11855B10);
+                    border:1px solid #2F3C6E40;border-left:4px solid #2F3C6E;
+                    border-radius:12px;padding:18px 22px;margin:14px 0;">
+            <div style="font-weight:700;margin-bottom:8px;">🤝 AI Müzakere Ajanı</div>
+            <div style="font-size:0.9rem;color:var(--t1,#111);margin-bottom:4px;">
+                {neg_info['question']}
+            </div>
+            <div style="font-size:0.75rem;color:var(--t3,#999);">
+                Açıklamanız yöneticiye iletilir ve risk skorunu düşürebilir.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        user_ans = st.text_input(
+            "Yanıtınız:",
+            key=f"{data_key}_input",
+            placeholder="Kısa ve net açıklama yazın..."
+        )
+        col_neg1, col_neg2 = st.columns([1, 2])
+        if col_neg1.button("✅ Gönder", key=f"{data_key}_send"):
+            if user_ans.strip():
+                with st.spinner("AI değerlendiriyor..."):
+                    result = process_negotiation_answer(
+                        user_ans, neg_info["enrichment_key"], expense_data, model
+                    )
+                st.session_state[q_key] = True
+                st.session_state[ans_key] = user_ans
+                st.session_state[note_key] = result["note"]
+                st.session_state[adj_key] = result["risk_adjustment"]
+                st.rerun()
+            else:
+                st.warning("Lütfen bir açıklama girin.")
+        if col_neg2.button("⏭️ Geç (açıklama ekleme)", key=f"{data_key}_skip"):
+            st.session_state[q_key] = True
+            st.session_state[note_key] = ""
+            st.session_state[adj_key] = 0
+            st.rerun()
+        return expense_data, False
+
+    else:
+        note = st.session_state.get(note_key, "")
+        adj = st.session_state.get(adj_key, 0)
+        if note:
+            new_risk = max(0, int(expense_data.get("risk_skoru", 0)) + adj)
+            expense_data["risk_skoru"] = new_risk
+            expense_data["audit_ozeti"] = str(expense_data.get("audit_ozeti", "")) + f" | 🤝 Müzakere notu: {note}"
+            st.success(f"✅ Açıklama eklendi — risk skoru {adj:+d} güncellendi → {new_risk}/100")
+        return expense_data, True
+
+
+# ══════════════════════════════════════════════════════════════
+# ██ İNOVASYON 3: COLLECTIVE INTELLIGENCE BENCHMARKING ████████
+# ══════════════════════════════════════════════════════════════
+# Patent: "Anonymized location and category-based real-time expense
+# benchmarking index within single organization, flagging deviations
+# before approval"
+# ─────────────────────────────────────────────────────────────
+
+def build_benchmark_index(data_store: dict) -> dict:
+    """
+    Onaylanmış tüm fişlerden anonim kıyaslama indeksi oluşturur.
+    Firma adı + kategori bazında: ortalama tutar, kullanım sayısı, tipik kullanıcı sayısı.
+    Döner: {firma_norm: {"avg": float, "count": int, "users": int, "category": str}}
+    """
+    index = {}
+    expenses = [
+        e for e in data_store.get("expenses", [])
+        if e.get("Durum") == "Onaylandı"
+    ]
+    for e in expenses:
+        firma_raw = str(e.get("Firma", "")).strip().lower()
+        # Normalize: remove special chars, keep first 20 chars for grouping
+        firma_key = re.sub(r'[^a-z0-9ışğüöçığşğüöç ]', '', firma_raw)[:20].strip()
+        if not firma_key or firma_key == "bilinmiyor":
+            continue
+        kat = str(e.get("Kategori", "Diğer"))
+        tutar = float(e.get("Tutar", 0))
+        user = str(e.get("Kullanıcı", "?"))
+        if firma_key not in index:
+            index[firma_key] = {
+                "amounts": [], "users": set(), "category": kat,
+                "display_name": str(e.get("Firma", firma_key))[:30]
+            }
+        index[firma_key]["amounts"].append(tutar)
+        index[firma_key]["users"].add(user)
+
+    # Finalize: replace sets/lists with stats
+    final = {}
+    for k, v in index.items():
+        if len(v["amounts"]) >= 2:  # En az 2 fiş olan yerler benchmarklı
+            import statistics
+            final[k] = {
+                "avg": round(statistics.mean(v["amounts"]), 2),
+                "median": round(statistics.median(v["amounts"]), 2),
+                "count": len(v["amounts"]),
+                "users": len(v["users"]),
+                "category": v["category"],
+                "display_name": v["display_name"]
+            }
+    return final
+
+
+def check_benchmark(new_expense: dict, benchmark_index: dict) -> dict:
+    """
+    Yeni fişi benchmark indeksiyle karşılaştırır.
+    Döner: {"has_benchmark": bool, "benchmark": dict, "deviation_pct": float, "alert": str}
+    """
+    firma_raw = str(new_expense.get("firma", "")).strip().lower()
+    firma_key = re.sub(r'[^a-z0-9ışğüöçığşğüöç ]', '', firma_raw)[:20].strip()
+
+    # Tam eşleşme dene
+    match = None
+    if firma_key in benchmark_index:
+        match = benchmark_index[firma_key]
+    else:
+        # Kısmi eşleşme: firma adının 60%+ uyuşanı
+        for k, v in benchmark_index.items():
+            if len(firma_key) > 4 and (firma_key[:6] in k or k[:6] in firma_key):
+                match = v
+                break
+
+    if not match:
+        return {"has_benchmark": False}
+
+    tutar = float(new_expense.get("toplam_tutar", 0))
+    avg = match["avg"]
+    if avg == 0:
+        return {"has_benchmark": False}
+
+    deviation_pct = ((tutar - avg) / avg) * 100
+
+    alert = None
+    if deviation_pct > 80:
+        alert = (f"📊 Bu firmadan daha önce {match['count']} fiş var, "
+                 f"ortalama ₺{avg:,.0f} — sizinki %{deviation_pct:.0f} daha yüksek. "
+                 f"Fark için açıklama ekler misiniz?")
+    elif deviation_pct > 40:
+        alert = (f"📊 Şirket ortalamasının %{deviation_pct:.0f} üzerinde "
+                 f"({match['count']} geçmiş fiş, ort. ₺{avg:,.0f})")
+    elif deviation_pct < -60:
+        alert = f"📊 Bu firmadan genelde daha yüksek fiş gelir (ort. ₺{avg:,.0f}) — tutar kontrolü önerilir"
+
+    return {
+        "has_benchmark": True,
+        "benchmark": match,
+        "deviation_pct": round(deviation_pct, 1),
+        "alert": alert
+    }
+
+
+def render_benchmark_panel(new_expense: dict, data_store: dict):
+    """Fiş Tarama sayfasında benchmark panelini render eder."""
+    bm_idx = build_benchmark_index(data_store)
+    result = check_benchmark(new_expense, bm_idx)
+
+    if not result["has_benchmark"]:
+        st.markdown("""
+        <div style="background:var(--bg-card,#fff);border:1px solid #e2e8f0;border-left:4px solid #94a3b8;
+                    border-radius:12px;padding:12px 18px;margin:8px 0;font-size:0.8rem;color:var(--t3,#999);">
+            📊 Benchmark — Bu firma için henüz yeterli veri yok (ilk fiş olabilir)
+        </div>
+        """, unsafe_allow_html=True)
+        return
+
+    bm = result["benchmark"]
+    dev = result["deviation_pct"]
+    color = "#dc2626" if abs(dev) > 80 else "#d97706" if abs(dev) > 40 else "#11855B"
+    dev_sign = "+" if dev > 0 else ""
+    alert = result.get("alert", "")
+
+    st.markdown(f"""
+    <div style="background:var(--bg-card,#fff);border:1px solid {color}40;border-left:4px solid {color};
+                border-radius:12px;padding:16px 20px;margin:10px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-weight:700;font-size:0.93rem;">📊 Kolektif Benchmark</div>
+            <div style="font-size:1.3rem;font-weight:900;color:{color};">{dev_sign}{dev:.0f}%</div>
+        </div>
+        <div style="display:flex;gap:18px;font-size:0.78rem;color:var(--t2,#555);margin-bottom:8px;">
+            <span>📁 {bm['count']} geçmiş fiş</span>
+            <span>👥 {bm['users']} farklı çalışan</span>
+            <span>Ort. ₺{bm['avg']:,.0f}</span>
+        </div>
+        {f'<div style="font-size:0.82rem;color:{color};padding:8px;background:{color}15;border-radius:8px;">{alert}</div>' if alert else '<div style="font-size:0.78rem;color:#11855B;">✓ Şirket ortalamasıyla uyumlu</div>'}
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # ─── GİRİŞ EKRANI ────────────────────────────────────────────
 def get_logo_b64():
     # Embedded logo (PNG base64)
@@ -2848,6 +3315,29 @@ tick();setInterval(tick,1000);
                                         data_ai = apply_business_rules(data_ai, _fresh, user_name)
                                         uyarilar = data_ai.pop("_uyarilar", [])
 
+                                        # ══════════════════════════════════════════
+                                        # İNOVASYON 1: TEMPORAL DNA ANALİZİ
+                                        # ══════════════════════════════════════════
+                                        st.markdown("---")
+                                        render_dna_panel(user_name, data_ai, _fresh)
+
+                                        # ══════════════════════════════════════════
+                                        # İNOVASYON 3: KOLEKTİF BENCHMARK
+                                        # ══════════════════════════════════════════
+                                        render_benchmark_panel(data_ai, _fresh)
+
+                                        # ══════════════════════════════════════════
+                                        # İNOVASYON 2: MÜZAKERE AJANI
+                                        # ══════════════════════════════════════════
+                                        _neg_id = f"neg_{str(data_ai.get('firma','x'))[:8]}_{int(data_ai.get('toplam_tutar',0))}"
+                                        data_ai, neg_complete = render_negotiation_ui(
+                                            data_ai, user_name, model, data_key=_neg_id
+                                        )
+                                        if not neg_complete:
+                                            st.info("👆 Lütfen yukarıdaki soruyu yanıtlayın; ardından fiş sisteme eklenecek.")
+                                            st.stop()
+
+                                        # ══════════════════════════════════════════
                                         # Görseli hem lokal hem base64 olarak kaydet
                                         # base64 → bot'tan gelen WhatsApp fişlerinde de görsel görünsün
                                         yukleme_zamani = now_ist().strftime("%Y-%m-%d %H:%M:%S")
@@ -3405,9 +3895,64 @@ tick();setInterval(tick,1000);
             <p style="color:var(--text-secondary); font-size:0.9rem; margin:0;">
                 🔬 Yapay Zeka destekli anomali tespiti motoru — mükerrer fişler, hafta sonu harcamaları, 
                 istatistiksel aykırı değerler ve kritik risk skorlarını otomatik olarak tarar.
+                Artı: Temporal DNA profilleme ve kolektif benchmark analizi.
             </p>
         </div>
         """, unsafe_allow_html=True)
+
+        # ══════════════════════════════════════════════════════
+        # İNOVASYON 1 — Anomali Sayfasında: DNA Profil Özeti
+        # ══════════════════════════════════════════════════════
+        if role == "admin" and not df_full.empty:
+            with st.expander("🧬 Temporal DNA Profilleri — Kullanıcı Bazlı Davranış Analizi", expanded=False):
+                all_users_dna = {}
+                data_store_full = load_data()
+                for ukey, uinfo in USERS.items():
+                    dna = compute_temporal_dna(uinfo["name"], data_store_full)
+                    if dna:
+                        all_users_dna[uinfo["name"]] = dna
+
+                if all_users_dna:
+                    cols_dna = st.columns(len(all_users_dna))
+                    for col, (uname, dna) in zip(cols_dna, all_users_dna.items()):
+                        days_tr = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"]
+                        common_days_str = ", ".join(days_tr[d] for d in dna["common_days"][:3] if d < 7)
+                        col.markdown(f"""
+                        <div style="background:var(--bg-card,#fff);border:1px solid #e2e8f0;border-radius:12px;padding:14px;text-align:center;">
+                            <div style="font-weight:700;font-size:0.9rem;margin-bottom:8px;">🧬 {uname}</div>
+                            <div style="font-size:0.75rem;color:var(--t2,#555);line-height:1.8;">
+                                ⏰ Ort. saat: <b>{dna['avg_hour']:.0f}:00</b><br>
+                                📅 Aktif günler: <b>{common_days_str}</b><br>
+                                💰 Ort. tutar: <b>₺{dna['avg_amount']:,.0f}</b><br>
+                                📂 Ana kat.: <b>{dna['top_category']}</b><br>
+                                📊 Örneklem: <b>{dna['sample_count']} fiş</b>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("DNA profili oluşturmak için her kullanıcının en az 3 onaylı fişi olmalıdır.")
+
+        # ══════════════════════════════════════════════════════
+        # İNOVASYON 3 — Anomali Sayfasında: Benchmark İndeksi
+        # ══════════════════════════════════════════════════════
+        if role == "admin" and not df_full.empty:
+            with st.expander("📊 Kolektif Benchmark İndeksi — Firma Bazlı Ortalamalar", expanded=False):
+                _ds_bm = load_data()
+                bm_idx = build_benchmark_index(_ds_bm)
+                if bm_idx:
+                    bm_rows = []
+                    for k, v in sorted(bm_idx.items(), key=lambda x: x[1]["count"], reverse=True)[:15]:
+                        bm_rows.append({
+                            "Firma": v["display_name"],
+                            "Kategori": v["category"],
+                            "Fiş Sayısı": v["count"],
+                            "Çalışan Sayısı": v["users"],
+                            "Ort. Tutar (₺)": f"₺{v['avg']:,.0f}",
+                            "Medyan (₺)": f"₺{v['median']:,.0f}"
+                        })
+                    st.dataframe(pd.DataFrame(bm_rows), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Benchmark için en az 2 onaylı fiş olan firmalar gereklidir.")
         
         if not df_full.empty:
             anomalies = detect_anomalies(df_full if role == "admin" else df, model)
