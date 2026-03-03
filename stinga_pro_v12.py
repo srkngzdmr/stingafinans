@@ -792,7 +792,17 @@ _DEJAVU_URLS = {
 }
 
 def _find_or_dl(filename):
-    for d in ["/usr/share/fonts/truetype/dejavu", "/usr/share/fonts/dejavu", _FONT_CACHE, "."]:
+    # Önce sabit yollar + repo'nun yanındaki fonts/ klasörü
+    _script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in dir() else "."
+    search = [
+        os.path.join(_script_dir, "fonts"),          # repo'daki fonts/ klasörü
+        "/usr/share/fonts/truetype/dejavu",
+        "/usr/share/fonts/dejavu",
+        _FONT_CACHE,
+        "fonts",
+        ".",
+    ]
+    for d in search:
         p = os.path.join(d, filename)
         if os.path.exists(p): return p
     dest = os.path.join(_FONT_CACHE, filename)
