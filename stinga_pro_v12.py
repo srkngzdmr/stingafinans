@@ -775,6 +775,41 @@ def img_to_b64(img_path):
             return base64.b64encode(f.read()).decode()
     return ""
 
+# ─── TÜRKÇE FONT KAYDI (DejaVuSans — tam Unicode desteği) ─────
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+_FONT_DIRS = [
+    "/usr/share/fonts/truetype/dejavu",
+    "/usr/share/fonts/dejavu",
+    "/app/fonts",
+    os.path.dirname(os.path.abspath(__file__)),
+    ".",
+]
+def _reg_font(name, filename):
+    for d in _FONT_DIRS:
+        p = os.path.join(d, filename)
+        if os.path.exists(p):
+            try: pdfmetrics.registerFont(TTFont(name, p)); return True
+            except: pass
+    return False
+
+_fonts_ok = (
+    _reg_font("DJ",    "DejaVuSans.ttf") and
+    _reg_font("DJ-B",  "DejaVuSans-Bold.ttf") and
+    _reg_font("DJ-I",  "DejaVuSans-Oblique.ttf") and
+    _reg_font("DJ-BI", "DejaVuSans-BoldOblique.ttf")
+)
+# Font mapping: DejaVu yoksa Helvetica
+_FN  = "DJ"   if _fonts_ok else "Helvetica"
+_FNB = "DJ-B" if _fonts_ok else "Helvetica-Bold"
+_FNI = "DJ-I" if _fonts_ok else "Helvetica-Oblique"
+
+# Türkçe karakter güvenlik ağı — DejaVu yoksa ASCII'ye çevir
+_TR_MAP = str.maketrans("ıİğĞüÜşŞöÖçÇ", "iIgGuUsSOoCc")
+def _tr(t):
+    if _fonts_ok: return str(t)
+    return str(t).translate(_TR_MAP)
+
 # ─── RAPOR RENK PALETİ ────────────────────────────────────────
 _R_DARK  = rl_colors.HexColor("#1B3A5C")
 _R_GREEN = rl_colors.HexColor("#1D7A5F")
@@ -801,15 +836,15 @@ def _kdv_hesapla(tutar, kdv_field, kategori):
 def _rl_styles():
     def s(name, **kw): return ParagraphStyle(name, **kw)
     return {
-        "title":   s("T",  fontName="Helvetica-Bold",    fontSize=16, textColor=rl_colors.white, alignment=TA_CENTER, leading=20),
-        "sub":     s("ST", fontName="Helvetica",         fontSize=9,  textColor=rl_colors.HexColor("#B0C4D8"), alignment=TA_CENTER, leading=13),
-        "sec":     s("SC", fontName="Helvetica-Bold",    fontSize=10, textColor=_R_DARK, spaceBefore=12, spaceAfter=4),
-        "n":       s("N",  fontName="Helvetica",         fontSize=8.5,textColor=rl_colors.HexColor("#374151"), leading=12),
-        "sm":      s("SM", fontName="Helvetica",         fontSize=7.5,textColor=rl_colors.HexColor("#6B7280"), leading=11),
-        "ft":      s("FT", fontName="Helvetica-Oblique", fontSize=7,  textColor=rl_colors.HexColor("#6B7280"), alignment=TA_CENTER),
-        "r":       s("R",  fontName="Helvetica",         fontSize=7.5,textColor=rl_colors.HexColor("#374151"), alignment=TA_RIGHT),
-        "b":       s("B",  fontName="Helvetica-Bold",    fontSize=8.5,textColor=_R_DARK),
-        "gr":      s("GR", fontName="Helvetica-Bold",    fontSize=9,  textColor=_R_GRN),
+        "title":   s("T",  fontName=_FNB, fontSize=16, textColor=rl_colors.white, alignment=TA_CENTER, leading=20),
+        "sub":     s("ST", fontName=_FN,  fontSize=9,  textColor=rl_colors.HexColor("#B0C4D8"), alignment=TA_CENTER, leading=13),
+        "sec":     s("SC", fontName=_FNB, fontSize=10, textColor=_R_DARK, spaceBefore=12, spaceAfter=4),
+        "n":       s("N",  fontName=_FN,  fontSize=8.5,textColor=rl_colors.HexColor("#374151"), leading=12),
+        "sm":      s("SM", fontName=_FN,  fontSize=7.5,textColor=rl_colors.HexColor("#6B7280"), leading=11),
+        "ft":      s("FT", fontName=_FNI, fontSize=7,  textColor=rl_colors.HexColor("#6B7280"), alignment=TA_CENTER),
+        "r":       s("R",  fontName=_FN,  fontSize=7.5,textColor=rl_colors.HexColor("#374151"), alignment=TA_RIGHT),
+        "b":       s("B",  fontName=_FNB, fontSize=8.5,textColor=_R_DARK),
+        "gr":      s("GR", fontName=_FNB, fontSize=9,  textColor=_R_GRN),
     }
 
 def _tbl_s(hbg=None):
@@ -817,10 +852,10 @@ def _tbl_s(hbg=None):
     ts = TableStyle([
         ("BACKGROUND",    (0,0),(-1,0), hbg),
         ("TEXTCOLOR",     (0,0),(-1,0), rl_colors.white),
-        ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
+        ("FONTNAME",      (0,0),(-1,0), _FNB),
         ("FONTSIZE",      (0,0),(-1,0), 8),
         ("TOPPADDING",    (0,0),(-1,0), 6), ("BOTTOMPADDING",(0,0),(-1,0),6),
-        ("FONTNAME",      (0,1),(-1,-1), "Helvetica"),
+        ("FONTNAME",      (0,1),(-1,-1), _FN),
         ("FONTSIZE",      (0,1),(-1,-1), 7.5),
         ("TOPPADDING",    (0,1),(-1,-1), 4), ("BOTTOMPADDING",(0,1),(-1,-1),4),
         ("ROWBACKGROUNDS",(0,1),(-1,-1), [rl_colors.white, _R_LIGHT]),
@@ -895,27 +930,27 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         # ── ÖZET KARTLAR ──
         def card(lbl, br, net, kdv, bg):
             return [
-                _ph(f"<b>{lbl}</b>", ParagraphStyle("cl",fontName="Helvetica-Bold",fontSize=7.5,
+                _ph(f"<b>{lbl}</b>", ParagraphStyle("cl",fontName=_FNB,fontSize=7.5,
                     textColor=rl_colors.HexColor("#6B7280"),alignment=TA_CENTER)),
-                _ph(f"<b>{fmt(br)}</b>", ParagraphStyle("cv",fontName="Helvetica-Bold",fontSize=11,
+                _ph(f"<b>{fmt(br)}</b>", ParagraphStyle("cv",fontName=_FNB,fontSize=11,
                     textColor=_R_DARK,alignment=TA_CENTER,spaceBefore=2)),
-                _ph(f"KDV Hariç: {fmt(net)}", ParagraphStyle("cs",fontName="Helvetica",fontSize=7,
+                _ph(f"KDV Hariç: {fmt(net)}", ParagraphStyle("cs",fontName=_FN,fontSize=7,
                     textColor=rl_colors.HexColor("#6B7280"),alignment=TA_CENTER)),
-                _ph(f"KDV: {fmt(kdv)}", ParagraphStyle("ck",fontName="Helvetica",fontSize=7,
+                _ph(f"KDV: {fmt(kdv)}", ParagraphStyle("ck",fontName=_FN,fontSize=7,
                     textColor=_R_GRN,alignment=TA_CENTER)),
             ]
         onay_sayi = len(onay_df)
         cards = Table([[
             card("TOPLAM GİDER (BRÜT)", tot_b, tot_n, tot_k, _R_LIGHT),
             card("ONAYLANAN GİDER", onay_b, onay_n, onay_k, rl_colors.HexColor("#ECFDF5")),
-            [_ph("<b>KDV İADE HAKKI</b>", ParagraphStyle("cl",fontName="Helvetica-Bold",fontSize=7.5,
+            [_ph("<b>KDV İADE HAKKI</b>", ParagraphStyle("cl",fontName=_FNB,fontSize=7.5,
                  textColor=rl_colors.HexColor("#6B7280"),alignment=TA_CENTER)),
-             _ph(f"<b>{fmt(onay_k)}</b>", ParagraphStyle("cv",fontName="Helvetica-Bold",fontSize=14,
+             _ph(f"<b>{fmt(onay_k)}</b>", ParagraphStyle("cv",fontName=_FNB,fontSize=14,
                  textColor=_R_GRN,alignment=TA_CENTER,spaceBefore=2)),
-             _ph(f"{onay_sayi} onaylı fiş", ParagraphStyle("cs",fontName="Helvetica",fontSize=7,
+             _ph(f"{onay_sayi} onaylı fiş", ParagraphStyle("cs",fontName=_FN,fontSize=7,
                  textColor=rl_colors.HexColor("#6B7280"),alignment=TA_CENTER)),
              _ph(f"Oran: %{(onay_k/onay_b*100) if onay_b else 0:.1f}",
-                 ParagraphStyle("ck",fontName="Helvetica",fontSize=7,textColor=_R_GRN,alignment=TA_CENTER))],
+                 ParagraphStyle("ck",fontName=_FN,fontSize=7,textColor=_R_GRN,alignment=TA_CENTER))],
         ]], colWidths=[W/3]*3)
         cards.setStyle(TableStyle([
             ("BACKGROUND",(0,0),(0,0),_R_LIGHT),
@@ -932,10 +967,10 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         story.append(HRFlowable(width=W, thickness=1, color=_R_GREEN, spaceAfter=6))
         if c_kat:
             grp = df.groupby(c_kat).agg(Fis=("_t","count"),Brut=("_t","sum"),Net=("_n","sum"),KDV=("_k","sum")).reset_index().sort_values("Brut",ascending=False)
-            def ph(t): return _ph(f"<b>{t}</b>", ParagraphStyle("h",fontName="Helvetica-Bold",fontSize=8,textColor=rl_colors.white))
+            def ph(t): return _ph(f"<b>{t}</b>", ParagraphStyle("h",fontName=_FNB,fontSize=8,textColor=rl_colors.white))
             def pr(t,al=TA_LEFT,bold=False,col=None):
                 c2 = col or rl_colors.HexColor("#374151")
-                fn = "Helvetica-Bold" if bold else "Helvetica"
+                fn = _FNB if bold else _FN
                 return _ph(t, ParagraphStyle("d",fontName=fn,fontSize=7.5,textColor=c2,alignment=al))
             kat_data = [[ph("KATEGORİ"),ph("FİŞ"),ph("BRÜT"),ph("KDV HARİÇ"),ph("KDV"),ph("ORAN")]]
             for _,r in grp.iterrows():
@@ -962,9 +997,9 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
             story.append(_ph("PERSONEL BAZLI GİDER DAĞILIMI", ST["sec"]))
             story.append(HRFlowable(width=W,thickness=1,color=_R_GREEN,spaceAfter=6))
             pgrp = df.groupby(c_per).agg(Fis=("_t","count"),Brut=("_t","sum"),Net=("_n","sum"),KDV=("_k","sum")).reset_index().sort_values("Brut",ascending=False)
-            def phh(t): return _ph(f"<b>{t}</b>",ParagraphStyle("ph",fontName="Helvetica-Bold",fontSize=8,textColor=rl_colors.white))
+            def phh(t): return _ph(f"<b>{t}</b>",ParagraphStyle("ph",fontName=_FNB,fontSize=8,textColor=rl_colors.white))
             def prd(t,al=TA_LEFT,bold=False,col=None):
-                c2=col or rl_colors.HexColor("#374151"); fn="Helvetica-Bold" if bold else "Helvetica"
+                c2=col or rl_colors.HexColor("#374151"); fn=_FNB if bold else _FN
                 return _ph(t,ParagraphStyle("pd",fontName=fn,fontSize=7.5,textColor=c2,alignment=al))
             pd_data=[[phh("PERSONEL"),phh("FİŞ"),phh("TOPLAM BRÜT"),phh("KDV HARİÇ"),phh("KDV TUTARI")]]
             for _,r in pgrp.iterrows():
@@ -977,13 +1012,13 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         # ── DETAY FİŞ TABLOSU ──
         story.append(_ph("GİDER FİŞ DETAY LİSTESİ", ST["sec"]))
         story.append(HRFlowable(width=W,thickness=1,color=_R_GREEN,spaceAfter=6))
-        def dh(t): return _ph(f"<b>{t}</b>",ParagraphStyle("dh",fontName="Helvetica-Bold",fontSize=7.5,textColor=rl_colors.white,alignment=TA_CENTER))
+        def dh(t): return _ph(f"<b>{t}</b>",ParagraphStyle("dh",fontName=_FNB,fontSize=7.5,textColor=rl_colors.white,alignment=TA_CENTER))
         det=[[dh("TARİH"),dh("PERSONEL"),dh("FİRMA"),dh("KATEGORİ"),dh("BRÜT"),dh("KDV HARİÇ"),dh("KDV"),dh("ÖDEME"),dh("DURUM")]]
         for _,row in df.iterrows():
             dur=v(row,c_dur)
             dc=_R_GRN if ("Onay" in dur and "Bekl" not in dur) else (_R_RED if "Red" in dur else _R_ORN)
             def dd(t,al=TA_LEFT,c=None,bold=False):
-                return _ph(t,ParagraphStyle("dd",fontName="Helvetica-Bold" if bold else "Helvetica",fontSize=7.5,
+                return _ph(t,ParagraphStyle("dd",fontName=_FNB if bold else _FN,fontSize=7.5,
                     textColor=c or rl_colors.HexColor("#374151"),alignment=al))
             det.append([dd(v(row,c_tar)),dd(v(row,c_per)),dd(v(row,c_fir)),dd(v(row,c_kat).title()),
                 dd(fmt(row["_t"]),TA_RIGHT),dd(fmt(row["_n"]),TA_RIGHT),
@@ -1000,7 +1035,7 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
             _ph("KDV İADE ÖZETİ", ST["sec"]),
         ]))
         def kd(l,v2,bold=False,vcol=None):
-            fn="Helvetica-Bold" if bold else "Helvetica"
+            fn=_FNB if bold else _FN
             sz=12 if bold else 9
             return [
                 _ph(l,ParagraphStyle("kl",fontName=fn,fontSize=sz,textColor=_R_DARK)),
@@ -1024,9 +1059,7 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         story.append(Spacer(1,0.5*cm))
         story.append(HRFlowable(width=W,thickness=0.5,color=_R_LINE))
         story.append(Spacer(1,0.2*cm))
-        story.append(_ph("Bu rapor Stinga Pro v15.0 Mali Yönetim Sistemi tarafından otomatik olarak üretilmiştir. "
-            "KDV hesaplamaları fiş verileri ve standart KDV oranları baz alınarak yapılmıştır. "
-            "Resmi muhasebe işlemleri için yetkili mali müşavirinize danışınız.", ST["ft"]))
+        story.append(_ph(_tr("Bu rapor Stinga Pro v15.0 Mali Yonetim Sistemi tarafindan otomatik uretilmistir. KDV hesaplamalari fis verileri ve standart KDV oranlari baz alinarak yapilmistir. Resmi muhasebe islemleri icin yetkili mali musavirinize danisiniz."), ST["ft"]))
 
         doc.build(story)
         return buf.getvalue()
