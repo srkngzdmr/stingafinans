@@ -2730,220 +2730,276 @@ tick();setInterval(tick,1000);
         tab_fis, tab_manuel = st.tabs(["📸 Fiş Tara (AI)", "✏️ Manuel Giriş"])
 
         with tab_fis:
-         col_form, col_list = st.columns([1.2, 1])
-        
-        with col_form:
-            st.markdown('<div class="ultra-card">', unsafe_allow_html=True)
-            st.markdown("### 📸 Fiş Yükle & AI Analiz")
+            col_form, col_list = st.columns([1.2, 1])
+
+            with col_form:
+                st.markdown('<div class="ultra-card">', unsafe_allow_html=True)
+                st.markdown("### 📸 Fiş Yükle & AI Analiz")
             
-            with st.form("pro_entry", clear_on_submit=True):
-                f = st.file_uploader("Fiş / Fatura Fotoğrafı", type=['jpg','png','jpeg','webp'],
-                                     help="Net, iyi aydınlatılmış fotoğraflar için en iyi sonucu alırsınız")
+                with st.form("pro_entry", clear_on_submit=True):
+                    f = st.file_uploader("Fiş / Fatura Fotoğrafı", type=['jpg','png','jpeg','webp'],
+                                         help="Net, iyi aydınlatılmış fotoğraflar için en iyi sonucu alırsınız")
                 
-                col_p, col_o = st.columns(2)
-                with col_p:
-                    proje = st.selectbox("Proje", ["Maden Sahası", "Aktif Karbon", "Enerji Hatları", "Genel Merkez"])
-                with col_o:
-                    oncelik = st.selectbox("Öncelik", ["Normal", "Acil", "Düşük"])
+                    col_p, col_o = st.columns(2)
+                    with col_p:
+                        proje = st.selectbox("Proje", ["Maden Sahası", "Aktif Karbon", "Enerji Hatları", "Genel Merkez"])
+                    with col_o:
+                        oncelik = st.selectbox("Öncelik", ["Normal", "Acil", "Düşük"])
                 
-                notlar = st.text_area("Ek Not (isteğe bağlı)", height=80, placeholder="Harcamayla ilgili açıklama...")
+                    notlar = st.text_area("Ek Not (isteğe bağlı)", height=80, placeholder="Harcamayla ilgili açıklama...")
                 
-                submitted = st.form_submit_button("🚀 AI ile Tara ve Gönder", use_container_width=True)
+                    submitted = st.form_submit_button("🚀 AI ile Tara ve Gönder", use_container_width=True)
                 
-                if submitted and f:
-                    with st.spinner("🤖 Gemini AI fişi analiz ediyor..."):
-                        progress = st.progress(0)
-                        for i in range(70):
-                            time.sleep(0.01)
-                            progress.progress(i + 1)
+                    if submitted and f:
+                        with st.spinner("🤖 Gemini AI fişi analiz ediyor..."):
+                            progress = st.progress(0)
+                            for i in range(70):
+                                time.sleep(0.01)
+                                progress.progress(i + 1)
                         
-                        img = Image.open(f)
-                        res_raw = analyze_receipt_pro(img, model)
-                        progress.progress(100)
+                            img = Image.open(f)
+                            res_raw = analyze_receipt_pro(img, model)
+                            progress.progress(100)
                         
-                        if res_raw == "ANAHTAR_DEGISIMI":
-                            st.warning("API kotası doldu, yedek anahtara geçildi. Tekrar deneyin.")
-                        elif res_raw.startswith("HATA"):
-                            st.error(f"Hata: {res_raw}")
-                        else:
-                            data_ai = extract_json(res_raw)
-                            if data_ai:
-                                # ── Mükerrer Fiş Kontrolü (cache bypass) ──
-                                st.cache_data.clear()
-                                _fresh = load_data()
-                                firma_yeni = str(data_ai.get("firma","")).strip().lower()
-                                tutar_yeni = float(data_ai.get("toplam_tutar",0))
-                                tarih_yeni = str(data_ai.get("tarih",""))
-                                dup_blok = None
-                                dup_uyar = None
-                                for e in _fresh.get("expenses",[]):
-                                    f_eski = str(e.get("Firma","")).strip().lower()
-                                    t_eski = float(e.get("Tutar",0))
-                                    d_eski = str(e.get("Tarih",""))
-                                    t_esit = abs(t_eski - tutar_yeni) < 1.0
-                                    f_esit = f_eski == firma_yeni or (len(firma_yeni)>3 and (firma_yeni in f_eski or f_eski in firma_yeni))
-                                    if f_esit and t_esit:
-                                        if d_eski == tarih_yeni:
-                                            dup_blok = e; break
-                                        else:
-                                            dup_uyar = e
-                                if dup_blok:
-                                    kim = dup_blok.get("Kullanıcı","?")
-                                    mesaj = f"Bu fişi **sen** daha önce yükledin." if kim==user_name else f"Bu fişi **{kim}** yüklemiş."
-                                    st.error(f"⛔ MÜKERRER FİŞ! {mesaj}\n\nFirma: {dup_blok.get('Firma')} | ₺{float(dup_blok.get('Tutar',0)):,.0f} | {dup_blok.get('Tarih')}")
-                                elif dup_uyar:
-                                    st.warning(f"⚠️ Benzer fiş mevcut: {dup_uyar.get('Firma')} ₺{float(dup_uyar.get('Tutar',0)):,.0f} — {dup_uyar.get('Kullanıcı')} tarafından {dup_uyar.get('Tarih')} tarihinde yüklenmiş.")
-
-                                if not dup_blok:
-                                    # ── Tarih Doğrulama (Python tarafında) ──
-                                    tarih_str = data_ai.get("tarih", now_ist().strftime("%Y-%m-%d"))
-                                    try:
-                                        tarih_dt = datetime.strptime(tarih_str, "%Y-%m-%d")
-                                        bugun_dt = now_ist()
-                                        if tarih_dt > bugun_dt:
-                                            # AI yanlış tarih verdiyse bugünün tarihine çek
-                                            tarih_str = bugun_dt.strftime("%Y-%m-%d")
-                                            data_ai["tarih"] = tarih_str
-                                            st.info("ℹ️ Fiş tarihi gelecek olarak tespit edildi, bugünün tarihi kullanıldı.")
-                                    except:
-                                        tarih_str = now_ist().strftime("%Y-%m-%d")
-                                        data_ai["tarih"] = tarih_str
-
-                                    # ── İş Kuralı Motoru Uygula ──
-                                    data_ai = apply_business_rules(data_ai, _fresh, user_name)
-                                    uyarilar = data_ai.pop("_uyarilar", [])
-
-                                    # Görseli hem lokal hem base64 olarak kaydet
-                                    # base64 → bot'tan gelen WhatsApp fişlerinde de görsel görünsün
-                                    yukleme_zamani = now_ist().strftime("%Y-%m-%d %H:%M:%S")
-                                    path = f"arsiv/{now_ist().strftime('%Y_%m')}"
-                                    os.makedirs(path, exist_ok=True)
-                                    f_path = os.path.join(path, f"{now_ist().strftime('%H%M%S')}_{f.name}")
-                                    img_bytes = f.getbuffer()
-                                    with open(f_path, "wb") as fp:
-                                        fp.write(img_bytes)
-                                    # base64 — DB'ye gömülü, server bağımsız görüntüleme
-                                    gorsel_b64 = base64.b64encode(img_bytes).decode("utf-8")
-                                    # mime type
-                                    ext = f.name.rsplit(".", 1)[-1].lower()
-                                    mime = {"jpg":"image/jpeg","jpeg":"image/jpeg","png":"image/png","webp":"image/webp"}.get(ext,"image/jpeg")
-                                    gorsel_data_uri = f"data:{mime};base64,{gorsel_b64}"
-
-                                    new_e = {
-                                        "ID": now_ist().strftime("%Y%m%d%H%M%S"),
-                                        "Tarih": data_ai.get("tarih", now_ist().strftime("%Y-%m-%d")),
-                                        "Saat": data_ai.get("saat", ""),
-                                        "Yukleme_Zamani": yukleme_zamani,
-                                        "Kullanıcı": user_name,
-                                        "Rol": user_info.get("role", "user"),
-                                        "Firma": data_ai.get("firma", "Bilinmiyor"),
-                                        "Kategori": data_ai.get("kategori", "Diğer"),
-                                        "Tutar": float(data_ai.get("toplam_tutar", 0)),
-                                        "KDV": float(data_ai.get("kdv_tutari", 0)),
-                                        "Odeme_Turu": data_ai.get("odeme_turu", "Bilinmiyor"),
-                                        "Kalemler": data_ai.get("kalemler", []),
-                                        "Kisisel_Giderler": data_ai.get("kisisel_giderler", []),
-                                        "Durum": "Onay Bekliyor",
-                                        "Dosya_Yolu": f_path,
-                                        "Gorsel_B64": gorsel_data_uri,
-                                        "Risk_Skoru": int(data_ai.get("risk_skoru", 0)),
-                                        "AI_Audit": data_ai.get("audit_ozeti", ""),
-                                        "AI_Anomali": data_ai.get("anomali", False),
-                                        "AI_Anomali_Aciklama": data_ai.get("anomali_aciklamasi", ""),
-                                        "Proje": proje,
-                                        "Oncelik": oncelik,
-                                        "Notlar": notlar
-                                    }
-                                    
-                                    # ── Railway API'ye gönder ──────────────────
-                                    with st.spinner("Railway'e gönderiliyor..."):
-                                        ok = api_add_expense(new_e)
-                                    
-                                    if not ok:
-                                        st.error("❌ Fiş API'ye gönderilemedi. Railway bağlantısını kontrol edin.")
-                                    else:
-                                        # Show result
-                                        risk = int(data_ai.get("risk_skoru", 0))
-                                        anomali = data_ai.get("anomali", False)
-                                        
-                                        if role != "admin":
-                                            st.success("✅ Fiş sisteme eklendi! +50 XP · ⏳ Onay için yönetici bildirildi.")
-                                        else:
-                                            st.success("✅ Fiş başarıyla işlendi! +50 XP kazandın!")
-                                    
-                                    # İş kuralı uyarıları
-                                    for uyari in uyarilar:
-                                        st.warning(uyari)
-                                    
-                                    # Result card
-                                    st.markdown(f"""
-                                    <div class="ultra-card">
-                                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                                            <div>
-                                                <div style="font-size:1.3rem; font-weight:700; color:var(--text-primary);">
-                                                    {data_ai.get('firma','?')}
-                                                </div>
-                                                <div style="font-size:2rem; font-family:'Bebas Neue'; color:var(--accent-blue); margin:4px 0;">
-                                                    ₺{float(data_ai.get('toplam_tutar',0)):,.2f}
-                                                </div>
-                                                <div style="font-size:0.8rem; color:var(--text-secondary);">
-                                                    {data_ai.get('kategori','?')} · {data_ai.get('odeme_turu','?')} · {data_ai.get('tarih','?')}
-                                                </div>
-                                            </div>
-                                            <div style="text-align:right;">
-                                                {get_risk_html(risk)}
-                                                {"<br><span style='color:#dc2626; font-size:0.75rem; margin-top:4px; display:block;'>⚠️ ANOMALİ TESPİT EDİLDİ</span>" if anomali else ""}
-                                            </div>
-                                        </div>
-                                        <div class="ai-bubble" style="margin-top:12px;">
-                                            <p style="margin:0; font-size:0.85rem; color:var(--text-secondary);">
-                                                {data_ai.get('audit_ozeti','Analiz tamamlandı.')}
-                                            </p>
-                                        </div>
-                                        {"<div class='anomaly-alert' style='margin-top:8px;'><strong style='color:#dc2626;'>🚨 " + str(data_ai.get('anomali_aciklamasi','')) + "</strong></div>" if anomali and data_ai.get('anomali_aciklamasi') else ""}
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                                    
-                                    st.rerun()
+                            if res_raw == "ANAHTAR_DEGISIMI":
+                                st.warning("API kotası doldu, yedek anahtara geçildi. Tekrar deneyin.")
+                            elif res_raw.startswith("HATA"):
+                                st.error(f"Hata: {res_raw}")
                             else:
-                                st.error("AI fişi okuyamadı. Daha net bir fotoğraf deneyin.")
-                elif submitted and not f:
-                    st.warning("Lütfen bir fiş fotoğrafı yükleyin.")
+                                data_ai = extract_json(res_raw)
+                                if data_ai:
+                                    # ── Mükerrer Fiş Kontrolü (cache bypass) ──
+                                    st.cache_data.clear()
+                                    _fresh = load_data()
+                                    firma_yeni = str(data_ai.get("firma","")).strip().lower()
+                                    tutar_yeni = float(data_ai.get("toplam_tutar",0))
+                                    tarih_yeni = str(data_ai.get("tarih",""))
+                                    dup_blok = None
+                                    dup_uyar = None
+                                    for e in _fresh.get("expenses",[]):
+                                        f_eski = str(e.get("Firma","")).strip().lower()
+                                        t_eski = float(e.get("Tutar",0))
+                                        d_eski = str(e.get("Tarih",""))
+                                        t_esit = abs(t_eski - tutar_yeni) < 1.0
+                                        f_esit = f_eski == firma_yeni or (len(firma_yeni)>3 and (firma_yeni in f_eski or f_eski in firma_yeni))
+                                        if f_esit and t_esit:
+                                            if d_eski == tarih_yeni:
+                                                dup_blok = e; break
+                                            else:
+                                                dup_uyar = e
+                                    if dup_blok:
+                                        kim = dup_blok.get("Kullanıcı","?")
+                                        mesaj = f"Bu fişi **sen** daha önce yükledin." if kim==user_name else f"Bu fişi **{kim}** yüklemiş."
+                                        st.error(f"⛔ MÜKERRER FİŞ! {mesaj}\n\nFirma: {dup_blok.get('Firma')} | ₺{float(dup_blok.get('Tutar',0)):,.0f} | {dup_blok.get('Tarih')}")
+                                    elif dup_uyar:
+                                        st.warning(f"⚠️ Benzer fiş mevcut: {dup_uyar.get('Firma')} ₺{float(dup_uyar.get('Tutar',0)):,.0f} — {dup_uyar.get('Kullanıcı')} tarafından {dup_uyar.get('Tarih')} tarihinde yüklenmiş.")
+
+                                    if not dup_blok:
+                                        # ── Tarih Doğrulama (Python tarafında) ──
+                                        tarih_str = data_ai.get("tarih", now_ist().strftime("%Y-%m-%d"))
+                                        try:
+                                            tarih_dt = datetime.strptime(tarih_str, "%Y-%m-%d")
+                                            bugun_dt = now_ist()
+                                            if tarih_dt > bugun_dt:
+                                                # AI yanlış tarih verdiyse bugünün tarihine çek
+                                                tarih_str = bugun_dt.strftime("%Y-%m-%d")
+                                                data_ai["tarih"] = tarih_str
+                                                st.info("ℹ️ Fiş tarihi gelecek olarak tespit edildi, bugünün tarihi kullanıldı.")
+                                        except:
+                                            tarih_str = now_ist().strftime("%Y-%m-%d")
+                                            data_ai["tarih"] = tarih_str
+
+                                        # ── İş Kuralı Motoru Uygula ──
+                                        data_ai = apply_business_rules(data_ai, _fresh, user_name)
+                                        uyarilar = data_ai.pop("_uyarilar", [])
+
+                                        # Görseli hem lokal hem base64 olarak kaydet
+                                        # base64 → bot'tan gelen WhatsApp fişlerinde de görsel görünsün
+                                        yukleme_zamani = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+                                        path = f"arsiv/{now_ist().strftime('%Y_%m')}"
+                                        os.makedirs(path, exist_ok=True)
+                                        f_path = os.path.join(path, f"{now_ist().strftime('%H%M%S')}_{f.name}")
+                                        img_bytes = f.getbuffer()
+                                        with open(f_path, "wb") as fp:
+                                            fp.write(img_bytes)
+                                        # base64 — DB'ye gömülü, server bağımsız görüntüleme
+                                        gorsel_b64 = base64.b64encode(img_bytes).decode("utf-8")
+                                        # mime type
+                                        ext = f.name.rsplit(".", 1)[-1].lower()
+                                        mime = {"jpg":"image/jpeg","jpeg":"image/jpeg","png":"image/png","webp":"image/webp"}.get(ext,"image/jpeg")
+                                        gorsel_data_uri = f"data:{mime};base64,{gorsel_b64}"
+
+                                        new_e = {
+                                            "ID": now_ist().strftime("%Y%m%d%H%M%S"),
+                                            "Tarih": data_ai.get("tarih", now_ist().strftime("%Y-%m-%d")),
+                                            "Saat": data_ai.get("saat", ""),
+                                            "Yukleme_Zamani": yukleme_zamani,
+                                            "Kullanıcı": user_name,
+                                            "Rol": user_info.get("role", "user"),
+                                            "Firma": data_ai.get("firma", "Bilinmiyor"),
+                                            "Kategori": data_ai.get("kategori", "Diğer"),
+                                            "Tutar": float(data_ai.get("toplam_tutar", 0)),
+                                            "KDV": float(data_ai.get("kdv_tutari", 0)),
+                                            "Odeme_Turu": data_ai.get("odeme_turu", "Bilinmiyor"),
+                                            "Kalemler": data_ai.get("kalemler", []),
+                                            "Kisisel_Giderler": data_ai.get("kisisel_giderler", []),
+                                            "Durum": "Onay Bekliyor",
+                                            "Dosya_Yolu": f_path,
+                                            "Gorsel_B64": gorsel_data_uri,
+                                            "Risk_Skoru": int(data_ai.get("risk_skoru", 0)),
+                                            "AI_Audit": data_ai.get("audit_ozeti", ""),
+                                            "AI_Anomali": data_ai.get("anomali", False),
+                                            "AI_Anomali_Aciklama": data_ai.get("anomali_aciklamasi", ""),
+                                            "Proje": proje,
+                                            "Oncelik": oncelik,
+                                            "Notlar": notlar
+                                        }
+                                    
+                                        # ── Railway API'ye gönder ──────────────────
+                                        with st.spinner("Railway'e gönderiliyor..."):
+                                            ok = api_add_expense(new_e)
+                                    
+                                        if not ok:
+                                            st.error("❌ Fiş API'ye gönderilemedi. Railway bağlantısını kontrol edin.")
+                                        else:
+                                            # Show result
+                                            risk = int(data_ai.get("risk_skoru", 0))
+                                            anomali = data_ai.get("anomali", False)
+                                        
+                                            if role != "admin":
+                                                st.success("✅ Fiş sisteme eklendi! +50 XP · ⏳ Onay için yönetici bildirildi.")
+                                            else:
+                                                st.success("✅ Fiş başarıyla işlendi! +50 XP kazandın!")
+                                    
+                                        # İş kuralı uyarıları
+                                        for uyari in uyarilar:
+                                            st.warning(uyari)
+                                    
+                                        # Result card
+                                        st.markdown(f"""
+                                        <div class="ultra-card">
+                                            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                                <div>
+                                                    <div style="font-size:1.3rem; font-weight:700; color:var(--text-primary);">
+                                                        {data_ai.get('firma','?')}
+                                                    </div>
+                                                    <div style="font-size:2rem; font-family:'Bebas Neue'; color:var(--accent-blue); margin:4px 0;">
+                                                        ₺{float(data_ai.get('toplam_tutar',0)):,.2f}
+                                                    </div>
+                                                    <div style="font-size:0.8rem; color:var(--text-secondary);">
+                                                        {data_ai.get('kategori','?')} · {data_ai.get('odeme_turu','?')} · {data_ai.get('tarih','?')}
+                                                    </div>
+                                                </div>
+                                                <div style="text-align:right;">
+                                                    {get_risk_html(risk)}
+                                                    {"<br><span style='color:#dc2626; font-size:0.75rem; margin-top:4px; display:block;'>⚠️ ANOMALİ TESPİT EDİLDİ</span>" if anomali else ""}
+                                                </div>
+                                            </div>
+                                            <div class="ai-bubble" style="margin-top:12px;">
+                                                <p style="margin:0; font-size:0.85rem; color:var(--text-secondary);">
+                                                    {data_ai.get('audit_ozeti','Analiz tamamlandı.')}
+                                                </p>
+                                            </div>
+                                            {"<div class='anomaly-alert' style='margin-top:8px;'><strong style='color:#dc2626;'>🚨 " + str(data_ai.get('anomali_aciklamasi','')) + "</strong></div>" if anomali and data_ai.get('anomali_aciklamasi') else ""}
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                    
+                                        st.rerun()
+                                else:
+                                    st.error("AI fişi okuyamadı. Daha net bir fotoğraf deneyin.")
+                    elif submitted and not f:
+                        st.warning("Lütfen bir fiş fotoğrafı yükleyin.")
             
-            st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
         
-        with col_list:
-            st.markdown("### 📋 Harcamalarım")
-            my_exp = df[df['Kullanıcı'] == user_name] if not df.empty and 'Kullanıcı' in df.columns else pd.DataFrame()
+            with col_list:
+                st.markdown("### 📋 Harcamalarım")
+                my_exp = df[df['Kullanıcı'] == user_name] if not df.empty and 'Kullanıcı' in df.columns else pd.DataFrame()
             
-            if not my_exp.empty:
-                for _, row in my_exp.sort_values('Tarih', ascending=False).head(8).iterrows():
-                    risk = row.get('Risk_Skoru', 0)
-                    st.markdown(f"""
-                    <div class="ultra-card" style="padding:16px; margin:6px 0;">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                            <div style="flex:1;">
-                                <div style="font-weight:600; font-size:0.9rem; color:var(--text-primary);">{row.get('Firma','?')}</div>
-                                <div style="font-size:0.75rem; color:var(--text-muted); margin:2px 0;">{row.get('Tarih','?')} · {row.get('Proje','?')}</div>
-                                <div style="font-size:0.7rem; color:var(--text-secondary); margin-top:4px; font-style:italic;">
-                                    {clean_audit(row.get('AI_Audit',''))[:80]}{'...' if len(clean_audit(row.get('AI_Audit',''))) > 80 else ''}
+                if not my_exp.empty:
+                    for _, row in my_exp.sort_values('Tarih', ascending=False).head(8).iterrows():
+                        risk = row.get('Risk_Skoru', 0)
+                        st.markdown(f"""
+                        <div class="ultra-card" style="padding:16px; margin:6px 0;">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                <div style="flex:1;">
+                                    <div style="font-weight:600; font-size:0.9rem; color:var(--text-primary);">{row.get('Firma','?')}</div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted); margin:2px 0;">{row.get('Tarih','?')} · {row.get('Proje','?')}</div>
+                                    <div style="font-size:0.7rem; color:var(--text-secondary); margin-top:4px; font-style:italic;">
+                                        {clean_audit(row.get('AI_Audit',''))[:80]}{'...' if len(clean_audit(row.get('AI_Audit',''))) > 80 else ''}
+                                    </div>
+                                </div>
+                                <div style="text-align:right; margin-left:12px;">
+                                    <div style="font-family:'Bebas Neue'; font-size:1.3rem; color:var(--accent-blue);">₺{float(row.get('Tutar',0)):,.0f}</div>
+                                    {get_status_html(row.get('Durum','?'))}
+                                    <div style="margin-top:4px;">{get_risk_html(risk)}</div>
                                 </div>
                             </div>
-                            <div style="text-align:right; margin-left:12px;">
-                                <div style="font-family:'Bebas Neue'; font-size:1.3rem; color:var(--accent-blue);">₺{float(row.get('Tutar',0)):,.0f}</div>
-                                {get_status_html(row.get('Durum','?'))}
-                                <div style="margin-top:4px;">{get_risk_html(risk)}</div>
-                            </div>
                         </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <div>Henüz harcama kaydın yok.</div>
                     </div>
                     """, unsafe_allow_html=True)
-            else:
-                st.markdown("""
-                <div class="empty-state">
-                    <div class="empty-icon">📭</div>
-                    <div>Henüz harcama kaydın yok.</div>
-                </div>
-                """, unsafe_allow_html=True)
+
+        with tab_manuel:
+            st.markdown("""
+            <div style='padding:12px 0 4px;'>
+              <div style='font-size:0.85rem;color:#7a96a4;margin-bottom:16px;'>
+                Fiş olmadan manuel harcama girişi. Onaya gönderilir.
+              </div>
+            </div>""", unsafe_allow_html=True)
+            with st.form("manuel_giris", clear_on_submit=True):
+                mc1, mc2 = st.columns(2)
+                with mc1:
+                    m_firma    = st.text_input("Firma / Açıklama", placeholder="Örn: Akaryakıt, Market...")
+                    m_tutar    = st.number_input("Tutar (₺)", min_value=0.01, step=0.01, format="%.2f")
+                    m_kdv      = st.selectbox("KDV Oranı", ["0","1","8","10","20"], index=4)
+                with mc2:
+                    m_kategori = st.selectbox("Kategori", [
+                        "Akaryakıt","Market / Gıda","Kırtasiye","Elektrik / Donanım",
+                        "Ulaşım","Konaklama","Yemek","Diğer"])
+                    m_proje    = st.selectbox("Proje", ["Maden Sahası","Aktif Karbon","Enerji Hatları","Genel Merkez"])
+                    m_odeme    = st.radio("Ödeme Yöntemi", ["💳 Kredi Kartı", "💵 Nakit"], horizontal=True)
+                m_tarih = st.date_input("Tarih", value=now_ist().date())
+                m_notlar = st.text_area("Açıklama / Not", height=70, placeholder="Harcama hakkında kısa not...")
+                m_submit = st.form_submit_button("✅ Kaydet ve Onaya Gönder", use_container_width=True)
+                if m_submit:
+                    if not m_firma.strip():
+                        st.error("⚠️ Firma / Açıklama boş bırakılamaz.")
+                    elif m_tutar <= 0:
+                        st.error("⚠️ Tutar sıfırdan büyük olmalı.")
+                    else:
+                        kdv_oran  = int(m_kdv) / 100
+                        kdv_tutar = round(m_tutar * kdv_oran / (1 + kdv_oran), 2) if kdv_oran > 0 else 0.0
+                        net_tutar = round(m_tutar - kdv_tutar, 2)
+                        expense = {
+                            "ID":            now_ist().strftime("%Y%m%d%H%M%S") + "_M",
+                            "Tarih":         str(m_tarih),
+                            "Firma":         m_firma.strip(),
+                            "Kategori":      m_kategori,
+                            "Tutar":         float(m_tutar),
+                            "KDV_Orani":     int(m_kdv),
+                            "KDV_Tutari":    kdv_tutar,
+                            "Net_Tutar":     net_tutar,
+                            "Odeme_Yontemi": "Kredi Kartı" if "Kredi" in m_odeme else "Nakit",
+                            "Proje":         m_proje,
+                            "Notlar":        m_notlar.strip(),
+                            "Kullanıcı":     user_name,
+                            "Durum":         "Onay Bekliyor",
+                            "Risk_Skoru":    10,
+                            "Manuel":        True,
+                            "YuklemeZamani": now_ist().strftime("%Y-%m-%d %H:%M:%S")
+                        }
+                        with st.spinner("Kaydediliyor..."):
+                            if api_add_expense(expense):
+                                st.success(f"✅ **{m_firma}** — ₺{m_tutar:,.2f} başarıyla kaydedildi. Onay bekleniyor.")
+                                st.cache_data.clear()
+                            else:
+                                st.error("❌ API hatası, lütfen tekrar deneyin.")
 
     # ══════════════════════════════════════════════════════════
     # SAYFA: ONAY MERKEZİ (sadece admin)
