@@ -719,7 +719,11 @@ def compute_wallet(user_nm: str, data_store: dict) -> float:
     Negatif olabilir (şirkete borç).
     """
     def _nm(a, b):
-        a, b = str(a).lower().strip(), str(b).lower().strip()
+        """İsim eşleştirme: tam eşit, ya da biri diğerini içeriyor (büyük/küçük harf yok sayılır)."""
+        a = str(a).lower().strip()
+        b = str(b).lower().strip()
+        if not a or not b:
+            return False
         return a == b or a in b or b in a
 
     ledger    = data_store.get("ledger", [])
@@ -746,6 +750,48 @@ def compute_wallet(user_nm: str, data_store: dict) -> float:
     )
 
     return avans - harcama  # Negatif = şirkete borç
+
+
+def get_user_wallet_balance(user_nm: str, data_store: dict) -> float:
+    """
+    Kullanıcının güncel harcırah bakiyesini döndürür.
+    1. wallets dict'inde ara (API'den direkt gelen değer) — hem isim hem username dener
+    2. Ledger tabanlı compute_wallet ile hesapla
+    Birden fazla varyasyonla eşleştirme yapar (Serkan, serkan, Serkan Güzdemir vb.)
+    """
+    def _nm(a, b):
+        a = str(a).lower().strip()
+        b = str(b).lower().strip()
+        if not a or not b:
+            return False
+        return a == b or a in b or b in a
+
+    # Aranacak isim varyasyonları: verilen isim + USERS'dan eşleşen display name ve username
+    search_names = {str(user_nm).lower().strip()}
+    for _ukey, _uinfo in USERS.items():
+        if _nm(_uinfo.get("name", ""), user_nm) or _nm(_ukey, user_nm):
+            search_names.add(_uinfo.get("name", "").lower().strip())
+            search_names.add(_ukey.lower().strip())
+
+    # 1. wallets dict'inde ara
+    wallets = data_store.get("wallets", {})
+    for k, v in wallets.items():
+        if k.lower().strip() in search_names or any(_nm(k, s) for s in search_names):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                pass
+
+    # 2. Ledger tabanlı hesapla (tüm varyasyonlarla)
+    best = compute_wallet(user_nm, data_store)
+    # Eğer 0 döndüyse diğer isim varyasyonlarıyla da dene
+    if best == 0:
+        for alt_name in search_names:
+            if alt_name != str(user_nm).lower().strip():
+                alt_val = compute_wallet(alt_name, data_store)
+                if alt_val != 0:
+                    return alt_val
+    return best
 
 
 # ─── YARDIMCI ─────────────────────────────────────────────────
@@ -2578,7 +2624,7 @@ tick();setInterval(tick,1000);
         crit_risks     = len(_kpi_df[_kpi_df['Risk_Skoru'] > 70]) if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
         # Kasa bakiyesi: ledger avansları - onaylı harcırah/nakit harcamaları
         # Negatif = şirkete borç (cebinden ödedi)
-        my_wallet = compute_wallet(user_name, data_store)
+        my_wallet = get_user_wallet_balance(user_name, data_store)
         total_tx       = len(_kpi_df) if not _kpi_df.empty else 0
         avg_risk       = _kpi_df['Risk_Skoru'].mean() if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
         
@@ -3089,7 +3135,7 @@ tick();setInterval(tick,1000);
                     _row_tutar = float(row.get('Tutar', 0))
                     _is_harcirah = _row_odeme in ("harcirah","harcırah","harcirahtan dus","harcırahtan düş","harcırahtan düş (nakit / kişisel kart)","nakit","kisisel")
                     if _is_harcirah:
-                        _mevcut_bakiye = compute_wallet(_row_kullanici, data_store)
+                        _mevcut_bakiye = get_user_wallet_balance(_row_kullanici, data_store)
                         _kalan_bakiye  = _mevcut_bakiye - _row_tutar
                         _kalan_renk    = "#dc2626" if _kalan_bakiye < 0 else "#007850"
                         _harcirah_html = (
@@ -3242,7 +3288,7 @@ tick();setInterval(tick,1000);
                 # → Railway'deki "Serkan" / "Serkan Güzdemir" duplikasyonu önlenir
                 for _ukey, _uinfo in USERS.items():
                     person = _uinfo["name"]
-                    bal = compute_wallet(person, data_store)
+                    bal = get_user_wallet_balance(person, data_store)
                     person_limit = _uinfo.get("monthly_limit", 15000)
                     bal_pct = min(abs(bal) / person_limit * 100, 100) if person_limit > 0 else 0
                     avatar = _uinfo.get("avatar", "👤")
@@ -3285,7 +3331,7 @@ tick();setInterval(tick,1000);
             else:
                 # Ledger-tabanlı kasa hesabı - avans - onaylı harcırah harcamaları
                 _w2 = data_store.get("wallets", {})
-                my_bal = compute_wallet(user_name, data_store)
+                my_bal = get_user_wallet_balance(user_name, data_store)
                 st.markdown(f"""
                 <div class="metric-card" style="margin-bottom:16px;">
                     <div style="font-size:1rem; color:var(--text-secondary);">Mevcut Bakiyeniz</div>
@@ -3335,7 +3381,7 @@ tick();setInterval(tick,1000);
                     _row_tutar2 = float(row.get('Tutar', 0))
                     _is_harcirah2 = _row_odeme2 in ("harcirah","harcırah","harcirahtan dus","harcırahtan düş","harcırahtan düş (nakit / kişisel kart)","nakit","kisisel")
                     if _is_harcirah2:
-                        _mevcut_bakiye2 = compute_wallet(_row_kullanici2, data_store)
+                        _mevcut_bakiye2 = get_user_wallet_balance(_row_kullanici2, data_store)
                         _kalan_bakiye2  = _mevcut_bakiye2 - _row_tutar2
                         _kalan_renk2    = "#dc2626" if _kalan_bakiye2 < 0 else "#007850"
                         _harcirah_html2 = (
