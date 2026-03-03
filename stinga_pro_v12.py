@@ -1807,185 +1807,314 @@ if(window._sgShowToast) {{
         df = df_full.copy()
     
 
-    # ── NEXBOT SPLINE ROBOT ──────────────────────────────────
-    import json as _rj
-    _rtips_list = [
+    # ── NEXBOT STİLE ROBOT (CSS/JS, components.html height=1) ──
+    import json as _rj, streamlit.components.v1 as _stc
+    _rtips = [
         f"Merhaba {user_name}! Hoş geldin 👋",
-        "📑 Fiş Tarama ile yeni fiş yükle!",
+        "📑 Yeni fiş taramak için Fiş Tarama'ya git!",
         "⚖️ Onay bekleyen fişleri kontrol et!",
         "🔬 Anomali Dedektörü şüpheli fişleri bulur!",
         "💰 Kasa bakiyeni Finans ekranında gör!",
         "🤖 AI Asistan her konuda yardımcı olur!",
         "📄 Raporları PDF olarak indirebilirsin!",
     ]
-    _rtips_json = _rj.dumps(_rtips_list)
-    import streamlit.components.v1 as _stc
-    _stc.html(f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<style>
-  * {{ margin:0; padding:0; box-sizing:border-box; }}
-  html, body {{ background: transparent; overflow: hidden; width:100%; height:100%; }}
+    _stc.html(f"""<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+html,body{{background:transparent;overflow:hidden;}}
 
-  #nxb-wrap {{
-    position: fixed;
-    bottom: 32px; right: 32px;
-    width: 160px; height: 220px;
-    cursor: pointer;
-    z-index: 9999;
-  }}
+/* ─── WRAP ─── */
+#R{{
+  position:fixed; bottom:28px; right:28px;
+  width:96px; cursor:pointer; z-index:2147483647;
+  animation: RF 3.8s ease-in-out infinite;
+  filter: drop-shadow(0 8px 24px rgba(17,133,91,.45));
+}}
+#R:hover {{ filter: drop-shadow(0 12px 32px rgba(17,133,91,.75)); }}
+@keyframes RF{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-11px)}}}}
 
-  /* Spline canvas container */
-  #nxb-spline {{
-    width: 160px; height: 180px;
-    border-radius: 20px;
-    overflow: hidden;
-    animation: nxbFloat 3.8s ease-in-out infinite;
-    filter: drop-shadow(0 8px 24px rgba(17,133,91,0.45));
-  }}
-  @keyframes nxbFloat {{
-    0%,100% {{ transform: translateY(0px); }}
-    50%      {{ transform: translateY(-10px); }}
-  }}
+/* ─── GÖLGE ─── */
+#RS{{
+  width:58px; height:12px; margin:4px auto 0;
+  background:radial-gradient(ellipse,rgba(17,133,91,.38) 0%,transparent 70%);
+  border-radius:50%;
+  animation:RSA 3.8s ease-in-out infinite;
+}}
+@keyframes RSA{{0%,100%{{transform:scaleX(1);opacity:.38}}50%{{transform:scaleX(.5);opacity:.12}}}}
 
-  /* Gölge */
-  #nxb-shadow {{
-    width: 90px; height: 14px; margin: 4px auto 0;
-    background: radial-gradient(ellipse, rgba(17,133,91,0.4) 0%, transparent 70%);
-    border-radius: 50%;
-    animation: nxbShadow 3.8s ease-in-out infinite;
-  }}
-  @keyframes nxbShadow {{
-    0%,100% {{ transform: scaleX(1); opacity:.4; }}
-    50%      {{ transform: scaleX(.55); opacity:.15; }}
-  }}
+/* ─── BAŞ ─── */
+#RH{{
+  width:78px; height:78px; border-radius:50%; margin:0 auto;
+  background:linear-gradient(145deg,#3d4e8a 0%,#2F3C6E 55%,#1a2540 100%);
+  box-shadow:
+    inset 0 4px 10px rgba(255,255,255,.13),
+    inset 0 -4px 10px rgba(0,0,0,.3),
+    0 6px 20px rgba(47,60,110,.55),
+    0 0 0 2px rgba(0,232,150,.22);
+  position:relative;
+  transition:transform .08s ease-out;
+  transform-style:preserve-3d;
+}}
+/* Baş parlama */
+#RH::before{{
+  content:'';position:absolute;top:12px;left:16px;
+  width:26px;height:16px;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(255,255,255,.2) 0%,transparent 70%);
+  transform:rotate(-20deg);
+}}
+/* Kulaklar */
+.RE{{
+  position:absolute;top:50%;transform:translateY(-50%);
+  width:9px;height:20px;border-radius:5px;
+  background:linear-gradient(180deg,#2F3C6E,#1a2540);
+  border:1px solid rgba(0,232,150,.15);
+}}
+.REL{{left:-5px;}}.RER{{right:-5px;}}
+.RE::after{{
+  content:'';position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:4px;height:4px;border-radius:50%;
+  background:#00e896;box-shadow:0 0 4px #00e896;
+  animation:RB 2.2s ease-in-out infinite;
+}}
 
-  /* Konuşma balonu */
-  #nxb-bubble {{
-    position: fixed;
-    bottom: 250px; right: 32px;
-    background: linear-gradient(135deg,#fff,#f4f9f6);
-    border: 1.5px solid rgba(17,133,91,0.28);
-    border-radius: 16px 16px 4px 16px;
-    padding: 12px 16px; min-width: 210px; max-width: 270px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 13px; color: #0f1923; line-height: 1.55;
-    box-shadow: 0 8px 28px rgba(17,133,91,0.14);
-    opacity: 0; transform: translateY(8px) scale(.93);
-    transition: all .3s cubic-bezier(.16,1,.3,1);
-    pointer-events: none;
-  }}
-  #nxb-bubble.on {{ opacity:1; transform:translateY(0) scale(1); }}
-  #nxb-badge {{
-    font-size: 10px; font-weight: 800; color: #11855B;
-    letter-spacing: 2px; display: block; margin-bottom: 5px;
-  }}
-  #nxb-bubble::after {{
-    content:''; position:absolute; bottom:-8px; right:20px;
-    border-left:8px solid transparent; border-right:8px solid transparent;
-    border-top:8px solid #fff;
-  }}
+/* ─── ANTEN ─── */
+#RA{{
+  position:absolute;top:-20px;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:0;
+}}
+#RAB{{
+  width:11px;height:11px;border-radius:50%;
+  background:#00e896;
+  box-shadow:0 0 10px #00e896,0 0 20px rgba(0,232,150,.4);
+  animation:RAA 1.6s ease-in-out infinite;
+}}
+@keyframes RAA{{
+  0%,100%{{box-shadow:0 0 8px #00e896,0 0 16px rgba(0,232,150,.4);transform:scale(1);}}
+  50%{{box-shadow:0 0 16px #00e896,0 0 32px rgba(0,232,150,.6);transform:scale(1.25);}}
+}}
+#RAS{{width:3px;height:14px;background:linear-gradient(180deg,#00e896,#11855B);border-radius:2px;}}
 
-  /* Toastlar */
-  #nxb-toasts {{
-    position: fixed; bottom: 270px; right: 32px;
-    display: flex; flex-direction: column; gap: 8px;
-    pointer-events: none; z-index: 9998;
-  }}
-  .nxb-toast {{
-    background: #fff; border-radius: 12px;
-    padding: 12px 16px; min-width: 260px;
-    box-shadow: 0 6px 24px rgba(0,0,0,.1);
-    border-left: 4px solid #11855B;
-    display: flex; gap: 10px; align-items: flex-start;
-    animation: nxbTI .35s cubic-bezier(.16,1,.3,1) both,
-               nxbTO .3s ease 4.5s forwards;
-    cursor: pointer; pointer-events: all;
-  }}
-  .nxb-toast.warning {{ border-left-color:#d97706; }}
-  .nxb-toast.error   {{ border-left-color:#dc2626; }}
-  @keyframes nxbTI {{ from{{transform:translateX(110%);opacity:0}} to{{transform:translateX(0);opacity:1}} }}
-  @keyframes nxbTO {{ to{{transform:translateX(110%);opacity:0}} }}
-  .nxb-ti {{ font-size:1.2rem; flex-shrink:0; }}
-  .nxb-tb {{ flex:1; }}
-  .nxb-tt {{ font-weight:700; font-size:.82rem; color:#0f1923; margin-bottom:2px; }}
-  .nxb-tm {{ font-size:.73rem; color:#5a7a6a; line-height:1.4; }}
-</style>
-</head>
-<body>
+/* ─── GÖZLER ─── */
+#REYES{{
+  position:absolute;top:28px;left:50%;transform:translateX(-50%);
+  width:58px;display:flex;justify-content:space-between;
+}}
+.REY{{
+  width:24px;height:24px;border-radius:50%;
+  background:#060d1a;
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.8),0 0 0 2px rgba(0,232,150,.3);
+  position:relative;overflow:hidden;
+  animation:RBLINK 7s ease-in-out infinite;
+}}
+.REY:nth-child(2){{animation-delay:.08s;}}
+@keyframes RBLINK{{0%,44%,56%,100%{{transform:scaleY(1)}}50%{{transform:scaleY(.06)}}}}
+/* İris */
+.RI{{
+  width:18px;height:18px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#00e896 0%,#11855B 50%,#063d25 100%);
+  position:absolute;top:3px;left:3px;
+  box-shadow:0 0 8px rgba(0,232,150,.5);
+  transition:transform .07s ease-out;
+}}
+/* Pupil */
+.RP{{
+  width:9px;height:9px;border-radius:50%;
+  background:#000;position:absolute;top:4.5px;left:4.5px;
+  transition:transform .07s ease-out;
+}}
+/* Parlaklık */
+.REY::after{{
+  content:'';position:absolute;top:3px;right:3px;
+  width:5px;height:5px;border-radius:50%;
+  background:rgba(255,255,255,.8);pointer-events:none;
+  z-index:2;
+}}
 
-<div id="nxb-bubble">
-  <span id="nxb-badge">⚡ STINGA AI</span>
-  <span id="nxb-text">Merhaba!</span>
-</div>
+/* ─── GÖVDE ─── */
+#RB{{
+  width:72px;height:64px;border-radius:22px 22px 18px 18px;
+  background:linear-gradient(145deg,#17a870 0%,#0c6344 60%,#2F3C6E 100%);
+  margin:2px auto 0;position:relative;
+  box-shadow:
+    inset 0 3px 8px rgba(255,255,255,.14),
+    inset 0 -3px 8px rgba(0,0,0,.2),
+    0 6px 20px rgba(12,99,68,.45);
+  border:1.5px solid rgba(0,232,150,.22);
+}}
+#RB::before{{
+  content:'';position:absolute;top:6px;left:10px;right:10px;height:18px;
+  background:linear-gradient(180deg,rgba(255,255,255,.14) 0%,transparent 100%);
+  border-radius:10px;
+}}
+/* Göğüs paneli */
+#RC{{
+  position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+  width:42px;height:20px;
+  background:rgba(0,0,0,.25);border-radius:7px;
+  border:1px solid rgba(0,232,150,.18);
+  display:flex;align-items:center;justify-content:center;gap:4px;
+}}
+.RL{{
+  width:6px;height:6px;border-radius:50%;
+  background:#00e896;box-shadow:0 0 5px #00e896;
+  animation:RB 1.8s ease-in-out infinite;
+}}
+.RL:nth-child(2){{animation-delay:.3s;background:#11855B;}}
+.RL:nth-child(3){{animation-delay:.6s;}}
+.RL:nth-child(4){{animation-delay:.9s;background:#2F3C6E;box-shadow:0 0 5px #3d4e8a;}}
+@keyframes RB{{0%,100%{{opacity:1}}50%{{opacity:.2}}}}
+/* Kollar */
+.RARM{{
+  position:absolute;top:10px;
+  width:13px;height:40px;border-radius:6.5px;
+  background:linear-gradient(180deg,#17a870,#0c6344);
+  border:1px solid rgba(0,232,150,.15);
+  box-shadow:inset 0 2px 4px rgba(255,255,255,.1);
+}}
+.RARML{{left:-15px;animation:RARMA 3.8s ease-in-out infinite;transform-origin:top center;}}
+.RARMR{{right:-15px;animation:RARMB 3.8s ease-in-out infinite;transform-origin:top center;}}
+@keyframes RARMA{{0%,100%{{transform:rotate(-6deg)}}50%{{transform:rotate(9deg)}}}}
+@keyframes RARMB{{0%,100%{{transform:rotate(6deg)}}50%{{transform:rotate(-9deg)}}}}
+.RHAND{{
+  position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
+  width:13px;height:13px;border-radius:50%;
+  background:linear-gradient(135deg,#17a870,#0c6344);
+  border:1px solid rgba(0,232,150,.2);
+}}
+/* Bacaklar */
+.RLEG{{
+  position:absolute;bottom:-20px;
+  width:17px;height:22px;border-radius:5px 5px 3px 3px;
+  background:linear-gradient(180deg,#0c6344,#083d28);
+  border:1px solid rgba(0,232,150,.12);
+}}
+.RLEGL{{left:10px;}}.RLEGR{{right:10px;}}
+.RFOOT{{
+  position:absolute;bottom:-7px;left:50%;transform:translateX(-50%);
+  width:22px;height:8px;border-radius:3px;
+  background:#083d28;border:1px solid rgba(0,232,150,.1);
+}}
 
-<div id="nxb-wrap">
-  <div id="nxb-spline">
-    <iframe
-      src="https://my.spline.design/nexbot-dNjbkzTI3RlFWURP/"
-      frameborder="0"
-      width="100%"
-      height="100%"
-      allow="autoplay"
-      style="background:transparent;"
-    ></iframe>
+/* ─── BALON ─── */
+#BB{{
+  position:fixed;bottom:200px;right:28px;
+  background:linear-gradient(135deg,#fff,#f4f9f6);
+  border:1.5px solid rgba(17,133,91,.28);
+  border-radius:16px 16px 4px 16px;
+  padding:12px 16px;min-width:210px;max-width:270px;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:13px;color:#0f1923;line-height:1.55;
+  box-shadow:0 8px 28px rgba(17,133,91,.14);
+  opacity:0;transform:translateY(8px) scale(.93);
+  transition:all .3s cubic-bezier(.16,1,.3,1);
+  pointer-events:none;
+}}
+#BB.on{{opacity:1;transform:translateY(0) scale(1);}}
+#BBG{{font-size:10px;font-weight:800;color:#11855B;letter-spacing:2px;display:block;margin-bottom:5px;}}
+#BB::after{{
+  content:'';position:absolute;bottom:-8px;right:18px;
+  border-left:8px solid transparent;border-right:8px solid transparent;
+  border-top:8px solid #fff;
+}}
+
+/* ─── TOAST ─── */
+#TC{{position:fixed;bottom:220px;right:28px;display:flex;flex-direction:column;gap:8px;pointer-events:none;}}
+.TT{{
+  background:#fff;border-radius:12px;padding:12px 16px;min-width:260px;
+  box-shadow:0 6px 24px rgba(0,0,0,.1);border-left:4px solid #11855B;
+  display:flex;gap:10px;align-items:flex-start;
+  animation:TTI .35s cubic-bezier(.16,1,.3,1) both,TTO .3s ease 4.5s forwards;
+  cursor:pointer;pointer-events:all;
+}}
+.TT.warning{{border-left-color:#d97706;}}.TT.error{{border-left-color:#dc2626;}}
+@keyframes TTI{{from{{transform:translateX(110%);opacity:0}}to{{transform:translateX(0);opacity:1}}}}
+@keyframes TTO{{to{{transform:translateX(110%);opacity:0}}}}
+</style></head><body>
+
+<div id="BB"><span id="BBG">⚡ STINGA AI</span><span id="BT">Merhaba!</span></div>
+<div id="TC"></div>
+
+<div id="R">
+  <div id="RH">
+    <div id="RA"><div id="RAB"></div><div id="RAS"></div></div>
+    <div class="RE REL"></div>
+    <div class="RE RER"></div>
+    <div id="REYES">
+      <div class="REY"><div class="RI" id="IRL"><div class="RP" id="PL"></div></div></div>
+      <div class="REY"><div class="RI" id="IRR"><div class="RP" id="PR"></div></div></div>
+    </div>
   </div>
-  <div id="nxb-shadow"></div>
+  <div id="RB">
+    <div class="RARM RARML"><div class="RHAND"></div></div>
+    <div class="RARM RARMR"><div class="RHAND"></div></div>
+    <div class="RLEG RLEGL"><div class="RFOOT"></div></div>
+    <div class="RLEG RLEGR"><div class="RFOOT"></div></div>
+    <div id="RC">
+      <div class="RL"></div><div class="RL"></div>
+      <div class="RL"></div><div class="RL"></div>
+    </div>
+  </div>
+  <div id="RS"></div>
 </div>
-
-<div id="nxb-toasts"></div>
 
 <script>
-(function() {{
-  var tips = {_rtips_json};
-  var ti = 0;
-  var bubble = document.getElementById('nxb-bubble');
-  var txt    = document.getElementById('nxb-text');
-  var wrap   = document.getElementById('nxb-wrap');
+(function(){{
+  var tips={_rj.dumps(_rtips)};
+  var ti=0,head=document.getElementById('RH'),
+      iL=document.getElementById('IRL'),iR=document.getElementById('IRR'),
+      pL=document.getElementById('PL'),pR=document.getElementById('PR'),
+      bb=document.getElementById('BB'),bt=document.getElementById('BT'),
+      wrap=document.getElementById('R');
+  var cRX=0,cRY=0,cEX=0,cEY=0,rafId;
 
-  function showTip(t) {{
-    if (txt)    txt.textContent = t;
-    if (bubble) {{
-      bubble.classList.add('on');
-      clearTimeout(wrap._bt);
-      wrap._bt = setTimeout(function() {{ bubble.classList.remove('on'); }}, 4800);
-    }}
+  function tick(mx,my){{
+    // Baş dönüşü
+    var tRX=-(my/window.innerHeight-.5)*28;
+    var tRY= (mx/window.innerWidth -.5)*28;
+    cRX+=(tRX-cRX)*.1; cRY+=(tRY-cRY)*.1;
+    if(head) head.style.transform='rotateX('+cRX.toFixed(1)+'deg) rotateY('+cRY.toFixed(1)+'deg)';
+    // Göz iris
+    var tEX=(mx/window.innerWidth -.5)*7;
+    var tEY=(my/window.innerHeight-.5)*7;
+    cEX+=(tEX-cEX)*.12; cEY+=(tEY-cEY)*.12;
+    var tr='translate('+cEX.toFixed(1)+'px,'+cEY.toFixed(1)+'px)';
+    if(iL)iL.style.transform=tr; if(iR)iR.style.transform=tr;
   }}
 
-  if (wrap) wrap.addEventListener('click', function() {{
-    showTip(tips[ti % tips.length]);
-    ti++;
+  var mx=window.innerWidth/2, my=window.innerHeight/2;
+  function loop(){{ tick(mx,my); rafId=requestAnimationFrame(loop); }}
+  loop();
+
+  // Parent frame fare — cross-origin olabilir, try/catch
+  document.addEventListener('mousemove',function(e){{ mx=e.clientX; my=e.clientY; }});
+  try{{
+    window.parent.document.addEventListener('mousemove',function(e){{
+      var fs=window.parent.document.querySelectorAll('iframe');
+      var ol=0,ot=0;
+      fs.forEach(function(f){{ try{{ if(f.contentWindow===window){{ var r=f.getBoundingClientRect(); ol=r.left; ot=r.top; }} }}catch(x){{}} }});
+      mx=e.clientX-ol; my=e.clientY-ot;
+    }});
+  }}catch(x){{}}
+
+  // Tıklama balonu
+  if(wrap) wrap.addEventListener('click',function(){{
+    if(bt) bt.textContent=tips[ti%tips.length]; ti++;
+    if(bb){{ bb.classList.add('on'); clearTimeout(wrap._t); wrap._t=setTimeout(function(){{bb.classList.remove('on');}},4800); }}
   }});
+  setTimeout(function(){{ if(bt)bt.textContent=tips[0]; ti=1; if(bb){{bb.classList.add('on');setTimeout(function(){{bb.classList.remove('on');}},5000);}} }},1200);
 
-  // İlk karşılama
-  setTimeout(function() {{ showTip(tips[0]); ti=1; }}, 1500);
-
-  // Toast sistemi — parent window'a expose et
-  function postToast(title, msg, type) {{
-    try {{
-      window.parent.postMessage({{type:'nxb-toast', title:title, msg:msg, ttype:type}}, '*');
-    }} catch(e) {{}}
-    // Kendi içinde de göster
-    var c = document.getElementById('nxb-toasts');
-    if (!c) return;
-    var el = document.createElement('div');
-    el.className = 'nxb-toast ' + (type||'');
-    var ic = {{success:'✅',warning:'⚠️',error:'🚨',info:'🔔'}};
-    el.innerHTML = '<div class="nxb-ti">'+(ic[type]||'📌')+'</div>'
-      + '<div class="nxb-tb"><div class="nxb-tt">'+title+'</div>'
-      + '<div class="nxb-tm">'+msg+'</div></div>';
-    el.onclick = function() {{ el.remove(); }};
+  // Toast
+  window._sgShowToast=function(title,msg,type){{
+    var c=document.getElementById('TC'); if(!c)return;
+    var el=document.createElement('div'); el.className='TT '+(type||'');
+    var ic={{success:'✅',warning:'⚠️',error:'🚨',info:'🔔'}};
+    el.innerHTML='<span style="font-size:1.2rem">'+(ic[type]||'📌')+'</span><div><div style="font-weight:700;font-size:.82rem;margin-bottom:2px">'+title+'</div><div style="font-size:.73rem;color:#5a7a6a">'+msg+'</div></div>';
+    el.onclick=function(){{el.remove();}};
     c.appendChild(el);
-    setTimeout(function() {{ if(el.parentNode) el.remove(); }}, 5000);
-  }}
-  window._sgShowToast = postToast;
-
+    setTimeout(function(){{if(el.parentNode)el.remove();}},5000);
+  }};
 }})();
-</script>
-</body>
-</html>
-""", height=220, scrolling=False)
+</script></body></html>""", height=1, scrolling=False)
 
     # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
