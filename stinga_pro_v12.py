@@ -2507,9 +2507,9 @@ tick();setInterval(tick,1000);
                 "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor"
             ]
         else:
+            # Personel: sadece Dashboard ve Fiş Tarama
             pages_keys = [
-                "🏠 Dashboard", "📑 Fiş Tarama", "💰 Finans & Kasa",
-                "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor"
+                "🏠 Dashboard", "📑 Fiş Tarama"
             ]
 
         selected = st.radio("", pages_keys,
@@ -2726,8 +2726,11 @@ tick();setInterval(tick,1000);
     # ══════════════════════════════════════════════════════════
     elif selected == "📑 Fiş Tarama":
         st.markdown('<div class="page-header"><div class="page-title">AKILLI FİŞ TARAMA</div></div>', unsafe_allow_html=True)
-        
-        col_form, col_list = st.columns([1.2, 1])
+
+        tab_fis, tab_manuel = st.tabs(["📸 Fiş Tara (AI)", "✏️ Manuel Giriş"])
+
+        with tab_fis:
+         col_form, col_list = st.columns([1.2, 1])
         
         with col_form:
             st.markdown('<div class="ultra-card">', unsafe_allow_html=True)
@@ -3011,57 +3014,16 @@ tick();setInterval(tick,1000);
   var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/100);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.7);ctx.restore();});fr++;if(fr<180)requestAnimationFrame(draw);else cv.remove();}
   draw();
   var r=pd.getElementById('SGNX');
-  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},3000);}
+  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},4500);}
   var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
   if(bt)bt.textContent='🎉 ONAYLANDI! Harika!';
-  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},3200);}
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},4800);}
 })();
 </script>''', height=0, scrolling=False)
-                                # Tam ekran kutlama animasyonu göster
-                                st.markdown("""
-<div id="sg-approve-overlay">
-  <canvas id="sg-confetti-cv" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:100000;"></canvas>
-  <div class="sg-approve-icon">✅</div>
-  <div class="sg-approve-text">ONAYLANDI!</div>
-  <div class="sg-approve-sub">İŞLEM BAŞARIYLA TAMAMLANDI</div>
-</div>
-<script>
-(function(){
-  // Confetti
-  const cv = document.getElementById('sg-confetti-cv');
-  if(!cv) return;
-  const ctx = cv.getContext('2d');
-  cv.width = window.innerWidth; cv.height = window.innerHeight;
-  const particles = Array.from({length:120}, () => ({
-    x: Math.random()*cv.width, y: Math.random()*cv.height*0.3 - cv.height*0.1,
-    vx:(Math.random()-0.5)*6, vy:Math.random()*4+2,
-    r:Math.random()*7+3, angle:Math.random()*360,
-    av:(Math.random()-0.5)*8,
-    color:['#00e896','#17a870','#2d4a8a','#f0a500','#ffffff'][Math.floor(Math.random()*5)]
-  }));
-  let frame = 0;
-  function draw(){
-    ctx.clearRect(0,0,cv.width,cv.height);
-    particles.forEach(p=>{
-      p.x+=p.vx; p.y+=p.vy; p.angle+=p.av; p.vy+=0.08;
-      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.angle*Math.PI/180);
-      ctx.fillStyle=p.color; ctx.globalAlpha=Math.max(0,1-frame/80);
-      ctx.fillRect(-p.r/2,-p.r/2,p.r,p.r*1.6);
-      ctx.restore();
-    });
-    frame++;
-    if(frame<90) requestAnimationFrame(draw);
-  }
-  draw();
-  // 2sn sonra overlay'i kaldır
-  setTimeout(()=>{ const o=document.getElementById('sg-approve-overlay'); if(o) o.remove(); }, 2000);
-})();
-</script>
-""", unsafe_allow_html=True)
                                 with st.spinner("Onaylanıyor..."):
                                     if api_approve(str(row['ID']), "approve", user_name):
                                         st.success("✅ Onaylandı!")
-                                        time.sleep(0.5)
+                                        time.sleep(4.8)
                                         st.rerun()
                                     else:
                                         st.error("API hatası, tekrar deneyin")
@@ -3273,37 +3235,16 @@ tick();setInterval(tick,1000);
   var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/100);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.7);ctx.restore();});fr++;if(fr<180)requestAnimationFrame(draw);else cv.remove();}
   draw();
   var r=pd.getElementById('SGNX');
-  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},3000);}
+  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},4500);}
   var bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
   if(bt)bt.textContent='🎉 ONAYLANDI! Harika!';
-  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');},3200);}
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},4800);}
 })();
 </script>''', height=0, scrolling=False)
-                                st.markdown("""
-<div id="sg-approve-overlay">
-  <canvas id="sg-confetti-cv" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:100000;"></canvas>
-  <div class="sg-approve-icon">✅</div>
-  <div class="sg-approve-text">ONAYLANDI!</div>
-  <div class="sg-approve-sub">İŞLEM BAŞARIYLA TAMAMLANDI</div>
-</div>
-<script>
-(function(){
-  const cv=document.getElementById('sg-confetti-cv');
-  if(!cv)return;
-  const ctx=cv.getContext('2d');
-  cv.width=window.innerWidth; cv.height=window.innerHeight;
-  const p=Array.from({length:120},()=>({x:Math.random()*cv.width,y:Math.random()*cv.height*.3-50,vx:(Math.random()-.5)*6,vy:Math.random()*4+2,r:Math.random()*7+3,angle:Math.random()*360,av:(Math.random()-.5)*8,color:['#00e896','#17a870','#2d4a8a','#f0a500','#fff'][Math.floor(Math.random()*5)]}));
-  let f=0;
-  function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(i=>{i.x+=i.vx;i.y+=i.vy;i.angle+=i.av;i.vy+=.08;ctx.save();ctx.translate(i.x,i.y);ctx.rotate(i.angle*Math.PI/180);ctx.fillStyle=i.color;ctx.globalAlpha=Math.max(0,1-f/80);ctx.fillRect(-i.r/2,-i.r/2,i.r,i.r*1.6);ctx.restore();});f++;if(f<90)requestAnimationFrame(draw);}
-  draw();
-  setTimeout(()=>{const o=document.getElementById('sg-approve-overlay');if(o)o.remove();},2000);
-})();
-</script>
-""", unsafe_allow_html=True)
                                 with st.spinner("Onaylanıyor..."):
                                     if api_approve(str(row['ID']), "approve", user_name):
                                         st.success("✅ Onaylandı!")
-                                        time.sleep(0.5)
+                                        time.sleep(4.8)
                                         st.rerun()
                             
                             if btn2.button("❌ Reddet", key=f"ret_{row['ID']}", use_container_width=True):
