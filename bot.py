@@ -921,22 +921,11 @@ Sadece JSON döndür."""
 
 
 def maev_mesaj_uret(maev: dict) -> str:
-    """MAEV kararını kullanıcıya gösterilecek WhatsApp mesajına dönüştürür."""
-    karar_emoji = {"ONAYLA": "✅", "REDDET": "❌", "İNSANA_ESKALAT": "👤"}.get(maev["karar"], "⚖️")
-    guven_bar   = "█" * (maev["guven"] // 10) + "░" * (10 - maev["guven"] // 10)
-
-    return (
-        f"\n\n⚖️ *MAEV — AI Jüri Kararı*\n"
-        f"{'─'*22}\n"
-        f"🔴 Savcı: _{maev['savci'][:80]}..._\n"
-        f"🟢 Avukat: _{maev['avukat'][:80]}..._\n"
-        f"{'─'*22}\n"
-        f"{karar_emoji} Karar: *{maev['karar']}*\n"
-        f"📊 Güven: [{guven_bar}] %{maev['guven']}\n"
-        f"💬 _{maev['ozet']}_\n"
-        f"{'─'*22}\n"
-        f"{'_İtiraz için \"itiraz [gerekçe]\" yazın._' if maev['karar'] != 'ONAYLA' else ''}"
-    )
+    """MAEV kararını SADECE DB'ye kaydedilmek üzere kısa özet string döndürür.
+    WhatsApp mesajına artık dahil edilmez."""
+    # Bu fonksiyon geriye dönük uyumluluk için korunuyor
+    # Dönen string artık yanit'a eklenmez
+    return ""  # Boş döndür — WhatsApp'a gönderilmez
 
 
 def butce_durumu_str(user_name: str, data: dict) -> str:
@@ -1256,19 +1245,21 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         _m2 = re.search(r'\{.*\}', json_text2, re.DOTALL)
                         fis = json.loads(_m2.group() if _m2 else json_text2)
 
-                    # ── Tarih doğrulama: gelecek tarih uyarısı ekle ama tarihi değiştirme
+                    # ── Tarih doğrulama: gelecek tarih kontrolü
                     fis_tarihi = fis.get("tarih", "")
                     try:
-                        from datetime import datetime as _dt
-                        fis_dt = _dt.strptime(fis_tarihi, "%Y-%m-%d")
-                        bugun_dt = _dt.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                        if fis_dt > bugun_dt:
-                            # Gelecek tarih → risk artır ama tarihi koru
+                        fis_dt   = datetime.strptime(fis_tarihi, "%Y-%m-%d")
+                        bugun_dt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                        if fis_dt.date() > bugun_dt.date():
+                            # Gerçekten gelecek tarih → tarihi bugüne çek, risk artır
+                            fis["tarih"]      = bugun_dt.strftime("%Y-%m-%d")
                             fis["risk_skoru"] = min(100, int(fis.get("risk_skoru", 0)) + 30)
-                            fis.setdefault("risk_nedenleri", []).append("⚠️ Gelecek tarihli fiş")
-                            print(f"UYARI: Gelecek tarih tespit edildi: {fis_tarihi}", flush=True)
-                    except:
-                        pass
+                            fis.setdefault("risk_nedenleri", []).append("⚠️ Gelecek tarih düzeltildi")
+                            print(f"Gelecek tarih düzeltildi: {fis_tarihi} → {fis['tarih']}", flush=True)
+                        else:
+                            print(f"Tarih geçerli: {fis_tarihi}", flush=True)
+                    except Exception as _tarih_err:
+                        print(f"Tarih parse hatası: {_tarih_err}", flush=True)
 
                     # Para birimi dönüşümü
                     tutar_try   = float(fis.get("toplam_tutar", 0))
@@ -1435,7 +1426,7 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
 
                     # Admin'lere dashboard bildirimi (aynı data objesi)
                     for ukey, udata_info in PHONE_DIRECTORY.items():
-                        if udata_info.get("dashboard_rol") == "admin" and udata_info["ad"] != user_name:
+                        if udata_info.get("yetki") == "admin" and udata_info["ad"] != user_name:
                             add_notification(
                                 udata_info["ad"],
                                 f"📋 {user_name} → {new_expense['Proje']}: {new_expense['Firma']} ₺{tutar_try:,.0f}",
@@ -1456,7 +1447,7 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         )
                         save_data(data)  # beb_bekleyen kaydı için
 
-                    # Yanıt oluştur
+                    # Yanıt oluştur — sade ve net
                     risk = sahtelik["guvensizlik_skoru"]
                     risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
 
@@ -1470,10 +1461,7 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         bulgular = "\n".join(sahtelik["bulgular"][:3])
                         sahte_str = f"\n\n🚨 *SAHTE FİŞ ŞÜPHESİ!*\n{bulgular}"
 
-                    anomali_str = ("\n\n" + "\n".join(anomaliler)) if anomaliler else ""
-
-                    ilginc = fis.get("ilginc_detay", "")
-                    ilginc_str = f"\n💡 _{ilginc}_" if ilginc and ilginc not in ["", "null", "None"] else ""
+                    anomali_str = ("\n\n⚠️ " + "\n".join(anomaliler)) if anomaliler else ""
 
                     rozet_str = ""
                     if yeni_rozetler:
@@ -1482,26 +1470,15 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                                 rozet_str += f"\n\n🎊 *YENİ ROZET: {ROZETLER[r]['emoji']} {ROZETLER[r]['ad']}!*\n{ROZETLER[r]['aciklama']}"
 
                     seviye = seviye_hesapla(data["fis_sayaci"].get(user_name, 0))
-
-                    # Güncel kasa bakiyesi
                     kasa_bakiye = data.get("wallets", {}).get(user_name, 0)
 
-                    # BEB uyarısı
+                    # BEB uyarısı (sadece kimlik doğrulama gerekiyorsa göster)
                     beb_str = ""
-                    if beb_sonuc["skor"] > 0 and beb_sonuc["anomaliler"]:
-                        beb_emoji = "🟡" if beb_sonuc["skor"] < 55 else "🔴"
-                        beb_str = (
-                            f"\n\n🔐 *BEB Davranış Analizi* {beb_emoji}\n"
-                            + "\n".join(f"  • {a}" for a in beb_sonuc["anomaliler"])
-                        )
-                        if beb_sonuc["kimlik_dogrulama_gerekli"]:
-                            beb_str += "\n  ⚠️ _Kimlik doğrulama sorusu gönderildi._"
-
-                    # MAEV kararı
-                    maev_str = maev_mesaj_uret(maev_sonuc)
+                    if beb_sonuc["kimlik_dogrulama_gerekli"]:
+                        beb_str = "\n\n🔐 _Kimlik doğrulama sorusu gönderildi._"
 
                     yanit = (
-                        f"✅ *FİŞ SİSTEME KAYDEDİLDİ — ONAYA GÖNDERİLDİ.*\n"
+                        f"✅ *FİŞ KAYDEDİLDİ — ONAYA GÖNDERİLDİ*\n"
                         f"{'─'*13}\n"
                         f"🏢 {fis.get('firma','?')}\n"
                         f"💰 {tutar_try:,.2f} ₺"
@@ -1511,17 +1488,13 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                         + f"\n🏷️ {kategori}"
                         + f"\n{risk_emoji} Risk: {risk}/100"
                         + kalemler_str
-                        + ilginc_str
-                        + f"\n\n💬 *{karakter.upper()} YORUMU:*\n{yorum}"
-                        + beb_str
-                        + maev_str
-                        + f"\n\n📊 Bütçe: {butce_durumu_str(user_name, data)}"
-                        + f"\n💳 Kasa Bakiyeniz: *{kasa_bakiye:,.0f} ₺*"
+                        + f"\n\n💳 Kasa: *{kasa_bakiye:,.0f} ₺*"
                         + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
+                        + beb_str
                         + sahte_str
                         + anomali_str
                         + rozet_str
-                        + f"\n\n📨 Fişiniz yönetici onayına gönderildi."
+                        + f"\n\n📨 Yönetici onayından sonra bildirim alacaksınız."
                         + f"\n🔖 `{new_expense['ID']}`"
                     )
                     twilio_client.messages.create(
@@ -1634,7 +1607,7 @@ def add_expense_endpoint():
 
         # Admin bildirimi
         for ukey, uinfo in PHONE_DIRECTORY.items():
-            if uinfo.get("dashboard_rol") == "admin" and uinfo["ad"] != new_e.get("Kullanıcı", ""):
+            if uinfo.get("yetki") == "admin" and uinfo["ad"] != new_e.get("Kullanıcı", ""):
                 add_notification(
                     uinfo["ad"],
                     f"📋 {new_e.get('Kullanıcı','?')} → {new_e.get('Proje','?')}: {new_e.get('Firma','?')} ₺{float(new_e.get('Tutar',0)):,.0f}",
@@ -1747,7 +1720,6 @@ def approve_endpoint():
 
         # WhatsApp bildirimi gönder (onay veya red)
         try:
-            # Kullanıcı adından telefon numarasını bul
             target_phone = None
             for phone, info in PHONE_DIRECTORY.items():
                 if info.get("ad") == kullanici:
@@ -1755,19 +1727,33 @@ def approve_endpoint():
                     break
             if target_phone:
                 if action == "approve":
-                    mesaj = f"✅ {firma} (₺{tutar:,.0f}) harcamanız onaylandı."
+                    mesaj = (
+                        f"✅ *HARCAMANIZ ONAYLANDI*\n"
+                        f"{'─'*20}\n"
+                        f"🏢 {firma}\n"
+                        f"💰 ₺{tutar:,.2f}\n"
+                        f"👤 Onaylayan: {approver}\n"
+                        f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+                    )
                 else:
-                    mesaj = f"❌ {firma} (₺{tutar:,.0f}) harcamanız reddedildi."
+                    mesaj = (
+                        f"❌ *HARCAMANIZ REDDEDİLDİ*\n"
+                        f"{'─'*20}\n"
+                        f"🏢 {firma}\n"
+                        f"💰 ₺{tutar:,.2f}\n"
+                        f"👤 Reddeden: {approver}\n"
+                        f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+                        f"_Detay için yöneticinizle iletişime geçin._"
+                    )
                 twilio_client.messages.create(
                     body=mesaj,
                     from_="whatsapp:+14155238886",
                     to=target_phone
                 )
-                print(f"WhatsApp bildirimi gönderildi: {kullanici} - {mesaj}", flush=True)
+                print(f"WhatsApp bildirimi gönderildi: {kullanici} - {action}", flush=True)
             else:
                 print(f"Uyarı: {kullanici} için telefon numarası bulunamadı.", flush=True)
         except Exception as e:
-            # WhatsApp gönderilemezse sadece logla, işlem devam etsin
             print(f"WhatsApp bildirimi gönderilemedi: {e}", flush=True)
 
         save_data(data)
