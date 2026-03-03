@@ -1326,23 +1326,50 @@ Tarih kontrolünü audit_notu'na koyma — sadece kısa mali özet yaz.
                                         if e["Kullanıcı"] == user_name
                                         and e.get("Tarih","").startswith(datetime.now().strftime("%Y-%m"))]
                         bu_ay_toplam = sum(e["Tutar"] for e in bu_ay_fisler)
-                        espri_prompt = f"""Sen esprili, sivri dilli ama sevecen bir muhasebe asistanısın.
+                        # ── Şenol Faik Özyaman için kişiselleştirilmiş sağlık hatırlatıcı prompt
+                        is_senol = (user_name == "Şenol Faik Özyaman")
+
+                        if is_senol:
+                            espri_prompt = f"""Sen STINGA yapay zekasısın. Şenol Faik Özyaman için hem mali hem kişisel bir not yazıyorsun.
+
+Fiş bilgileri:
+- Firma: {fis.get('firma','?')}
+- Tutar: {tutar_try:.0f} TL
+- Kategori: {kategori}
+- Risk: {risk}/100
+- Bugün fiş sayısı: {len(bugun_fisler)}
+- Bu ay toplam: {bu_ay_toplam:.0f} TL
+
+Şenol hakkında önemli bilgiler:
+- Diyaliz hastası (Salı-Perşembe-Cumartesi diyaliz günleri)
+- Sıvı kısıtlaması var, fazla sıvı almaması gerekiyor
+- Beslenmeye dikkat etmesi gerekiyor
+- Stinga ekibi ona güveniyor ve varlığına değer veriyor
+
+Görev: 2 cümle yaz. İlk cümle fişle ilgili esprili/samimi bir yorum. İkinci cümle Şenol'a sağlığını, diyalizini, beslenmesini ya da günlük hayatını ince bir şekilde hatırlatan, asla tıbbi tavsiye vermeyen, içten ve sıcak bir hatırlatma — her seferinde farklı ve özgün olsun, klişe olmasın.
+STINGA yapay zekası olarak yaz, samimi ve kişisel ol. Türkçe. Sadece yorumu yaz."""
+                        else:
+                            espri_prompt = f"""Sen STINGA yapay zekasısın. Kullanıcıya fiş kaydedilince kısa, eğlenceli, enerjik bir geri bildirim yazıyorsun.
+
 Kullanıcı: {user_name}
 Firma: {fis.get('firma','?')}
 Tutar: {tutar_try:.0f} TL
 Kategori: {kategori}
 Risk skoru: {risk}/100
-Bugün gönderilen fiş sayısı: {len(bugun_fisler)}
-Bu ay toplam harcama: {bu_ay_toplam:.0f} TL
+Bugün fiş sayısı: {len(bugun_fisler)}
+Bu ay toplam: {bu_ay_toplam:.0f} TL
 Sahte şüphesi: {'Evet' if sahtelik['sahte_mi'] or risk >= 70 else 'Hayır'}
 
-Duruma özel, 1-2 cümle Türkçe yorum yaz. Kurallara göre:
-- Risk yüksekse (70+) şüpheci/uyarıcı ama esprili ol
-- Bugün 2+ fiş varsa harcama sıklığını esprili vurgula
-- Tutar büyükse (1000+) dramatik tepki ver
-- Normal fişse hafif esprili veya teşvik edici ol
-- İsmi kullan, robotik olma, klişeden kaç
-Sadece yorumu yaz, başka hiçbir şey ekleme."""
+1-2 cümle Türkçe yorum yaz. Ton rehberi:
+- Genellikle eğlenceli, enerjik, yaratıcı ol
+- Risk 70+ → şüpheci ama mizahi
+- Bugün 2+ fiş → harcama temposunu nazikçe vurgula
+- Tutar 2000+ → dramatik ama esprili
+- Normal fişse → ilginç, beklenmedik bir gözlem yap
+- Eleştiri varsa hafif ve pozitif çerçevede olsun
+- İsim kullan, robotik ve klişe olma
+Sadece yorumu yaz."""
+
                         ai_espri = ai_call(espri_prompt)
                     except:
                         ai_espri = "Fiş sisteme düştü, onay bekleniyor. 📋"
