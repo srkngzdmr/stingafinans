@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # ╔══════════════════════════════════════════════════════════════╗
-# ║          STINGA PRO v15.0 - ULTRA EDITION                   ║
+# ║       STINGA PRO FINANCE v17.0 - ULTRA EDITION              ║
 # ║  Geliştiren: AI ile birlikte - Gemini 2.5 Flash Destekli    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -53,7 +53,7 @@ from io import BytesIO
 
 # ─── SAYFA YAPISI ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Stinga Pro v15 ⚡",
+    page_title="Stinga Pro Finance v17.0 ⚡",
     layout="wide",
     page_icon="⚡",
     initial_sidebar_state="expanded"
@@ -552,8 +552,8 @@ def hash_password(pwd):
 
 # ── Kullanıcı Sistemi ─────────────────────────────────────────
 # role: "admin"   → tüm fişleri görür + onaylayabilir (Zeynep, Serkan)
-# role: "user"    → sadece kendi fişlerini görür (Okan İlhan)
-# role: "admin"   → tüm fişleri görür (Zeynep Özyaman, Şenol Faik Özyaman, Serkan Güzdemir)
+# role: "user"    → sadece kendi fişlerini görür (Okan İlhan, Şenol Faik Özyaman)
+# role: "admin"   → tüm fişleri görür (Zeynep Özyaman, Serkan Güzdemir)
 #
 # Şifre → WhatsApp bot sifre alanıyla eşleşiyor:
 #   Zeynep Özyaman: 789 | Serkan Güzdemir: 123 | Okan İlhan: 321 | Şenol Faik Özyaman: 456
@@ -571,7 +571,7 @@ USERS = {
     "senol": {
         "name": "Şenol Faik Özyaman",
         "password": hash_password("456"),
-        "role": "admin",
+        "role": "user",
         "avatar": "🏢",
         "title": "Genel Müdür",
         "department": "Genel Müdürlük",
@@ -2451,11 +2451,11 @@ else:
             </div>
             <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:0.88rem; font-weight:900;
                         letter-spacing:0.3em; color:#0f1923; margin-top:13px; text-transform:uppercase;">
-                VELA
+                STINGA PRO
             </div>
             <div style="font-family:'JetBrains Mono',monospace; font-size:0.51rem; color:#a0b8ae;
                         letter-spacing:0.18em; margin-top:4px; text-transform:uppercase;">
-                STİNGA ENERJİ A.Ş.
+                FINANCE v17.0 · STİNGA ENERJİ A.Ş.
             </div>
         </div>
         <div class="ssep"></div>
@@ -2579,12 +2579,14 @@ tick();setInterval(tick,1000);
             pages_keys = [
                 "🏠 Dashboard", "📑 Fiş Tarama", "💰 Finans & Kasa",
                 "⚖️ Onay Merkezi", "🔬 Anomali Dedektörü", "📊 Analitik Merkezi",
-                "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor"
+                "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor",
+                "🧠 AI Bütçe Koçu", "🔮 Gider Tahmincisi"
             ]
         else:
-            # Personel: sadece Dashboard ve Fiş Tarama
+            # Personel: Dashboard, Fiş Tarama + 2 yeni AI özellik
             pages_keys = [
-                "🏠 Dashboard", "📑 Fiş Tarama"
+                "🏠 Dashboard", "📑 Fiş Tarama",
+                "🧠 AI Bütçe Koçu", "🔮 Gider Tahmincisi"
             ]
 
         selected = st.radio("", pages_keys,
@@ -4077,3 +4079,361 @@ tick();setInterval(tick,1000);
                     <div style="font-size:0.8rem; margin-top:8px;">Anomali Dedektörü'nden derin analiz başlat!</div>
                 </div>
                 """, unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: AI BÜTÇE KOÇU
+    # ══════════════════════════════════════════════════════════
+    elif selected == "🧠 AI Bütçe Koçu":
+        st.markdown('<div class="page-header"><div class="page-title">🧠 AI BÜTÇE KOÇU</div></div>', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,rgba(17,133,91,0.12),rgba(47,60,110,0.10));
+                    border:1px solid rgba(17,133,91,0.25); border-radius:16px;
+                    padding:20px 24px; margin-bottom:24px;">
+            <div style="font-size:1.05rem; font-weight:700; color:#11855B; margin-bottom:6px;">
+                💡 Kişisel Finans Koçunuz
+            </div>
+            <div style="font-size:0.85rem; color:#3d5260; line-height:1.6;">
+                Harcama verilerinizi analiz ederek bütçe optimizasyon önerileri, tasarruf fırsatları
+                ve kişiselleştirilmiş finansal tavsiyeler sunar.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Kullanıcıya özel veriler
+        my_expenses = df.copy()  # df zaten role'e göre filtrelenmiş
+
+        coach_mode = st.selectbox("🎯 Koçluk Modu Seç", [
+            "📊 Harcama Analizi & Optimizasyon",
+            "💰 Aylık Bütçe Planı Oluştur",
+            "✂️ Tasarruf Fırsatları Bul",
+            "🎯 Hedef Bazlı Bütçe",
+            "📈 Harcama Alışkanlıkları Raporu"
+        ])
+
+        hedef_tutar = None
+        hedef_aciklama = ""
+        if coach_mode == "🎯 Hedef Bazlı Bütçe":
+            col_h1, col_h2 = st.columns(2)
+            with col_h1:
+                hedef_tutar = st.number_input("Hedef Tasarruf Tutarı (₺)", min_value=0, value=5000, step=500)
+            with col_h2:
+                hedef_aciklama = st.text_input("Tasarruf Hedefi (ör: Ekipman alımı)", value="")
+
+        extra_context = st.text_area(
+            "📝 AI'ye ek bilgi ver (isteğe bağlı)",
+            placeholder="Örn: Bu ay fazla seyahat harcamamı azaltmak istiyorum...",
+            height=80
+        )
+
+        if st.button("🧠 Koç Analizi Başlat", use_container_width=True, type="primary"):
+            with st.spinner("AI Bütçe Koçunuz analiz yapıyor..."):
+                try:
+                    # Veri özetini hazırla
+                    if not my_expenses.empty and 'Tutar' in my_expenses.columns:
+                        toplam = my_expenses['Tutar'].sum()
+                        kategori_ozet = ""
+                        if 'Kategori' in my_expenses.columns:
+                            kat_grp = my_expenses.groupby('Kategori')['Tutar'].sum().sort_values(ascending=False)
+                            kategori_ozet = "\n".join([f"  - {k}: ₺{v:,.0f}" for k, v in kat_grp.items()])
+                        limit = user_info.get('monthly_limit', 15000)
+                        veri_ozet = f"""
+Kullanıcı: {user_name}
+Unvan: {user_info.get('title', '-')}
+Aylık Limit: ₺{limit:,.0f}
+Toplam Harcama: ₺{toplam:,.0f}
+Limit Kullanımı: %{min(toplam/limit*100,100):.1f}
+Fiş Sayısı: {len(my_expenses)}
+Kategori Dağılımı:
+{kategori_ozet if kategori_ozet else 'Veri yok'}
+"""
+                    else:
+                        veri_ozet = f"Kullanıcı: {user_name}\nHarcama verisi bulunamadı."
+
+                    hedef_text = f"\nHEDEF: {hedef_tutar}₺ tasarruf — {hedef_aciklama}" if hedef_tutar else ""
+                    extra_text = f"\nEK BİLGİ: {extra_context}" if extra_context.strip() else ""
+
+                    prompt = f"""Sen Stinga Pro Finance v17.0 uygulamasının AI Bütçe Koçusun. Türkçe yanıt ver.
+
+KULLANICI VERİSİ:
+{veri_ozet}{hedef_text}{extra_text}
+
+MOD: {coach_mode}
+
+Lütfen seçilen moda göre detaylı, uygulanabilir ve kişiselleştirilmiş bütçe koçluğu yap.
+Somut rakamlar, yüzdeler ve önceliklendirilmiş öneriler sun.
+Varsa risk noktalarını vurgula. Emojilerle destekle ama profesyonel kal.
+Yanıtın yapısı:
+1. Mevcut Durum Değerlendirmesi
+2. Tespit Edilen Fırsatlar / Sorunlar  
+3. Kişiselleştirilmiş Öneriler (somut adımlar)
+4. {('Hedef Gerçekleşme Planı' if hedef_tutar else 'Motivasyon & Özet')}
+"""
+                    response = genai.GenerativeModel("gemini-2.0-flash").generate_content(prompt)
+                    coach_result = response.text
+
+                    st.markdown(f"""
+                    <div class="ai-bubble" style="margin-top:16px;">
+                        <div style="font-size:0.75rem; color:#11855B; font-weight:700; margin-bottom:10px; letter-spacing:0.1em;">
+                            🧠 AI BÜTÇE KOÇU ANALİZİ
+                        </div>
+                        <div style="white-space:pre-wrap; font-size:0.87rem; line-height:1.75; color:#0f1923;">
+{coach_result}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # XP ödülü
+                    _xp_data = data_store.get("xp", {})
+                    _xp_data[user_name] = _xp_data.get(user_name, 0) + 15
+                    data_store["xp"] = _xp_data
+                    save_data(data_store)
+                    st.success("✅ +15 XP kazandınız!")
+
+                except Exception as e:
+                    st.error(f"AI analizi başarısız: {e}")
+
+        # Hızlı ipuçları
+        if not my_expenses.empty and 'Kategori' in my_expenses.columns:
+            st.markdown("---")
+            st.markdown("#### ⚡ Hızlı Bütçe Özeti")
+            kat_cols = st.columns(4)
+            kat_top = my_expenses.groupby('Kategori')['Tutar'].sum().sort_values(ascending=False).head(4)
+            for i, (kat, tutar) in enumerate(kat_top.items()):
+                with kat_cols[i]:
+                    pct = tutar / my_expenses['Tutar'].sum() * 100
+                    color = "#dc2626" if pct > 40 else ("#d97706" if pct > 25 else "#11855B")
+                    st.markdown(f"""
+                    <div style="background:#fff; border:1px solid rgba(17,133,91,0.15); border-radius:12px;
+                                padding:14px; text-align:center;">
+                        <div style="font-size:1.3rem; margin-bottom:4px;">
+                            {"🍽️" if "Yemek" in kat else "🚗" if "Ulaşım" in kat else "🏨" if "Konaklama" in kat else "📦"}
+                        </div>
+                        <div style="font-size:0.7rem; color:#3d5260; font-weight:600;">{kat}</div>
+                        <div style="font-size:1rem; font-weight:800; color:{color};">₺{tutar:,.0f}</div>
+                        <div style="font-size:0.68rem; color:{color};">%{pct:.0f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: GİDER TAHMİNCİSİ
+    # ══════════════════════════════════════════════════════════
+    elif selected == "🔮 Gider Tahmincisi":
+        st.markdown('<div class="page-header"><div class="page-title">🔮 GİDER TAHMİNCİSİ</div></div>', unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,rgba(47,60,110,0.12),rgba(139,92,246,0.08));
+                    border:1px solid rgba(47,60,110,0.25); border-radius:16px;
+                    padding:20px 24px; margin-bottom:24px;">
+            <div style="font-size:1.05rem; font-weight:700; color:#2F3C6E; margin-bottom:6px;">
+                🔮 Yapay Zeka Destekli Gider Tahmini
+            </div>
+            <div style="font-size:0.85rem; color:#3d5260; line-height:1.6;">
+                Geçmiş harcama örüntülerinizi analiz ederek gelecek dönemler için akıllı tahminler üretir.
+                Senaryo bazlı projeksiyon ve erken uyarı sistemi ile bütçe aşımlarını öngörün.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            tahmin_donemi = st.selectbox("📅 Tahmin Dönemi", [
+                "Önümüzdeki 1 Ay",
+                "Önümüzdeki 3 Ay",
+                "Önümüzdeki 6 Ay",
+                "Yıl Sonu Tahmini"
+            ])
+        with col_t2:
+            senaryo = st.selectbox("🎭 Senaryo", [
+                "📊 Mevcut Trend Devam",
+                "📈 Optimistik (%20 Düşüş)",
+                "📉 Kötümser (%30 Artış)",
+                "🎯 Bütçe Hedefine Göre"
+            ])
+
+        proje_filtre = "Tümü"
+        if not df.empty and 'Proje' in df.columns:
+            projeler = ["Tümü"] + df['Proje'].dropna().unique().tolist()
+            proje_filtre = st.selectbox("🏗️ Proje Filtresi", projeler)
+
+        if st.button("🔮 Tahmin Üret", use_container_width=True, type="primary"):
+            with st.spinner("AI gider modeli hesaplıyor..."):
+                try:
+                    filtered_df = df.copy()
+                    if proje_filtre != "Tümü" and 'Proje' in filtered_df.columns:
+                        filtered_df = filtered_df[filtered_df['Proje'] == proje_filtre]
+
+                    if not filtered_df.empty and 'Tutar' in filtered_df.columns:
+                        # Aylık istatistikler
+                        filtered_df['Tarih_DT'] = pd.to_datetime(filtered_df['Tarih'], errors='coerce')
+                        filtered_df['Ay'] = filtered_df['Tarih_DT'].dt.strftime('%Y-%m')
+                        aylik = filtered_df.groupby('Ay')['Tutar'].sum()
+                        ort_aylik = aylik.mean()
+                        max_ay = aylik.max()
+                        min_ay = aylik.min()
+                        son_ay = aylik.iloc[-1] if len(aylik) > 0 else 0
+
+                        kategori_trendleri = ""
+                        if 'Kategori' in filtered_df.columns:
+                            kat_aylik = filtered_df.groupby(['Ay','Kategori'])['Tutar'].sum().unstack(fill_value=0)
+                            for kat in kat_aylik.columns[:5]:
+                                seri = kat_aylik[kat]
+                                trend = "↗️ Artıyor" if len(seri) > 1 and seri.iloc[-1] > seri.iloc[-2] else "↘️ Azalıyor"
+                                kategori_trendleri += f"  - {kat}: ort. ₺{seri.mean():,.0f}/ay ({trend})\n"
+
+                        veri_ozet = f"""
+Kullanıcı: {user_name}
+Proje: {proje_filtre}
+Aylık Ortalama: ₺{ort_aylik:,.0f}
+En Yüksek Ay: ₺{max_ay:,.0f}
+En Düşük Ay: ₺{min_ay:,.0f}
+Son Ay: ₺{son_ay:,.0f}
+Toplam Fiş: {len(filtered_df)}
+Kategori Trendleri:
+{kategori_trendleri if kategori_trendleri else 'Veri yok'}
+Aylık Limit: ₺{user_info.get('monthly_limit',15000):,.0f}
+"""
+                    else:
+                        veri_ozet = "Yeterli harcama verisi bulunamadı."
+
+                    prompt = f"""Sen Stinga Pro Finance v17.0'ın AI Gider Tahmincisisin. Türkçe yanıt ver.
+
+MEVCUT VERİ:
+{veri_ozet}
+
+TAHMİN DÖNEMİ: {tahmin_donemi}
+SENARYO: {senaryo}
+
+Lütfen aşağıdaki formatta detaylı gider tahmini yap:
+
+1. 📊 MEVCUT TREND ANALİZİ
+   - Genel eğilim değerlendirmesi
+   - Öne çıkan pattern'lar
+
+2. 🔮 {tahmin_donemi.upper()} TAHMİN ({senaryo})
+   - Tahmini toplam gider: ₺XX,XXX
+   - Aylık bazda tahmin kırılımı
+   - Kategori bazlı tahminler
+
+3. ⚠️ RİSK & UYARI SİNYALLERİ
+   - Bütçe aşım riski var mı?
+   - Dikkat edilmesi gereken kalemler
+
+4. 💡 ERKEN ÖNLEM ÖNERİLERİ
+   - Tahmin doğrultusunda alınabilecek aksiyonlar
+
+Somut rakamlar ve yüzdeler kullan. Profesyonel ama anlaşılır ol.
+"""
+                    response = genai.GenerativeModel("gemini-2.0-flash").generate_content(prompt)
+                    tahmin_result = response.text
+
+                    st.markdown(f"""
+                    <div class="ai-bubble" style="margin-top:16px; border-left:3px solid #2F3C6E;">
+                        <div style="font-size:0.75rem; color:#2F3C6E; font-weight:700; margin-bottom:10px; letter-spacing:0.1em;">
+                            🔮 AI GİDER TAHMİN RAPORU — {tahmin_donemi.upper()}
+                        </div>
+                        <div style="white-space:pre-wrap; font-size:0.87rem; line-height:1.75; color:#0f1923;">
+{tahmin_result}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Görsel projeksiyon grafiği
+                    if not df.empty and 'Tutar' in df.columns:
+                        try:
+                            df_tmp = df.copy()
+                            df_tmp['Tarih_DT'] = pd.to_datetime(df_tmp['Tarih'], errors='coerce')
+                            df_tmp['Ay'] = df_tmp['Tarih_DT'].dt.strftime('%Y-%m')
+                            aylik_gercek = df_tmp.groupby('Ay')['Tutar'].sum().reset_index()
+                            aylik_gercek.columns = ['Ay', 'Tutar']
+                            aylik_gercek['Tip'] = 'Gerçekleşen'
+
+                            # Basit projeksiyon
+                            if len(aylik_gercek) >= 2:
+                                ort = aylik_gercek['Tutar'].mean()
+                                multiplier = 1.0
+                                if "Optimistik" in senaryo:
+                                    multiplier = 0.80
+                                elif "Kötümser" in senaryo:
+                                    multiplier = 1.30
+                                ay_sayisi = 1 if "1 Ay" in tahmin_donemi else (3 if "3 Ay" in tahmin_donemi else (6 if "6 Ay" in tahmin_donemi else 5))
+                                son_ay_dt = pd.to_datetime(aylik_gercek['Ay'].iloc[-1])
+                                proj_rows = []
+                                for i in range(1, ay_sayisi + 1):
+                                    yeni_ay = (son_ay_dt + pd.DateOffset(months=i)).strftime('%Y-%m')
+                                    proj_rows.append({'Ay': yeni_ay, 'Tutar': ort * multiplier, 'Tip': 'Tahmin'})
+                                proj_df = pd.DataFrame(proj_rows)
+                                combined = pd.concat([aylik_gercek, proj_df], ignore_index=True)
+
+                                fig = go.Figure()
+                                gercek = combined[combined['Tip'] == 'Gerçekleşen']
+                                tahmin_d = combined[combined['Tip'] == 'Tahmin']
+                                fig.add_trace(go.Scatter(x=gercek['Ay'], y=gercek['Tutar'],
+                                    mode='lines+markers', name='Gerçekleşen',
+                                    line=dict(color='#11855B', width=2.5),
+                                    marker=dict(size=7)))
+                                fig.add_trace(go.Scatter(x=tahmin_d['Ay'], y=tahmin_d['Tutar'],
+                                    mode='lines+markers', name='Tahmin',
+                                    line=dict(color='#2F3C6E', width=2.5, dash='dash'),
+                                    marker=dict(size=7, symbol='diamond')))
+                                # Limit çizgisi
+                                fig.add_hline(y=user_info.get('monthly_limit', 15000),
+                                    line_dash="dot", line_color="#dc2626",
+                                    annotation_text="Aylık Limit",
+                                    annotation_position="top right")
+                                fig.update_layout(
+                                    title=f"📈 Gider Trendi & {tahmin_donemi} Projeksiyonu",
+                                    xaxis_title="Ay", yaxis_title="Tutar (₺)",
+                                    plot_bgcolor='rgba(0,0,0,0)',
+                                    paper_bgcolor='rgba(0,0,0,0)',
+                                    height=360,
+                                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
+                        except Exception:
+                            pass
+
+                    # XP ödülü
+                    _xp_data = data_store.get("xp", {})
+                    _xp_data[user_name] = _xp_data.get(user_name, 0) + 20
+                    data_store["xp"] = _xp_data
+                    save_data(data_store)
+                    st.success("✅ +20 XP kazandınız!")
+
+                except Exception as e:
+                    st.error(f"AI tahmin hatası: {e}")
+
+        # Örnek senaryo kartları (statik, her zaman gösterilir)
+        st.markdown("---")
+        st.markdown("#### 📋 Senaryo Karşılaştırması")
+        sc1, sc2, sc3 = st.columns(3)
+        limit = user_info.get('monthly_limit', 15000)
+        ort_harcama = df['Tutar'].mean() * 30 if not df.empty and 'Tutar' in df.columns else limit * 0.7
+        with sc1:
+            st.markdown(f"""
+            <div style="background:#f0faf5; border:1px solid #11855B33; border-radius:12px; padding:16px; text-align:center;">
+                <div style="font-size:1.4rem;">📊</div>
+                <div style="font-weight:700; color:#11855B; margin:6px 0;">Mevcut Trend</div>
+                <div style="font-size:1.1rem; font-weight:800; color:#0f1923;">₺{ort_harcama:,.0f}</div>
+                <div style="font-size:0.72rem; color:#7a96a4;">tahmini aylık</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with sc2:
+            st.markdown(f"""
+            <div style="background:#f0f4ff; border:1px solid #2F3C6E33; border-radius:12px; padding:16px; text-align:center;">
+                <div style="font-size:1.4rem;">📈</div>
+                <div style="font-weight:700; color:#2F3C6E; margin:6px 0;">Optimistik</div>
+                <div style="font-size:1.1rem; font-weight:800; color:#0f1923;">₺{ort_harcama*0.8:,.0f}</div>
+                <div style="font-size:0.72rem; color:#7a96a4;">%20 tasarruf</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with sc3:
+            color = "#dc2626" if ort_harcama * 1.3 > limit else "#d97706"
+            st.markdown(f"""
+            <div style="background:#fff5f5; border:1px solid {color}33; border-radius:12px; padding:16px; text-align:center;">
+                <div style="font-size:1.4rem;">📉</div>
+                <div style="font-weight:700; color:{color}; margin:6px 0;">Kötümser</div>
+                <div style="font-size:1.1rem; font-weight:800; color:#0f1923;">₺{ort_harcama*1.3:,.0f}</div>
+                <div style="font-size:0.72rem; color:{color};">%30 artış riski</div>
+            </div>
+            """, unsafe_allow_html=True)
