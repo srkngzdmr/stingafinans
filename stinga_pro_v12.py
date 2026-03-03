@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # ╔══════════════════════════════════════════════════════════════╗
-# ║          STINGA PRO v17.0 - ULTRA EDITION                   ║
+# ║          STINGA PRO v15.0 - ULTRA EDITION                   ║
 # ║  Geliştiren: AI ile birlikte - Gemini 2.5 Flash Destekli    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -733,15 +733,7 @@ def add_xp(user_name, amount, reason="", d=None):
     if _own:
         d = load_data()
     d.setdefault("xp", {})[user_name] = d["xp"].get(user_name, 0) + amount
-    if reason:
-        d.setdefault("notifications", []).append({
-            "user": user_name,
-            "msg": f"🏆 +{amount} XP kazandın! ({reason})",
-            "type": "xp",
-            "time": now_ist().strftime("%H:%M"),
-            "date": now_ist().strftime("%Y-%m-%d"),
-            "read": False
-        })
+    # XP bildirimi gönderilmez — sadece XP güncellenir
     if _own:
         save_data(d)
 
@@ -2378,7 +2370,7 @@ else:
             </div>
             <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:0.88rem; font-weight:900;
                         letter-spacing:0.3em; color:#0f1923; margin-top:13px; text-transform:uppercase;">
-                STİNGA PRO FİNANS V.17
+                VELA
             </div>
             <div style="font-family:'JetBrains Mono',monospace; font-size:0.51rem; color:#a0b8ae;
                         letter-spacing:0.18em; margin-top:4px; text-transform:uppercase;">
@@ -2554,7 +2546,17 @@ tick();setInterval(tick,1000);
         total_approved = _kpi_df[_kpi_df['Durum']=='Onaylandı']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         total_pending  = _kpi_df[_kpi_df['Durum']=='Onay Bekliyor']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         crit_risks     = len(_kpi_df[_kpi_df['Risk_Skoru'] > 70]) if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
-        my_wallet      = data_store.get('wallets',{}).get(user_name, 0)
+        # Kasa bakiyesi: avans - onaylı harcırah/nakit harcamalar
+        my_wallet_raw  = data_store.get('wallets',{}).get(user_name, 0)
+        _harcirah_odeme = {'harcirah','nakit','nakit/harcirah','kredi_karti','kredi kartı'}
+        my_harcirah_harcama = sum(
+            float(e.get('Tutar', 0))
+            for e in data_store.get('expenses', [])
+            if str(e.get('Kullanıcı', '')) == user_name
+            and e.get('Durum') == 'Onaylandı'
+            and str(e.get('Odeme_Turu', '')).lower() in _harcirah_odeme
+        )
+        my_wallet = max(0.0, my_wallet_raw - my_harcirah_harcama)
         total_tx       = len(_kpi_df) if not _kpi_df.empty else 0
         avg_risk       = _kpi_df['Risk_Skoru'].mean() if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
         
@@ -2747,8 +2749,18 @@ tick();setInterval(tick,1000);
                         proje = st.selectbox("Proje", ["Maden Sahası", "Aktif Karbon", "Enerji Hatları", "Genel Merkez"])
                     with col_o:
                         oncelik = st.selectbox("Öncelik", ["Normal", "Acil", "Düşük"])
-                
-                    notlar = st.text_area("Ek Not (isteğe bağlı)", height=80, placeholder="Harcamayla ilgili açıklama...")
+
+                    # ── Ödeme Tipi ─────────────────────────────────
+                    odeme_tipi = st.radio(
+                        "💳 Bu harcama nasıl ödendi?",
+                        ["🏦 Harcırahtan Düş (Nakit / Kişisel Kart)",
+                         "💳 Şirket Kredi Kartı"],
+                        horizontal=True,
+                        help="Harcırahtan düşülürse kasa bakiyenizden azalır. Şirket kartı ise şirket borcuna eklenir."
+                    )
+                    odeme_turu_sec = "harcirah" if "Harcırahtan" in odeme_tipi else "sirket_karti"
+
+                    notlar = st.text_area("Ek Not (isteğe bağlı)", height=60, placeholder="Harcamayla ilgili açıklama...")
                 
                     submitted = st.form_submit_button("🚀 AI ile Tara ve Gönder", use_container_width=True)
                 
@@ -2842,7 +2854,7 @@ tick();setInterval(tick,1000);
                                             "Kategori": data_ai.get("kategori", "Diğer"),
                                             "Tutar": float(data_ai.get("toplam_tutar", 0)),
                                             "KDV": float(data_ai.get("kdv_tutari", 0)),
-                                            "Odeme_Turu": data_ai.get("odeme_turu", "Bilinmiyor"),
+                                            "Odeme_Turu": odeme_turu_sec,
                                             "Kalemler": data_ai.get("kalemler", []),
                                             "Kisisel_Giderler": data_ai.get("kisisel_giderler", []),
                                             "Durum": "Onay Bekliyor",
@@ -2864,6 +2876,21 @@ tick();setInterval(tick,1000);
                                         if not ok:
                                             st.error("❌ Fiş API'ye gönderilemedi. Railway bağlantısını kontrol edin.")
                                         else:
+                                            # Robot tarama animasyonu
+                                            _stc.html('''<script>
+(function(){
+  var pd=window.parent.document;
+  var r=pd.getElementById('SGNX'),bt=pd.getElementById('SGNXBT'),bub=pd.getElementById('SGNXBUB');
+  if(r){r.classList.remove('sad');r.classList.add('joy');setTimeout(function(){r.classList.remove('joy');},3500);}
+  if(bt)bt.textContent='Fis islendi!';
+  if(bub){bub.classList.add('on');setTimeout(function(){bub.classList.remove('on');if(bt)bt.textContent='Merhaba!';},3800);}
+  var cv=pd.createElement('canvas');cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2147483641;';
+  cv.width=window.parent.innerWidth;cv.height=window.parent.innerHeight;pd.body.appendChild(cv);
+  var ctx=cv.getContext('2d'),p=[];
+  for(var i=0;i<80;i++)p.push({x:Math.random()*cv.width,y:-10,vx:(Math.random()-.5)*6,vy:Math.random()*4+2,r:Math.random()*5+2,angle:Math.random()*360,av:(Math.random()-.5)*8,color:['#00e896','#17a870','#f0a500','#ffffff'][Math.floor(Math.random()*4)]});
+  var fr=0;function draw(){ctx.clearRect(0,0,cv.width,cv.height);p.forEach(function(q){q.x+=q.vx;q.y+=q.vy;q.angle+=q.av;q.vy+=.1;ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.angle*Math.PI/180);ctx.fillStyle=q.color;ctx.globalAlpha=Math.max(0,1-fr/80);ctx.fillRect(-q.r/2,-q.r/2,q.r,q.r*1.6);ctx.restore();});fr++;if(fr<90)requestAnimationFrame(draw);else cv.remove();}draw();
+})();
+</script>''', height=0, scrolling=False)
                                             # Show result
                                             risk = int(data_ai.get("risk_skoru", 0))
                                             anomali = data_ai.get("anomali", False)
