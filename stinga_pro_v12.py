@@ -565,7 +565,7 @@ USERS = {
         "avatar": "👑",
         "title": "Yönetim Kurulu Başkanı",
         "department": "Yönetim Kurulu",
-        "monthly_limit": 50000,
+        "monthly_limit": 0,
         "xp": 0
     },
     "senol": {
@@ -575,7 +575,7 @@ USERS = {
         "avatar": "🏢",
         "title": "Genel Müdür",
         "department": "Genel Müdürlük",
-        "monthly_limit": 30000,
+        "monthly_limit": 0,
         "xp": 0
     },
     "serkan": {
@@ -585,7 +585,7 @@ USERS = {
         "avatar": "📊",
         "title": "İşletme Müdürü",
         "department": "İşletme Müdürlüğü",
-        "monthly_limit": 25000,
+        "monthly_limit": 0,
         "xp": 0
     },
     "okan": {
@@ -595,7 +595,7 @@ USERS = {
         "avatar": "🔧",
         "title": "Saha Personeli",
         "department": "Saha",
-        "monthly_limit": 5000,
+        "monthly_limit": 0,
         "xp": 0
     },
 }
