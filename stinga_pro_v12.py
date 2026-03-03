@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 # ╔══════════════════════════════════════════════════════════════╗
-# ║          STINGA PRO v14.0 - ULTRA EDITION                   ║
+# ║          STINGA PRO v15.0 - ULTRA EDITION                   ║
 # ║  Geliştiren: AI ile birlikte - Gemini 2.5 Flash Destekli    ║
+# ║  v15: Canlı Bildirim · Onay Animasyonu · Bulut Arşiv       ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import streamlit as st
@@ -21,10 +22,11 @@ import time
 import random
 import base64
 from io import BytesIO
+import calendar
 
 # ─── SAYFA YAPISI ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Stinga Pro v14 ⚡",
+    page_title="Stinga Pro v15 ⚡",
     layout="wide",
     page_icon="⚡",
     initial_sidebar_state="expanded"
@@ -475,7 +477,12 @@ defaults = {
     'tour_done': False,
     'voice_input': None,
     'realtime_alerts': [],
-    'selected_page': '🏠 Dashboard'
+    'selected_page': '🏠 Dashboard',
+    # v15 yeni alanlar
+    'last_notif_count': 0,       # Bildirim sayısı değişim takibi
+    'show_approval_anim': False,  # Onay animasyonu tetikleyici
+    'approval_anim_id': None,     # Onaylanan fiş ID'si
+    'last_refresh_time': 0,       # Son yenileme zamanı
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -569,9 +576,430 @@ def api_add_expense(expense: dict) -> bool:
     return False
 
 
-def add_notify(target, message, notif_type="info", d=None):
-    """Eski uyumluluk shim — artık API üzerinden çalışıyor."""
-    pass
+# ─── BULUT ARŞİV FONKSİYONLARI (v15) ────────────────────────
+# Supabase Storage veya Railway üzerinden aylık fiş arşivleme
+
+def cloud_upload_receipt(image_bytes: bytes, fis_id: str, user_name: str, tarih: str) -> str:
+    """
+    Fiş görselini buluta yükler ve public URL döndürür.
+    Supabase Storage kullanır (SUPABASE_URL + SUPABASE_KEY secrets gerekli).
+    Yoksa Railway'e base64 olarak kaydeder.
+    Returns: URL string veya ""
+    """
+    supabase_url = st.secrets.get("SUPABASE_URL", "")
+    supabase_key = st.secrets.get("SUPABASE_KEY", "")
+    
+    if supabase_url and supabase_key:
+        try:
+            # Aylık klasör yapısı: YYYY-MM/fis_id.jpg
+            ay_klasor = tarih[:7] if tarih else datetime.now().strftime("%Y-%m")
+            dosya_yolu = f"{ay_klasor}/{fis_id}.jpg"
+            
+            upload_url = f"{supabase_url}/storage/v1/object/stinga-fisler/{dosya_yolu}"
+            headers = {
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}",
+                "Content-Type": "image/jpeg",
+                "x-upsert": "true"
+            }
+            r = _req.post(upload_url, data=image_bytes, headers=headers, timeout=30)
+            if r.status_code in (200, 201):
+                public_url = f"{supabase_url}/storage/v1/object/public/stinga-fisler/{dosya_yolu}"
+                return public_url
+        except Exception as e:
+            st.warning(f"Bulut yükleme uyarısı: {e}")
+    
+    # Fallback: Railway'e base64 olarak kaydet (zaten mevcut akış)
+    return ""
+
+
+def cloud_list_monthly_receipts(year: int, month: int) -> list:
+    """
+    Belirtilen ay için yüklenen fişlerin listesini döndürür.
+    Returns: [{"id": ..., "url": ..., "date": ..., "user": ...}, ...]
+    """
+    supabase_url = st.secrets.get("SUPABASE_URL", "")
+    supabase_key = st.secrets.get("SUPABASE_KEY", "")
+    
+    if not supabase_url or not supabase_key:
+        return []
+    
+    try:
+        ay_klasor = f"{year:04d}-{month:02d}"
+        list_url = f"{supabase_url}/storage/v1/object/list/stinga-fisler/{ay_klasor}"
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json"
+        }
+        r = _req.post(list_url, json={"limit": 1000, "offset": 0}, headers=headers, timeout=15)
+        if r.status_code == 200:
+            items = r.json()
+            results = []
+            for item in items:
+                name = item.get("name", "")
+                fis_id = name.replace(".jpg", "").replace(".jpeg", "").replace(".png", "")
+                public_url = f"{supabase_url}/storage/v1/object/public/stinga-fisler/{ay_klasor}/{name}"
+                results.append({
+                    "id": fis_id,
+                    "url": public_url,
+                    "name": name,
+                    "size": item.get("metadata", {}).get("size", 0),
+                    "created_at": item.get("created_at", "")
+                })
+            return results
+    except Exception:
+        pass
+    return []
+
+
+def cloud_delete_receipt(fis_id: str, tarih: str) -> bool:
+    """Belirtilen fişi buluttan siler."""
+    supabase_url = st.secrets.get("SUPABASE_URL", "")
+    supabase_key = st.secrets.get("SUPABASE_KEY", "")
+    if not supabase_url or not supabase_key:
+        return False
+    try:
+        ay_klasor = tarih[:7] if tarih else datetime.now().strftime("%Y-%m")
+        del_url = f"{supabase_url}/storage/v1/object/stinga-fisler/{ay_klasor}/{fis_id}.jpg"
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+        }
+        r = _req.delete(del_url, headers=headers, timeout=15)
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+# ─── CANLI BİLDİRİM & OTO-REFRESH (v15) ─────────────────────
+
+def inject_auto_refresh_js(interval_seconds: int = 30):
+    """
+    Sayfa arka planda kendini her {interval_seconds} saniyede bir yeniler.
+    Yeni bildirim varsa (notif sayısı değiştiyse) anında ekranda gösterir.
+    """
+    import streamlit.components.v1 as components
+    components.html(f"""
+    <script>
+    (function() {{
+        const INTERVAL = {interval_seconds * 1000};
+        let lastNotifCount = parseInt(localStorage.getItem('stinga_notif_count') || '0');
+        
+        function checkAndRefresh() {{
+            // Streamlit'in parent window'una mesaj gönder
+            window.parent.postMessage({{type: 'stinga_refresh'}}, '*');
+        }}
+        
+        // Her 30 saniyede bir Streamlit sayfasını yenile
+        setInterval(function() {{
+            // Streamlit rerun trigger — hidden input trick
+            const inputs = window.parent.document.querySelectorAll('input[data-stinga-refresh]');
+            if (inputs.length > 0) {{
+                inputs[0].click();
+            }} else {{
+                // Fallback: URL refresh
+                const url = new URL(window.parent.location.href);
+                url.searchParams.set('_r', Date.now());
+                window.parent.history.replaceState(null, '', url);
+                window.parent.location.reload();
+            }}
+        }}, INTERVAL);
+    }})();
+    </script>
+    """, height=0)
+
+
+def show_notification_toast(notifications: list, user_name: str):
+    """
+    Yeni bildirimler varsa ekranın sağ üstünde animasyonlu toast gösterir.
+    """
+    import streamlit.components.v1 as components
+    
+    new_notifs = [n for n in notifications 
+                  if (n.get("user") == user_name or n.get("user") == "Hepsi") 
+                  and not n.get("read", False)]
+    
+    current_count = len(new_notifs)
+    last_count = st.session_state.get('last_notif_count', 0)
+    
+    if current_count > 0:
+        # En son bildirimleri toast olarak göster
+        toast_items = new_notifs[-3:]  # Son 3 bildirim
+        toasts_js = json.dumps([{
+            "msg": n.get("msg", ""),
+            "type": n.get("type", "info"),
+            "time": n.get("time", "")
+        } for n in toast_items])
+        
+        is_new = current_count > last_count
+        
+        components.html(f"""
+        <style>
+        .stinga-toast-wrap {{
+            position: fixed; top: 20px; right: 20px; z-index: 99999;
+            display: flex; flex-direction: column; gap: 10px;
+            pointer-events: none;
+        }}
+        .stinga-toast {{
+            background: #ffffff;
+            border: 1px solid rgba(17,133,91,0.3);
+            border-left: 4px solid #11855B;
+            border-radius: 12px;
+            padding: 14px 18px;
+            min-width: 320px; max-width: 380px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            animation: toastSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            pointer-events: all;
+        }}
+        .stinga-toast.warning {{ border-left-color: #d97706; }}
+        .stinga-toast.xp {{ border-left-color: #7c3aed; }}
+        .stinga-toast.info {{ border-left-color: #0891b2; }}
+        .stinga-toast-header {{
+            font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.1em; color: #11855B; margin-bottom: 4px;
+            display: flex; align-items: center; gap: 6px;
+        }}
+        .stinga-toast-msg {{
+            font-size: 0.83rem; color: #1a2e3b; line-height: 1.4;
+        }}
+        .stinga-toast-time {{
+            font-size: 0.65rem; color: #7a96a4; margin-top: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        .stinga-badge {{
+            position: fixed; top: 14px; right: 14px; z-index: 100000;
+            background: #dc2626; color: white;
+            width: 22px; height: 22px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.65rem; font-weight: 800;
+            animation: badgePulse 1.5s ease-in-out infinite;
+            box-shadow: 0 0 0 0 rgba(220,38,38,0.4);
+        }}
+        @keyframes toastSlideIn {{
+            from {{ transform: translateX(120%); opacity: 0; }}
+            to   {{ transform: translateX(0);    opacity: 1; }}
+        }}
+        @keyframes badgePulse {{
+            0%   {{ box-shadow: 0 0 0 0 rgba(220,38,38,0.5); }}
+            70%  {{ box-shadow: 0 0 0 10px rgba(220,38,38,0); }}
+            100% {{ box-shadow: 0 0 0 0 rgba(220,38,38,0); }}
+        }}
+        </style>
+        <div class="stinga-toast-wrap" id="stingaToastWrap"></div>
+        <script>
+        (function() {{
+            const notifications = {toasts_js};
+            const isNew = {str(is_new).lower()};
+            const count = {current_count};
+            
+            // Sayfa localStorage'da son sayıyı sakla
+            const lastCount = parseInt(localStorage.getItem('stinga_notif_count') || '0');
+            localStorage.setItem('stinga_notif_count', count);
+            
+            const wrap = document.getElementById('stingaToastWrap');
+            if (!wrap) return;
+            
+            const icons = {{
+                'xp': '🏆', 'warning': '⚠️', 'success': '✅', 'info': 'ℹ️'
+            }};
+            
+            if (isNew || lastCount !== count) {{
+                notifications.forEach(function(n, i) {{
+                    setTimeout(function() {{
+                        const toast = document.createElement('div');
+                        toast.className = 'stinga-toast ' + (n.type || 'info');
+                        toast.innerHTML = `
+                            <div class="stinga-toast-header">
+                                ${{icons[n.type] || '📌'}} &nbsp; YENİ BİLDİRİM
+                            </div>
+                            <div class="stinga-toast-msg">${{n.msg}}</div>
+                            <div class="stinga-toast-time">${{n.time}}</div>
+                        `;
+                        wrap.appendChild(toast);
+                        // 5 saniye sonra gizle
+                        setTimeout(function() {{
+                            toast.style.transition = 'all 0.4s ease';
+                            toast.style.opacity = '0';
+                            toast.style.transform = 'translateX(120%)';
+                            setTimeout(function() {{ toast.remove(); }}, 400);
+                        }}, 5000);
+                    }}, i * 300);
+                }});
+            }}
+        }})();
+        </script>
+        """, height=0)
+    
+    st.session_state['last_notif_count'] = current_count
+
+
+def show_approval_animation(fis_id: str = "", firma: str = "", tutar: float = 0):
+    """
+    Onay verildiğinde 2 saniye boyunca tam ekran animasyonlu onay gösterimi.
+    """
+    import streamlit.components.v1 as components
+    components.html(f"""
+    <style>
+    .stinga-approval-overlay {{
+        position: fixed; inset: 0; z-index: 999999;
+        background: rgba(0,0,0,0.85);
+        display: flex; align-items: center; justify-content: center;
+        animation: overlayFadeIn 0.3s ease forwards;
+    }}
+    .stinga-approval-box {{
+        text-align: center;
+        animation: boxBounce 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    }}
+    .stinga-approval-ring {{
+        width: 180px; height: 180px; border-radius: 50%;
+        border: 4px solid rgba(17,133,91,0.3);
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto 24px;
+        position: relative;
+        animation: ringPulse 0.6s ease-out 0.3s forwards;
+    }}
+    .stinga-approval-ring::before {{
+        content: '';
+        position: absolute; inset: -12px;
+        border-radius: 50%;
+        border: 3px solid rgba(17,133,91,0.15);
+        animation: ringExpand 1s ease-out 0.3s infinite;
+    }}
+    .stinga-approval-ring::after {{
+        content: '';
+        position: absolute; inset: -24px;
+        border-radius: 50%;
+        border: 2px solid rgba(17,133,91,0.08);
+        animation: ringExpand 1s ease-out 0.5s infinite;
+    }}
+    .stinga-approval-icon {{
+        font-size: 80px;
+        animation: iconPop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.2s both;
+    }}
+    .stinga-approval-title {{
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 2.2rem; font-weight: 900;
+        color: #11855B; letter-spacing: -0.02em;
+        animation: textFade 0.4s ease 0.4s both;
+        text-shadow: 0 0 40px rgba(17,133,91,0.6);
+    }}
+    .stinga-approval-sub {{
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1rem; color: rgba(255,255,255,0.6);
+        margin-top: 8px;
+        animation: textFade 0.4s ease 0.6s both;
+    }}
+    .stinga-approval-amount {{
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 1.5rem; font-weight: 800;
+        color: white; margin-top: 12px;
+        animation: textFade 0.4s ease 0.7s both;
+    }}
+    .stinga-confetti {{
+        position: absolute; width: 10px; height: 10px;
+        border-radius: 2px;
+        animation: confettiFall linear forwards;
+    }}
+    @keyframes overlayFadeIn {{ from {{ opacity:0; }} to {{ opacity:1; }} }}
+    @keyframes boxBounce {{ from {{ transform:scale(0.3); opacity:0; }} to {{ transform:scale(1); opacity:1; }} }}
+    @keyframes ringPulse {{ from {{ box-shadow:none; }} to {{ box-shadow:0 0 0 20px rgba(17,133,91,0.1), 0 0 60px rgba(17,133,91,0.3); }} }}
+    @keyframes ringExpand {{ 0% {{ transform:scale(1); opacity:0.6; }} 100% {{ transform:scale(1.5); opacity:0; }} }}
+    @keyframes iconPop {{ from {{ transform:scale(0) rotate(-30deg); }} to {{ transform:scale(1) rotate(0deg); }} }}
+    @keyframes textFade {{ from {{ opacity:0; transform:translateY(10px); }} to {{ opacity:1; transform:translateY(0); }} }}
+    @keyframes confettiFall {{
+        0%   {{ transform: translateY(-20px) rotate(0deg);   opacity:1; }}
+        100% {{ transform: translateY(600px) rotate(720deg); opacity:0; }}
+    }}
+    @keyframes overlayFadeOut {{ from {{ opacity:1; }} to {{ opacity:0; pointer-events:none; }} }}
+    </style>
+
+    <div class="stinga-approval-overlay" id="stingaApprovalOverlay">
+        <div class="stinga-approval-box">
+            <div class="stinga-approval-ring">
+                <div class="stinga-approval-icon">✅</div>
+            </div>
+            <div class="stinga-approval-title">ONAYLANDI!</div>
+            <div class="stinga-approval-sub">{fis_id[:12] if fis_id else 'İŞLEM'} · Yönetici Onayı</div>
+            {"<div class='stinga-approval-amount'>₺" + f"{tutar:,.2f}" + " · " + firma + "</div>" if tutar > 0 else ""}
+        </div>
+    </div>
+
+    <script>
+    (function() {{
+        const overlay = document.getElementById('stingaApprovalOverlay');
+        
+        // Konfeti oluştur
+        const colors = ['#11855B','#17a870','#2F3C6E','#ffffff','#d97706'];
+        for (let i = 0; i < 60; i++) {{
+            const c = document.createElement('div');
+            c.className = 'stinga-confetti';
+            c.style.cssText = `
+                left: ${{Math.random() * 100}}vw;
+                top: 0;
+                background: ${{colors[Math.floor(Math.random()*colors.length)]}};
+                width: ${{Math.random()*8+4}}px;
+                height: ${{Math.random()*8+4}}px;
+                animation-duration: ${{Math.random()*1.5+1}}s;
+                animation-delay: ${{Math.random()*0.5}}s;
+            `;
+            overlay.appendChild(c);
+        }}
+        
+        // 2.5 saniye sonra overlay'i kapat
+        setTimeout(function() {{
+            overlay.style.animation = 'overlayFadeOut 0.5s ease forwards';
+            setTimeout(function() {{
+                overlay.remove();
+            }}, 500);
+        }}, 2500);
+        
+        // Tıklayınca da kapanır
+        overlay.addEventListener('click', function() {{
+            overlay.remove();
+        }});
+    }})();
+    </script>
+    """, height=0)
+
+
+# ─── OTO-REFRESH TICKER (v15) ─────────────────────────────────
+def auto_refresh_ticker(interval: int = 30):
+    """
+    st_autorefresh benzeri davranış: her {interval} saniyede bir
+    sayfanın yenilenmesini tetikler. Bildirim sayısı değişince öncelikli rerun.
+    """
+    import streamlit.components.v1 as components
+    
+    now = time.time()
+    last = st.session_state.get('last_refresh_time', 0)
+    
+    # Arka planda yenileme için JS inject
+    components.html(f"""
+    <script>
+    (function() {{
+        // Streamlit sayfasını {interval} saniyede bir yenilemek için
+        // sayfada gizli bir counter tutup değişince Streamlit rerun'ı tetikle
+        const key = 'stinga_refresh_ts';
+        const now = Date.now();
+        const last = parseInt(sessionStorage.getItem(key) || '0');
+        
+        if (now - last > {interval * 1000}) {{
+            sessionStorage.setItem(key, now);
+        }}
+        
+        setTimeout(function() {{
+            sessionStorage.setItem(key, Date.now());
+            // Streamlit'e number input değişikliği simüle et
+            const event = new Event('stinga_tick');
+            window.dispatchEvent(event);
+        }}, {interval * 1000});
+    }})();
+    </script>
+    """, height=0)
+
+
 
 
 def add_xp(user_name, amount, reason="", d=None):
@@ -1485,6 +1913,29 @@ else:
     model = configure_ai()
     user_info = st.session_state.user_info
 
+    # ── v15: OTO-REFRESH & CANLI BİLDİRİM ────────────────────
+    # 30 saniyede bir sayfa arka planda yenilenir
+    _st_autorefresh_placeholder = st.empty()
+    with _st_autorefresh_placeholder:
+        try:
+            from streamlit_autorefresh import st_autorefresh
+            st_autorefresh(interval=30000, key="stinga_autorefresh")
+        except ImportError:
+            # streamlit-autorefresh yüklü değilse JS tabanlı hafif çözüm
+            inject_auto_refresh_js(30)
+    
+    # Onay animasyonu tetiklenmiş mi kontrol et
+    if st.session_state.get('show_approval_anim'):
+        anim_data = st.session_state.get('approval_anim_data', {})
+        show_approval_animation(
+            fis_id=anim_data.get('id',''),
+            firma=anim_data.get('firma',''),
+            tutar=anim_data.get('tutar', 0)
+        )
+        st.session_state['show_approval_anim'] = False
+        st.session_state['approval_anim_data'] = {}
+    # ── /v15 ──────────────────────────────────────────────────
+
     # ── Eski bozuk AI_Audit kayıtlarını sessizce onar (tek seferlik) ──
     if not st.session_state.get("audit_fixed"):
         try:
@@ -1514,6 +1965,9 @@ else:
         my_notifs = [n for n in data_store.get("notifications", [])
                      if (n["user"] == user_name or n["user"] == "Hepsi") and not n.get("read", False)]
         notif_count = len(my_notifs)
+        
+        # v15: Yeni bildirim toast'ı (sidebar dışında render ediliyor)
+        show_notification_toast(data_store.get("notifications", []), user_name)
 
         if not df_full.empty and 'Tutar' in df_full.columns:
             my_total = df_full[df_full['Kullanıcı'] == user_name]['Tutar'].sum() if 'Kullanıcı' in df_full.columns else 0
@@ -1936,6 +2390,7 @@ else:
                                     yukleme_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                     path = f"arsiv/{datetime.now().strftime('%Y_%m')}"
                                     os.makedirs(path, exist_ok=True)
+                                    fis_id_new = datetime.now().strftime("%Y%m%d%H%M%S")
                                     f_path = os.path.join(path, f"{datetime.now().strftime('%H%M%S')}_{f.name}")
                                     img_bytes = f.getbuffer()
                                     with open(f_path, "wb") as fp:
@@ -1946,9 +2401,21 @@ else:
                                     ext = f.name.rsplit(".", 1)[-1].lower()
                                     mime = {"jpg":"image/jpeg","jpeg":"image/jpeg","png":"image/png","webp":"image/webp"}.get(ext,"image/jpeg")
                                     gorsel_data_uri = f"data:{mime};base64,{gorsel_b64}"
+                                    
+                                    # v15: Buluta yükle (Supabase varsa)
+                                    cloud_url = ""
+                                    tarih_yeni_str = data_ai.get("tarih", datetime.now().strftime("%Y-%m-%d"))
+                                    try:
+                                        cloud_url = cloud_upload_receipt(
+                                            bytes(img_bytes), fis_id_new, user_name, tarih_yeni_str
+                                        )
+                                        if cloud_url:
+                                            st.toast("☁️ Fiş görseli buluta yüklendi!", icon="✅")
+                                    except Exception:
+                                        pass
 
                                     new_e = {
-                                        "ID": datetime.now().strftime("%Y%m%d%H%M%S"),
+                                        "ID": fis_id_new,
                                         "Tarih": data_ai.get("tarih", datetime.now().strftime("%Y-%m-%d")),
                                         "Saat": data_ai.get("saat", ""),
                                         "Yukleme_Zamani": yukleme_zamani,
@@ -1964,6 +2431,7 @@ else:
                                         "Durum": "Onay Bekliyor",
                                         "Dosya_Yolu": f_path,
                                         "Gorsel_B64": gorsel_data_uri,
+                                        "Cloud_URL": cloud_url,  # v15: Bulut arşiv URL
                                         "Risk_Skoru": int(data_ai.get("risk_skoru", 0)),
                                         "AI_Audit": data_ai.get("audit_ozeti", ""),
                                         "AI_Anomali": data_ai.get("anomali", False),
@@ -2122,8 +2590,15 @@ else:
                             if btn1.button("✅ Onayla", key=f"omcent_on_{row['ID']}", use_container_width=True):
                                 with st.spinner("Onaylanıyor..."):
                                     if api_approve(str(row['ID']), "approve", user_name):
+                                        # v15: Onay animasyonunu tetikle
+                                        st.session_state['show_approval_anim'] = True
+                                        st.session_state['approval_anim_data'] = {
+                                            'id': str(row['ID']),
+                                            'firma': str(row.get('Firma', '')),
+                                            'tutar': float(row.get('Tutar', 0))
+                                        }
                                         st.success("✅ Onaylandı!")
-                                        time.sleep(0.5)
+                                        time.sleep(0.3)
                                         st.rerun()
                                     else:
                                         st.error("API hatası, tekrar deneyin")
@@ -2762,7 +3237,7 @@ else:
     elif selected == "🗄️ Arşiv & Rapor":
         st.markdown('<div class="page-header"><div class="page-title">ARŞİV & RAPORLAMA</div></div>', unsafe_allow_html=True)
         
-        tab_r, tab_a, tab_h = st.tabs(["📑 Raporlama", "🔍 Arşiv", "📜 Geçmiş AI Analizleri"])
+        tab_r, tab_a, tab_h, tab_cloud = st.tabs(["📑 Raporlama", "🔍 Arşiv", "📜 Geçmiş AI Analizleri", "☁️ Bulut Arşiv"])
         
         with tab_r:
             if not df.empty:
@@ -2909,3 +3384,172 @@ else:
                     <div style="font-size:0.8rem; margin-top:8px;">Anomali Dedektörü'nden derin analiz başlat!</div>
                 </div>
                 """, unsafe_allow_html=True)
+
+        # ── BULUT ARŞİV SAYFASI (v15) ──────────────────────────────
+        with tab_cloud:
+            st.markdown("### ☁️ Aylık Fiş Bulut Arşivi")
+            
+            # Supabase yapılandırma kontrolü
+            has_supabase = bool(st.secrets.get("SUPABASE_URL", "") and st.secrets.get("SUPABASE_KEY", ""))
+            
+            if not has_supabase:
+                st.markdown("""
+                <div class="ultra-card" style="border-left:4px solid #d97706;">
+                    <div style="font-size:1.2rem; font-weight:700; margin-bottom:8px;">⚙️ Bulut Arşiv Kurulumu</div>
+                    <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:16px;">
+                        Aylık fiş arşivleme özelliğini aktifleştirmek için Supabase hesabınızı bağlayın.
+                        Yüklenen her fiş görseli otomatik olarak aylık klasörlerde depolanır.
+                    </p>
+                    <div style="background:var(--bg); border-radius:10px; padding:16px; font-family:'JetBrains Mono',monospace; font-size:0.8rem;">
+                        <div style="color:#11855B; margin-bottom:8px;"># .streamlit/secrets.toml</div>
+                        <div style="color:#2F3C6E;">SUPABASE_URL = "https://xxxxx.supabase.co"</div>
+                        <div style="color:#2F3C6E;">SUPABASE_KEY = "eyJhbGci..."</div>
+                    </div>
+                    <div style="margin-top:16px; font-size:0.82rem; color:var(--text-muted);">
+                        1. <a href="https://supabase.com" target="_blank" style="color:#11855B;">supabase.com</a>'da ücretsiz hesap açın<br>
+                        2. <strong>Storage → New Bucket</strong> → Bucket adı: <code>stinga-fisler</code> (Public)<br>
+                        3. Project Settings → API'den URL ve anon key'i kopyalayın<br>
+                        4. Railway/Streamlit secrets'a ekleyin → deploy edin
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                st.markdown("#### 📊 Mevcut Fiş Verileri (Railway'den)")
+                # Supabase yoksa mevcut Railway verilerini göster
+                if not df.empty and 'Tarih' in df.columns:
+                    df_cloud = df.copy()
+                    df_cloud['Ay'] = pd.to_datetime(df_cloud['Tarih'], errors='coerce').dt.strftime('%Y-%m')
+                    aylik_ozet = df_cloud.groupby('Ay').agg(
+                        Fiş_Sayısı=('ID','count'),
+                        Toplam_Tutar=('Tutar','sum')
+                    ).reset_index().sort_values('Ay', ascending=False)
+                    
+                    for _, row_ay in aylik_ozet.iterrows():
+                        ay_str = row_ay['Ay']
+                        sayı = row_ay['Fiş_Sayısı']
+                        tutar = row_ay['Toplam_Tutar']
+                        
+                        try:
+                            dt = datetime.strptime(ay_str, "%Y-%m")
+                            ay_label = dt.strftime("%B %Y")
+                        except Exception:
+                            ay_label = ay_str
+                        
+                        st.markdown(f"""
+                        <div class="ultra-card" style="padding:16px; margin:6px 0;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="font-weight:700; font-size:1rem;">📅 {ay_label}</div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                                        {sayı} fiş · Toplam ₺{tutar:,.0f}
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center;">
+                                    <span style="background:rgba(17,133,91,0.1); color:#11855B; 
+                                                border:1px solid rgba(17,133,91,0.25); border-radius:20px;
+                                                padding:4px 12px; font-size:0.72rem; font-weight:700;">
+                                        Railway'de ✓
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("Henüz arşivlenecek fiş verisi yok.")
+            
+            else:
+                # Supabase bağlı — gerçek bulut arşiv arayüzü
+                st.success("✅ Supabase Bulut Arşivi Aktif")
+                
+                col_cy, col_cm = st.columns(2)
+                with col_cy:
+                    secilen_yil = st.selectbox("Yıl", list(range(datetime.now().year, datetime.now().year - 3, -1)))
+                with col_cm:
+                    secilen_ay_num = st.selectbox("Ay", list(range(1, 13)), 
+                                                   index=datetime.now().month - 1,
+                                                   format_func=lambda m: calendar.month_name[m])
+                
+                if st.button("🔍 Arşivi Getir", use_container_width=True):
+                    with st.spinner(f"Bulut arşivi taranıyor: {secilen_yil}/{secilen_ay_num:02d}..."):
+                        cloud_items = cloud_list_monthly_receipts(secilen_yil, secilen_ay_num)
+                        st.session_state['cloud_items_cache'] = cloud_items
+                        st.session_state['cloud_ay_label'] = f"{secilen_yil}-{secilen_ay_num:02d}"
+                
+                cloud_items = st.session_state.get('cloud_items_cache', [])
+                cloud_ay = st.session_state.get('cloud_ay_label', '')
+                
+                if cloud_items:
+                    st.markdown(f"**{len(cloud_items)} fiş bulundu** ({cloud_ay})")
+                    
+                    # Mevcut expense verileriyle çapraz eşleştir
+                    expense_map = {}
+                    if not df.empty:
+                        for _, er in df.iterrows():
+                            expense_map[str(er.get('ID', ''))] = er
+                    
+                    cols_cloud = st.columns(3)
+                    for ci, item in enumerate(cloud_items):
+                        fis_id = item['id']
+                        exp_row = expense_map.get(fis_id)
+                        
+                        with cols_cloud[ci % 3]:
+                            firma = exp_row.get('Firma', fis_id[:12]) if exp_row is not None else fis_id[:12]
+                            tutar_c = exp_row.get('Tutar', 0) if exp_row is not None else 0
+                            durum_c = exp_row.get('Durum', '?') if exp_row is not None else '?'
+                            tarih_c = exp_row.get('Tarih', '') if exp_row is not None else ''
+                            
+                            st.markdown(f"""
+                            <div class="ultra-card" style="padding:14px; margin:4px 0;">
+                                <div style="font-size:0.8rem; font-weight:700; margin-bottom:6px;">{firma}</div>
+                                <div style="font-size:0.7rem; color:var(--text-muted);">
+                                    {tarih_c} · ₺{float(tutar_c):,.0f}
+                                </div>
+                                <div style="margin-top:6px;">{get_status_html(durum_c)}</div>
+                                <a href="{item['url']}" target="_blank" 
+                                   style="display:block; margin-top:8px; text-align:center;
+                                          background:rgba(17,133,91,0.1); color:#11855B; 
+                                          border:1px solid rgba(17,133,91,0.25); border-radius:8px;
+                                          padding:6px; font-size:0.72rem; font-weight:700; text-decoration:none;">
+                                    🖼️ Fişi Görüntüle
+                                </a>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
+                    # Toplu indirme linki
+                    st.markdown(f"""
+                    <div class="ultra-card" style="text-align:center; padding:20px;">
+                        <div style="font-size:1rem; font-weight:700; margin-bottom:8px;">📦 Aylık Toplu İndirme</div>
+                        <div style="font-size:0.8rem; color:var(--text-muted);">
+                            {cloud_ay} dönemi · {len(cloud_items)} fiş görsel dosyası
+                        </div>
+                        <div style="margin-top:12px; font-size:0.75rem; color:var(--text-muted);">
+                            Her fişi ayrı ayrı görüntülemek için yukarıdaki "Fişi Görüntüle" bağlantılarını kullanın.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                elif st.session_state.get('cloud_ay_label'):
+                    st.info(f"☁️ {cloud_ay} dönemine ait bulut arşivinde fiş bulunamadı.")
+                    st.markdown("""
+                    <div class="ultra-card" style="text-align:center; padding:32px;">
+                        <div style="font-size:2.5rem; opacity:0.4;">☁️</div>
+                        <div style="margin-top:12px; color:var(--text-muted);">
+                            Bu ay yüklenen fişlerin görselleri Supabase'e otomatik yükleniyor.<br>
+                            Yeni fiş tarayınca görsel burada arşivlenecek.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div class="ultra-card" style="text-align:center; padding:48px;">
+                        <div style="font-size:3rem; opacity:0.3;">☁️</div>
+                        <div style="font-size:1.1rem; font-weight:700; margin:12px 0;">Aylık Bulut Arşivi</div>
+                        <div style="color:var(--text-muted); font-size:0.9rem;">
+                            Yıl ve ay seçip "Arşivi Getir" butonuna tıklayın.<br>
+                            Her ay yüklenen fişler otomatik olarak aylık klasörlerde depolanır.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
