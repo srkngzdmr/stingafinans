@@ -479,40 +479,72 @@ section[data-testid="stMain"] > div { background:transparent !important; }
 
 /* ── AI ROBOT (fare takipçi) ─────────────────────────────── */
 #sg-robot-wrap {
-    position:fixed; bottom:28px; left:28px;
+    position:fixed; bottom:32px; right:32px;
     z-index:9998; pointer-events:none;
-    transition: transform 0.18s ease;
+    will-change: transform;
 }
-#sg-robot-svg {
-    width:72px; height:72px;
-    filter: drop-shadow(0 4px 16px rgba(17,133,91,0.35));
-    animation: sgRobotFloat 3s ease-in-out infinite;
+#sg-robot-body {
+    width:90px; height:90px;
+    filter: drop-shadow(0 8px 24px rgba(17,133,91,0.45));
+    animation: sgRobotFloat 3.5s ease-in-out infinite;
     cursor: pointer; pointer-events:all;
+    transition: filter 0.2s ease, transform 0.2s ease;
+}
+#sg-robot-body:hover {
+    filter: drop-shadow(0 12px 32px rgba(17,133,91,0.7));
+    transform: scale(1.08);
 }
 @keyframes sgRobotFloat {
-    0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);}
+    0%,100%{transform:translateY(0px) rotate(-1deg);}
+    50%{transform:translateY(-10px) rotate(1deg);}
 }
 #sg-robot-bubble {
-    position:absolute; bottom:80px; left:0;
-    background:#fff; border:1px solid rgba(17,133,91,0.2);
-    border-radius:14px 14px 14px 4px;
-    padding:10px 14px; min-width:180px; max-width:240px;
+    position:absolute; bottom:100px; right:0;
+    background:linear-gradient(135deg,#ffffff,#f4f9f6);
+    border:1.5px solid rgba(17,133,91,0.25);
+    border-radius:16px 16px 4px 16px;
+    padding:12px 16px; min-width:200px; max-width:260px;
     font-family:'Plus Jakarta Sans',sans-serif;
-    font-size:0.75rem; color:#0f1923; line-height:1.5;
-    box-shadow:0 4px 20px rgba(0,0,0,0.1);
-    opacity:0; transform:translateY(6px) scale(0.95);
-    transition:all 0.25s ease;
+    font-size:0.78rem; color:#0f1923; line-height:1.6;
+    box-shadow:0 8px 32px rgba(17,133,91,0.12), 0 2px 8px rgba(0,0,0,0.06);
+    opacity:0; transform:translateY(8px) scale(0.92);
+    transition:all 0.3s cubic-bezier(0.16,1,0.3,1);
     pointer-events:none;
 }
-#sg-robot-wrap:hover #sg-robot-bubble,
 #sg-robot-bubble.visible {
     opacity:1; transform:translateY(0) scale(1);
 }
 #sg-robot-bubble::before {
     content:'⚡ STINGA AI';
-    display:block; font-size:0.58rem; font-weight:700;
-    color:var(--sg); letter-spacing:1.5px; margin-bottom:4px;
+    display:block; font-size:0.6rem; font-weight:800;
+    color:var(--sg); letter-spacing:2px; margin-bottom:5px;
+    text-transform:uppercase;
 }
+#sg-robot-bubble::after {
+    content:'';
+    position:absolute; bottom:-8px; right:20px;
+    width:16px; height:8px;
+    background:linear-gradient(135deg,#ffffff,#f4f9f6);
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+    border-right:1.5px solid rgba(17,133,91,0.25);
+}
+/* Halo ring behind robot */
+#sg-robot-halo {
+    position:absolute; inset:-12px;
+    border-radius:50%;
+    background: conic-gradient(
+        from 0deg,
+        rgba(17,133,91,0) 0%,
+        rgba(17,133,91,0.3) 25%,
+        rgba(47,60,110,0.3) 50%,
+        rgba(17,133,91,0.3) 75%,
+        rgba(17,133,91,0) 100%
+    );
+    animation: sgHaloSpin 6s linear infinite;
+    pointer-events:none;
+    opacity:0.6;
+}
+@keyframes sgHaloSpin { to { transform:rotate(360deg); } }
 
 </style>
 """, unsafe_allow_html=True)
@@ -1644,149 +1676,6 @@ def logout():
 # ─── ANA UYGULAMA ─────────────────────────────────────────────
 init_db()
 
-# ── GLOBAL: AI Robot + Toast + Auto-refresh JS ───────────────
-_ROBOT_TIPS = [
-    "Yeni fiş taramak için 📑 Fiş Tarama bölümünü kullan!",
-    "Onay bekleyen fişleri kontrol etmeyi unutma ⚖️",
-    "Dashboard'da günlük AI brifingini başlatabilirsin 🤖",
-    "Anomali Dedektörü şüpheli işlemleri otomatik bulur 🔬",
-    "Raporları PDF olarak indirebilirsin 📄",
-    "Kasa bakiyeni 💰 Finans ekranından takip et",
-]
-import json as _json
-_robot_tips_js = _json.dumps(_ROBOT_TIPS)
-
-st.markdown(f"""
-<!-- STINGA PRO: Robot + Toast + Auto-refresh -->
-<div id="sg-robot-wrap">
-  <div id="sg-robot-bubble"></div>
-  <svg id="sg-robot-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <radialGradient id="rg1" cx="50%" cy="30%" r="70%">
-        <stop offset="0%" stop-color="#00e896"/>
-        <stop offset="100%" stop-color="#0c6344"/>
-      </radialGradient>
-      <filter id="rglow"><feGaussianBlur stdDeviation="2" result="b"/>
-        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-    </defs>
-    <!-- Body -->
-    <rect x="22" y="38" width="56" height="44" rx="10" fill="url(#rg1)" filter="url(#rglow)"/>
-    <!-- Head -->
-    <rect x="28" y="14" width="44" height="30" rx="9" fill="#0f6b45"/>
-    <rect x="30" y="16" width="40" height="26" rx="7" fill="url(#rg1)" opacity="0.9"/>
-    <!-- Antenna -->
-    <line x1="50" y1="14" x2="50" y2="6" stroke="rgba(0,232,150,0.7)" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="50" cy="5" r="3" fill="#00e896">
-      <animate attributeName="r" values="3;5;3" dur="1.5s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite"/>
-    </circle>
-    <!-- Eyes -->
-    <ellipse cx="39" cy="27" rx="5" ry="5.5" fill="#001f12"/>
-    <ellipse cx="61" cy="27" rx="5" ry="5.5" fill="#001f12"/>
-    <circle cx="40" cy="26" r="2" fill="#00e896" id="reye-l"/>
-    <circle cx="62" cy="26" r="2" fill="#00e896" id="reye-r"/>
-    <!-- Mouth -->
-    <path d="M38 36 Q50 42 62 36" stroke="rgba(0,232,150,0.8)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-    <!-- Chest panel -->
-    <rect x="32" y="46" width="36" height="22" rx="6" fill="rgba(0,0,0,0.2)"/>
-    <circle cx="42" cy="57" r="4" fill="rgba(0,232,150,0.7)">
-      <animate attributeName="opacity" values="0.7;1;0.7" dur="2s" repeatCount="indefinite"/>
-    </circle>
-    <rect x="50" y="53" width="14" height="3" rx="2" fill="rgba(0,232,150,0.5)"/>
-    <rect x="50" y="59" width="10" height="3" rx="2" fill="rgba(0,232,150,0.3)"/>
-    <!-- Arms -->
-    <rect x="8" y="44" width="14" height="30" rx="7" fill="#0f6b45"/>
-    <rect x="78" y="44" width="14" height="30" rx="7" fill="#0f6b45"/>
-    <!-- Legs -->
-    <rect x="32" y="78" width="14" height="18" rx="7" fill="#0c6344"/>
-    <rect x="54" y="78" width="14" height="18" rx="7" fill="#0c6344"/>
-    <!-- Feet -->
-    <rect x="28" y="92" width="22" height="8" rx="4" fill="#0a5236"/>
-    <rect x="50" y="92" width="22" height="8" rx="4" fill="#0a5236"/>
-  </svg>
-</div>
-<div id="sg-toast-container"></div>
-
-<script>
-(function(){{
-  // ── ROBOT: fare takip + mesaj ─────────────────────────────
-  const wrap   = document.getElementById('sg-robot-wrap');
-  const bubble = document.getElementById('sg-robot-bubble');
-  const eyeL   = document.getElementById('reye-l');
-  const eyeR   = document.getElementById('reye-r');
-  const tips   = {_robot_tips_js};
-  let tipIdx = 0;
-
-  // Mevcut pozisyon
-  let rx = 28, ry = window.innerHeight - 100;
-
-  // Robot'un gözleri fareyi takip eder (küçük offset)
-  document.addEventListener('mousemove', function(e) {{
-    const svgRect = wrap.getBoundingClientRect();
-    const cx = svgRect.left + svgRect.width/2;
-    const cy = svgRect.top  + svgRect.height/2;
-    const dx = (e.clientX - cx) / window.innerWidth  * 6;
-    const dy = (e.clientY - cy) / window.innerHeight * 5;
-    if(eyeL) {{ eyeL.setAttribute('cx', 40 + dx); eyeL.setAttribute('cy', 26 + dy); }}
-    if(eyeR) {{ eyeR.setAttribute('cx', 62 + dx); eyeR.setAttribute('cy', 26 + dy); }}
-
-    // Robot hafifçe fareye yönelir (çok yavaş)
-    const targetX = Math.max(8, Math.min(window.innerWidth - 100, e.clientX * 0.05 + 8));
-    const targetY = Math.max(80, Math.min(window.innerHeight - 100, 
-                    window.innerHeight - 100 + (e.clientY - window.innerHeight/2) * 0.04));
-    wrap.style.left   = targetX  + 'px';
-    wrap.style.bottom = (window.innerHeight - targetY - 72) + 'px';
-  }});
-
-  // Robot tıklanınca mesaj göster
-  document.getElementById('sg-robot-svg').addEventListener('click', function() {{
-    bubble.textContent = tips[tipIdx % tips.length];
-    tipIdx++;
-    bubble.classList.add('visible');
-    setTimeout(() => bubble.classList.remove('visible'), 3500);
-  }});
-
-  // ── TOAST SİSTEMİ ────────────────────────────────────────
-  window._sgShowToast = function(title, msg, type) {{
-    const c = document.getElementById('sg-toast-container');
-    if(!c) return;
-    const icons = {{success:'✅', warning:'⚠️', error:'🚨', info:'🔔'}};
-    const t = document.createElement('div');
-    t.className = 'sg-toast ' + (type||'');
-    t.innerHTML = `<div class="sg-toast-icon">${{icons[type]||'📌'}}</div>
-                   <div class="sg-toast-body">
-                     <div class="sg-toast-title">${{title}}</div>
-                     <div class="sg-toast-msg">${{msg}}</div>
-                   </div>`;
-    t.onclick = () => t.remove();
-    c.appendChild(t);
-    setTimeout(() => {{ if(t.parentNode) t.remove(); }}, 5000);
-  }};
-
-  // ── OTOMATİK YENİLEME (10 sn) ───────────────────────────
-  // Son bilinen bildirim sayısını localStorage'da sakla
-  let lastNotifCount = parseInt(sessionStorage.getItem('sg_notif_count')||'0');
-  
-  setInterval(function() {{
-    // Streamlit rerun'u tetiklemek için gizli bir hidden input tıkla
-    // Streamlit'in kendi auto-rerun mekanizması yoktur doğrudan,
-    // ama window.location.reload() yerine Streamlit'in internal API'sini kullanıyoruz
-    try {{
-      // Streamlit'e "veri güncelle" sinyali: query_params değiştir
-      const url = new URL(window.location.href);
-      const ts = Date.now();
-      url.searchParams.set('_sgr', ts);
-      window.history.replaceState(null, '', url.toString());
-      // Streamlit bunu query_params değişikliği olarak algılar → rerun
-      window.parent.postMessage({{type: 'streamlit:rerun'}}, '*');
-    }} catch(e) {{}}
-  }}, 10000);
-
-}})();
-</script>
-""", unsafe_allow_html=True)
-
 if not st.session_state.authenticated:
     login()
 elif not st.session_state.splash_done:
@@ -1848,7 +1737,312 @@ if(window._sgShowToast) {{
         df = df_full[df_full["Kullanıcı"] == user_name].copy()
     else:
         df = df_full.copy()
-    
+
+    # ── PREMIUM AI ROBOT (her sayfada, fare takipçi) ─────────
+    import json as _json
+    _ROBOT_TIPS = [
+        f"Merhaba {user_name}! Bugün nasıl gidiyor? 👋",
+        "Yeni fiş taramak için 📑 Fiş Tarama bölümünü kullan!",
+        "Onay bekleyen fişleri kontrol etmeyi unutma ⚖️",
+        "Dashboard'da günlük AI brifingini başlatabilirsin 🤖",
+        "Anomali Dedektörü şüpheli işlemleri otomatik bulur 🔬",
+        "Raporları PDF olarak indirebilirsin 📄",
+        f"Kasa bakiyeni 💰 Finans ekranından takip et",
+        "Risk skoru 70+ olan fişler kritik — dikkatli ol! ⛔",
+    ]
+    _tips_js = _json.dumps(_ROBOT_TIPS)
+    st.markdown(f"""
+<!-- STINGA PRO v15 — Premium AI Robot -->
+<div id="sg-robot-wrap">
+  <div id="sg-robot-halo"></div>
+  <div id="sg-robot-bubble"></div>
+  <svg id="sg-robot-body" viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Stinga yeşil gradyanı -->
+      <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#17a870"/>
+        <stop offset="100%" stop-color="#0c6344"/>
+      </linearGradient>
+      <!-- Lacivert gradyan -->
+      <linearGradient id="navyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#3d4e8a"/>
+        <stop offset="100%" stop-color="#2F3C6E"/>
+      </linearGradient>
+      <!-- Parlak yeşil vurgu -->
+      <linearGradient id="glowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#00e896"/>
+        <stop offset="100%" stop-color="#11855B"/>
+      </linearGradient>
+      <!-- Gövde gölgesi -->
+      <filter id="bodyGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+      </filter>
+      <!-- İnce kenarlık efekti -->
+      <filter id="edgeLight">
+        <feGaussianBlur stdDeviation="1.5" result="b"/>
+        <feComposite in="SourceGraphic" in2="b" operator="over"/>
+      </filter>
+    </defs>
+
+    <!-- ── ANTEN ── -->
+    <line x1="60" y1="12" x2="60" y2="4" stroke="#00e896" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="60" cy="3" r="4" fill="#00e896" filter="url(#bodyGlow)">
+      <animate attributeName="r" values="3.5;5.5;3.5" dur="1.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0.5;1" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Anten halkası -->
+    <circle cx="60" cy="3" r="8" fill="none" stroke="#00e896" stroke-width="0.8" opacity="0.4">
+      <animate attributeName="r" values="6;12;6" dur="1.8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.4;0;0.4" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- ── BAŞ ── -->
+    <!-- Baş dış gölge -->
+    <rect x="18" y="12" width="84" height="52" rx="18" fill="#0a4f34" opacity="0.4" transform="translate(2,3)"/>
+    <!-- Baş ana gövde -->
+    <rect x="18" y="12" width="84" height="52" rx="18" fill="url(#navyGrad)"/>
+    <!-- Baş üst parlaklık -->
+    <rect x="22" y="14" width="76" height="22" rx="14" fill="url(#glowGrad)" opacity="0.18"/>
+    <!-- Baş kenar çizgisi -->
+    <rect x="18" y="12" width="84" height="52" rx="18" fill="none"
+          stroke="rgba(0,232,150,0.35)" stroke-width="1.5"/>
+
+    <!-- ── GÖZLER ── -->
+    <!-- Sol göz çerçevesi -->
+    <ellipse cx="42" cy="36" rx="13" ry="13" fill="#0a1a2e"/>
+    <ellipse cx="42" cy="36" rx="11" ry="11" fill="#0d2235"/>
+    <ellipse cx="42" cy="36" rx="9" ry="9" fill="#001628"/>
+    <!-- Sol göz ışığı (iris) -->
+    <circle cx="42" cy="36" r="6.5" fill="url(#glowGrad)" opacity="0.9"/>
+    <!-- Sol göz parlama -->
+    <circle cx="42" cy="36" r="6.5" fill="none" stroke="rgba(0,232,150,0.6)" stroke-width="1"/>
+    <!-- Sol göz pupil (fare takipçi) -->
+    <circle id="pupil-l" cx="42" cy="36" r="3.5" fill="#001a0d"/>
+    <!-- Sol göz parlaklık noktası -->
+    <circle cx="45" cy="33" r="1.5" fill="rgba(255,255,255,0.7)"/>
+
+    <!-- Sağ göz çerçevesi -->
+    <ellipse cx="78" cy="36" rx="13" ry="13" fill="#0a1a2e"/>
+    <ellipse cx="78" cy="36" rx="11" ry="11" fill="#0d2235"/>
+    <ellipse cx="78" cy="36" rx="9" ry="9" fill="#001628"/>
+    <!-- Sağ göz ışığı (iris) -->
+    <circle cx="78" cy="36" r="6.5" fill="url(#glowGrad)" opacity="0.9"/>
+    <circle cx="78" cy="36" r="6.5" fill="none" stroke="rgba(0,232,150,0.6)" stroke-width="1"/>
+    <!-- Sağ göz pupil -->
+    <circle id="pupil-r" cx="78" cy="36" r="3.5" fill="#001a0d"/>
+    <circle cx="81" cy="33" r="1.5" fill="rgba(255,255,255,0.7)"/>
+
+    <!-- Göz tarama çizgisi animasyonu -->
+    <line x1="29" y1="36" x2="55" y2="36" stroke="rgba(0,232,150,0.15)" stroke-width="0.5">
+      <animate attributeName="y1" values="28;44;28" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="28;44;28" dur="3s" repeatCount="indefinite"/>
+    </line>
+    <line x1="65" y1="36" x2="91" y2="36" stroke="rgba(0,232,150,0.15)" stroke-width="0.5">
+      <animate attributeName="y1" values="28;44;28" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="28;44;28" dur="3s" repeatCount="indefinite"/>
+    </line>
+
+    <!-- ── AĞIZ / EKRAN ── -->
+    <rect x="28" y="52" width="64" height="8" rx="4" fill="#0a1a2e" opacity="0.8"/>
+    <!-- LED dişler / gülümseme -->
+    <rect x="31" y="53.5" width="8" height="5" rx="2" fill="#00e896" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2.5s" begin="0s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="41" y="53.5" width="8" height="5" rx="2" fill="#00e896" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2.5s" begin="0.3s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="51" y="53.5" width="8" height="5" rx="2" fill="#00e896" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2.5s" begin="0.6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="61" y="53.5" width="8" height="5" rx="2" fill="#00e896" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2.5s" begin="0.9s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="71" y="53.5" width="8" height="5" rx="2" fill="#00e896" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2.5s" begin="1.2s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="81" y="53.5" width="6" height="5" rx="2" fill="#00e896" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2.5s" begin="1.5s" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- ── BOYUN ── -->
+    <rect x="48" y="63" width="24" height="8" rx="4" fill="#0c6344" opacity="0.9"/>
+    <line x1="54" y1="64" x2="66" y2="64" stroke="rgba(0,232,150,0.3)" stroke-width="1"/>
+    <line x1="54" y1="67" x2="66" y2="67" stroke="rgba(0,232,150,0.3)" stroke-width="1"/>
+    <line x1="54" y1="70" x2="66" y2="70" stroke="rgba(0,232,150,0.3)" stroke-width="1"/>
+
+    <!-- ── GÖVDE ── -->
+    <!-- Gövde gölge -->
+    <rect x="14" y="70" width="92" height="52" rx="16" fill="#0a4f34" opacity="0.35" transform="translate(2,3)"/>
+    <!-- Gövde ana -->
+    <rect x="14" y="70" width="92" height="52" rx="16" fill="url(#bodyGrad)"/>
+    <!-- Gövde üst parlaklık -->
+    <rect x="18" y="72" width="84" height="20" rx="12" fill="rgba(255,255,255,0.08)"/>
+    <!-- Gövde kenar -->
+    <rect x="14" y="70" width="92" height="52" rx="16" fill="none"
+          stroke="rgba(0,232,150,0.3)" stroke-width="1.5"/>
+
+    <!-- ── GÖĞÜS PANELİ ── -->
+    <rect x="28" y="78" width="64" height="36" rx="10" fill="rgba(0,0,0,0.25)"/>
+    <rect x="28" y="78" width="64" height="36" rx="10" fill="none"
+          stroke="rgba(0,232,150,0.2)" stroke-width="1"/>
+
+    <!-- Ana gösterge LED -->
+    <circle cx="46" cy="91" r="7" fill="#001628"/>
+    <circle cx="46" cy="91" r="5.5" fill="url(#glowGrad)">
+      <animate attributeName="r" values="5;6.5;5" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.9;1;0.9" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="46" cy="91" r="5.5" fill="none" stroke="rgba(0,232,150,0.5)" stroke-width="1">
+      <animate attributeName="r" values="5.5;8;5.5" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Sağ panel: durum çubukları -->
+    <rect x="60" y="80" width="26" height="3.5" rx="1.75" fill="rgba(0,232,150,0.7)"/>
+    <rect x="60" y="86" width="20" height="3.5" rx="1.75" fill="rgba(0,232,150,0.5)"/>
+    <rect x="60" y="92" width="23" height="3.5" rx="1.75" fill="rgba(47,60,110,0.9)"/>
+    <rect x="60" y="98" width="16" height="3.5" rx="1.75" fill="rgba(0,232,150,0.3)"/>
+
+    <!-- Alt bilgi çizgisi -->
+    <rect x="32" y="108" width="56" height="2" rx="1" fill="rgba(0,232,150,0.2)"/>
+
+    <!-- ── KOLLAR ── -->
+    <!-- Sol kol -->
+    <rect x="2" y="74" width="14" height="36" rx="7" fill="#0c5c3a" filter="url(#edgeLight)"/>
+    <rect x="2" y="74" width="14" height="36" rx="7" fill="none" stroke="rgba(0,232,150,0.2)" stroke-width="1"/>
+    <!-- Sol kol eklemi -->
+    <circle cx="9" cy="76" r="4" fill="#0a4f34"/>
+    <circle cx="9" cy="76" r="2.5" fill="rgba(0,232,150,0.4)"/>
+    <!-- Sol el -->
+    <ellipse cx="9" cy="112" rx="7" ry="5" fill="#0c5c3a"/>
+    <ellipse cx="9" cy="112" rx="7" ry="5" fill="none" stroke="rgba(0,232,150,0.2)" stroke-width="1"/>
+
+    <!-- Sağ kol -->
+    <rect x="104" y="74" width="14" height="36" rx="7" fill="#0c5c3a" filter="url(#edgeLight)"/>
+    <rect x="104" y="74" width="14" height="36" rx="7" fill="none" stroke="rgba(0,232,150,0.2)" stroke-width="1"/>
+    <!-- Sağ kol eklemi -->
+    <circle cx="111" cy="76" r="4" fill="#0a4f34"/>
+    <circle cx="111" cy="76" r="2.5" fill="rgba(0,232,150,0.4)"/>
+    <!-- Sağ el -->
+    <ellipse cx="111" cy="112" rx="7" ry="5" fill="#0c5c3a"/>
+    <ellipse cx="111" cy="112" rx="7" ry="5" fill="none" stroke="rgba(0,232,150,0.2)" stroke-width="1"/>
+
+    <!-- ── BACAKLAR ── -->
+    <!-- Sol bacak -->
+    <rect x="26" y="120" width="22" height="16" rx="8" fill="#0a4f34"/>
+    <rect x="26" y="120" width="22" height="16" rx="8" fill="none" stroke="rgba(0,232,150,0.2)" stroke-width="1"/>
+    <!-- Sol ayak -->
+    <rect x="20" y="132" width="30" height="8" rx="5" fill="#083d28"/>
+    <rect x="20" y="132" width="30" height="8" rx="5" fill="none" stroke="rgba(0,232,150,0.15)" stroke-width="1"/>
+
+    <!-- Sağ bacak -->
+    <rect x="72" y="120" width="22" height="16" rx="8" fill="#0a4f34"/>
+    <rect x="72" y="120" width="22" height="16" rx="8" fill="none" stroke="rgba(0,232,150,0.2)" stroke-width="1"/>
+    <!-- Sağ ayak -->
+    <rect x="70" y="132" width="30" height="8" rx="5" fill="#083d28"/>
+    <rect x="70" y="132" width="30" height="8" rx="5" fill="none" stroke="rgba(0,232,150,0.15)" stroke-width="1"/>
+
+    <!-- ── LOGO/ROZET ── -->
+    <!-- Göğüs logosu — Stinga "S" benzeri -->
+    <text x="46" y="95" text-anchor="middle" font-family="serif" font-size="7"
+          fill="rgba(0,232,150,0.9)" font-weight="bold">AI</text>
+  </svg>
+</div>
+<div id="sg-toast-container"></div>
+
+<script>
+(function(){{
+  const wrap   = document.getElementById('sg-robot-wrap');
+  const bubble = document.getElementById('sg-robot-bubble');
+  const pL     = document.getElementById('pupil-l');
+  const pR     = document.getElementById('pupil-r');
+  const tips   = {_tips_js};
+  let tipIdx = 0, isHovered = false;
+
+  if(!wrap || !bubble) return;
+
+  // ── GÖZZLER FAREYİ TAKİP EDER ────────────────────────────
+  // Göz merkez koordinatları (SVG viewBox'a göre)
+  const eyeCenters = [
+    {{el: pL, cx: 42, cy: 36, maxMove: 3.5}},
+    {{el: pR, cx: 78, cy: 36, maxMove: 3.5}},
+  ];
+
+  document.addEventListener('mousemove', function(e) {{
+    const svgEl = document.getElementById('sg-robot-body');
+    if(!svgEl) return;
+    const rect = svgEl.getBoundingClientRect();
+    // SVG merkezi (viewport koordinatları)
+    const svgCX = rect.left + rect.width  / 2;
+    const svgCY = rect.top  + rect.height / 2;
+
+    // Fare yönü (normalize)
+    const dx = e.clientX - svgCX;
+    const dy = e.clientY - svgCY;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const nx = dx / dist;
+    const ny = dy / dist;
+
+    eyeCenters.forEach(eye => {{
+      if(!eye.el) return;
+      const newCX = eye.cx + nx * eye.maxMove;
+      const newCY = eye.cy + ny * eye.maxMove;
+      eye.el.setAttribute('cx', newCX.toFixed(2));
+      eye.el.setAttribute('cy', newCY.toFixed(2));
+    }});
+  }});
+
+  // ── TIKLAMA: mesaj balonu ─────────────────────────────────
+  const robotSvg = document.getElementById('sg-robot-body');
+  if(robotSvg) {{
+    robotSvg.addEventListener('click', function() {{
+      bubble.textContent = tips[tipIdx % tips.length];
+      tipIdx++;
+      bubble.classList.add('visible');
+      setTimeout(() => bubble.classList.remove('visible'), 4000);
+    }});
+
+    // Hover'da halo parlasın
+    robotSvg.addEventListener('mouseenter', () => {{
+      const halo = document.getElementById('sg-robot-halo');
+      if(halo) halo.style.opacity = '1';
+    }});
+    robotSvg.addEventListener('mouseleave', () => {{
+      const halo = document.getElementById('sg-robot-halo');
+      if(halo) halo.style.opacity = '0.6';
+    }});
+  }}
+
+  // ── TOAST SİSTEMİ ─────────────────────────────────────────
+  window._sgShowToast = function(title, msg, type) {{
+    const c = document.getElementById('sg-toast-container');
+    if(!c) return;
+    const icons = {{success:'✅', warning:'⚠️', error:'🚨', info:'🔔'}};
+    const t = document.createElement('div');
+    t.className = 'sg-toast ' + (type || 'info');
+    t.innerHTML = '<div class="sg-toast-icon">' + (icons[type]||'📌') + '</div>'
+                + '<div class="sg-toast-body">'
+                + '<div class="sg-toast-title">' + title + '</div>'
+                + '<div class="sg-toast-msg">' + msg + '</div>'
+                + '</div>';
+    t.onclick = () => t.remove();
+    c.appendChild(t);
+    setTimeout(() => {{ if(t.parentNode) t.remove(); }}, 5000);
+  }};
+
+  // ── İLK KARŞILAMA MESAJI ──────────────────────────────────
+  setTimeout(() => {{
+    bubble.textContent = tips[0];
+    tipIdx = 1;
+    bubble.classList.add('visible');
+    setTimeout(() => bubble.classList.remove('visible'), 4000);
+  }}, 1500);
+
+}})();
+</script>
+""", unsafe_allow_html=True)
+
     # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
         logo_b64 = get_logo_b64()
@@ -1994,7 +2188,7 @@ if(window._sgShowToast) {{
         total_approved = _kpi_df[_kpi_df['Durum']=='Onaylandı']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         total_pending  = _kpi_df[_kpi_df['Durum']=='Onay Bekliyor']['Tutar'].sum() if not _kpi_df.empty and 'Durum' in _kpi_df.columns else 0
         crit_risks     = len(_kpi_df[_kpi_df['Risk_Skoru'] > 70]) if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
-        my_wallet      = data_store['wallets'].get(user_name, 0)
+        my_wallet      = data_store.get('wallets', {}).get(user_name, 0)
         total_tx       = len(_kpi_df) if not _kpi_df.empty else 0
         avg_risk       = _kpi_df['Risk_Skoru'].mean() if not _kpi_df.empty and 'Risk_Skoru' in _kpi_df.columns else 0
         
@@ -2025,7 +2219,7 @@ if(window._sgShowToast) {{
         
         # Liquidity warning
         if role == "admin":
-            total_wallet = sum(data_store['wallets'].values())
+            total_wallet = sum(data_store.get('wallets', {}).values())
             if total_wallet < total_pending:
                 st.markdown(f"""
                 <div class="anomaly-alert">
@@ -2609,7 +2803,7 @@ if(window._sgShowToast) {{
         with col_c:
             if role == "admin":
                 st.markdown("### 💳 Personel Kasa Durumları")
-                wallets = data_store["wallets"]
+                wallets = data_store.get("wallets", {})
                 
                 for person, bal in wallets.items():
                     # "Şenol" → "senol" key ile USERS'dan bul
@@ -2651,7 +2845,7 @@ if(window._sgShowToast) {{
                             else:
                                 st.error("Transfer başarısız, tekrar deneyin")
             else:
-                my_bal = data_store['wallets'].get(user_name, 0)
+                my_bal = data_store.get('wallets', {}).get(user_name, 0)
                 st.markdown(f"""
                 <div class="metric-card" style="margin-bottom:16px;">
                     <div style="font-size:1rem; color:var(--text-secondary);">Mevcut Bakiyeniz</div>
