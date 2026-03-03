@@ -2530,7 +2530,8 @@ tick();setInterval(tick,1000);
         _avans_ledger = sum(
             float(e.get("miktar", e.get("Miktar", 0)))
             for e in _ledger
-            if str(e.get("hedef", e.get("Hedef", ""))).lower() == user_name.lower()
+            if str(e.get("hedef", e.get("Hedef", ""))).lower().strip() in (user_name.lower().strip(), user_name.lower().strip().split()[0])
+            or user_name.lower().strip() in str(e.get("hedef", e.get("Hedef", ""))).lower()
         )
         # Wallet API değeri varsa onu da deneyelim (fuzzy match)
         _avans_api = _wlookup(user_name, _wallets)
@@ -2539,7 +2540,9 @@ tick();setInterval(tick,1000);
         _harcirah_odendi = sum(
             float(e.get("Tutar", 0))
             for e in data_store.get("expenses", [])
-            if str(e.get("Kullanıcı", "")).lower() == user_name.lower()
+            if (str(e.get("Kullanıcı", "")).lower().strip() == user_name.lower().strip()
+                or user_name.lower().strip() in str(e.get("Kullanıcı", "")).lower()
+                or str(e.get("Kullanıcı", "")).lower() in user_name.lower())
             and str(e.get("Durum", "")).strip() in ("Onaylandı", "Onaylandi", "onaylandi", "onaylandı")
             and str(e.get("Odeme_Turu", "")).lower().strip() in ("harcirah", "nakit", "kisisel", "harcırahtan düş", "harcirahtan dus")
         )
@@ -2848,7 +2851,7 @@ tick();setInterval(tick,1000);
                                             "Dosya_Yolu": f_path,
                                             "Gorsel_B64": gorsel_data_uri,
                                             "Risk_Skoru": int(data_ai.get("risk_skoru", 0)),
-                                            "AI_Audit": data_ai.get("audit_ozeti", ""),
+                                            "AI_Audit": clean_audit(str(data_ai.get("audit_ozeti", ""))),
                                             "AI_Anomali": data_ai.get("anomali", False),
                                             "AI_Anomali_Aciklama": data_ai.get("anomali_aciklamasi", ""),
                                             "Proje": proje,
@@ -3055,7 +3058,7 @@ tick();setInterval(tick,1000);
                                 <div class="ai-bubble">🤖 {clean_audit(row.get('AI_Audit',''))}</div>
                                 {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','Normal')} · Ödeme: {'Kredi Kartı' if str(row.get('Odeme_Turu',row.get('OdemeTipi',''))).lower() in ('kredi_karti','kredi kartı') else 'Nakit' if str(row.get('Odeme_Turu',row.get('OdemeTipi',''))).lower()=='nakit' else str(row.get('Odeme_Turu',row.get('OdemeTipi','?')))}
+                                    Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','Normal')} · Ödeme: {'Kredi Kartı' if str(row.get('Odeme_Turu',row.get('OdemeTipi',''))).lower() in ('kredi_karti','kredi kartı') else 'Nakit' if str(row.get('Odeme_Turu',row.get('OdemeTipi',''))).lower()=='nakit' else 'Harcırah' if str(row.get('Odeme_Turu',row.get('OdemeTipi',''))).lower() in ('harcirah','harcirahtan dus') else str(row.get('Odeme_Turu',row.get('OdemeTipi','?')))}
                                 </div>
                                 {f"<div style='margin-top:6px; font-size:0.75rem;'>📝 {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
                             </div>
@@ -3172,10 +3175,18 @@ tick();setInterval(tick,1000);
                 
                 _exp_all = data_store.get("expenses", [])
                 _led_all = data_store.get("ledger", [])
+                def _name_match(a, b):
+                    """'Serkan' ile 'Serkan Güzdemir' eşleşsin."""
+                    a, b = str(a).lower().strip(), str(b).lower().strip()
+                    return a == b or a in b or b in a
                 for person, bal in wallets.items():
-                    # Net kasa: verilen avans - onaylı harcırah harcamaları
-                    _hrc_p = sum(float(e.get("Tutar",0)) for e in _exp_all if str(e.get("Kullanıcı","")).lower()==person.lower() and e.get("Durum") in ("Onaylandı","Onaylandi") and str(e.get("Odeme_Turu","")).lower() in ("harcirah","nakit","kisisel","harcırahtan düş"))
-                    _led_p = sum(float(e.get("miktar",e.get("Miktar",0))) for e in _led_all if str(e.get("hedef",e.get("Hedef",""))).lower()==person.lower())
+                    # Net kasa: verilen avans - onaylı harcırah harcamaları (fuzzy isim eşleşmesi)
+                    _hrc_p = sum(float(e.get("Tutar",0)) for e in _exp_all
+                        if _name_match(e.get("Kullanıcı",""), person)
+                        and str(e.get("Durum","")).strip() in ("Onaylandı","Onaylandi","onaylandi","onaylandı")
+                        and str(e.get("Odeme_Turu","")).lower().strip() in ("harcirah","nakit","kisisel","harcırahtan düş","harcirahtan dus"))
+                    _led_p = sum(float(e.get("miktar",e.get("Miktar",0))) for e in _led_all
+                        if _name_match(e.get("hedef",e.get("Hedef","")), person))
                     bal = max(0.0, max(bal, _led_p) - _hrc_p)
                     # "Şenol" → "senol" key ile USERS'dan bul
                     _ukey = person.lower().replace("ş","s").replace("ı","i").replace("ö","o").replace("ü","u").replace("ğ","g").replace("ç","c")
@@ -3218,10 +3229,11 @@ tick();setInterval(tick,1000);
             else:
                 # Ledger-tabanlı kasa hesabı - avans - onaylı harcırah harcamaları
                 _w2 = data_store.get("wallets", {})
-                _avans2_l = sum(float(e.get("miktar", e.get("Miktar", 0))) for e in data_store.get("ledger", []) if str(e.get("hedef", e.get("Hedef", ""))).lower() == user_name.lower())
+                def _nm(a,b): a,b=str(a).lower().strip(),str(b).lower().strip(); return a==b or a in b or b in a
+                _avans2_l = sum(float(e.get("miktar", e.get("Miktar", 0))) for e in data_store.get("ledger", []) if _nm(e.get("hedef", e.get("Hedef", "")), user_name))
                 _avans2_a = _wlookup(user_name, _w2)
                 _avans2 = max(_avans2_l, _avans2_a)
-                _hrc2 = sum(float(e.get("Tutar", 0)) for e in data_store.get("expenses", []) if str(e.get("Kullanıcı", "")).lower() == user_name.lower() and e.get("Durum") in ("Onaylandı", "Onaylandi") and str(e.get("Odeme_Turu", "")).lower() in ("harcirah", "nakit", "kisisel", "harcırahtan düş"))
+                _hrc2 = sum(float(e.get("Tutar", 0)) for e in data_store.get("expenses", []) if _nm(e.get("Kullanıcı",""), user_name) and str(e.get("Durum","")).strip() in ("Onaylandı","Onaylandi","onaylandi","onaylandı") and str(e.get("Odeme_Turu","")).lower().strip() in ("harcirah","nakit","kisisel","harcırahtan düş","harcirahtan dus"))
                 my_bal = max(0.0, _avans2 - _hrc2)
                 st.markdown(f"""
                 <div class="metric-card" style="margin-bottom:16px;">
@@ -3288,7 +3300,7 @@ tick();setInterval(tick,1000);
                                 </div>
                                 {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','Normal')} · Ödeme: {'Kredi Kartı' if str(row.get('Odeme_Turu','')).lower() in ('kredi_karti','kredi kartı') else 'Nakit' if str(row.get('Odeme_Turu','')).lower()=='nakit' else str(row.get('Odeme_Turu','?'))}
+                                    Proje: {row.get('Proje','?')} · Öncelik: {row.get('Oncelik','Normal')} · Ödeme: {'Kredi Kartı' if str(row.get('Odeme_Turu','')).lower() in ('kredi_karti','kredi kartı') else 'Nakit' if str(row.get('Odeme_Turu','')).lower()=='nakit' else 'Harcırah' if str(row.get('Odeme_Turu','')).lower() in ('harcirah','harcirahtan dus') else str(row.get('Odeme_Turu','?'))}
                                 </div>
                                 {f"<div style='margin-top:6px; font-size:0.75rem; color:var(--text-secondary);'>📝 Not: {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
                             </div>
