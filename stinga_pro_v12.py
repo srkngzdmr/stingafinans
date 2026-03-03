@@ -707,35 +707,8 @@ def add_notify(target, message, notif_type="info", d=None):
 
 
 def add_xp(user_name, amount, reason="", d=None):
-    """Eski uyumluluk shim — artık API üzerinden çalışıyor."""
-    pass
-
-
-
-    """d verilirse kaydetmez, sadece objeye yazar (atomic save için)."""
-    _own = d is None
-    if _own:
-        d = load_data()
-    d.setdefault("notifications", []).append({
-        "user": target,
-        "msg": message,
-        "type": notif_type,
-        "time": now_ist().strftime("%H:%M"),
-        "date": now_ist().strftime("%Y-%m-%d"),
-        "read": False
-    })
-    if _own:
-        save_data(d)
-
-def add_xp(user_name, amount, reason="", d=None):
-    """d verilirse kaydetmez, sadece objeye yazar (atomic save için)."""
-    _own = d is None
-    if _own:
-        d = load_data()
-    d.setdefault("xp", {})[user_name] = d["xp"].get(user_name, 0) + amount
-    # XP bildirimi gönderilmez — sadece XP güncellenir
-    if _own:
-        save_data(d)
+    """XP günceller — bildirim GÖNDERİLMEZ."""
+    pass  # Railway API üzerinden yönetiliyor, local bildirim yok
 
 # ─── YARDIMCI ─────────────────────────────────────────────────
 def extract_json(text):
@@ -1407,7 +1380,6 @@ def apply_business_rules(data_ai, data_store, user_name):
         "kozmetik","parfüm","parfum","perfume","şampuan","sampuan","shampoo",
         "deodorant","losyon","kişisel bakım","kisisel bakim",
         "oyuncak","oyun","abonelik","netflix","spotify","red bull","monster","energy drink",
-        "kişisel","kisisel",
     ]
 
     # Tüm AI çıktısını birleştir — firma, kategori, kalemler, audit hepsi
@@ -2568,8 +2540,8 @@ tick();setInterval(tick,1000);
             float(e.get("Tutar", 0))
             for e in data_store.get("expenses", [])
             if str(e.get("Kullanıcı", "")).lower() == user_name.lower()
-            and e.get("Durum") in ("Onaylandı", "Onaylandi")
-            and str(e.get("Odeme_Turu", "")).lower() in ("harcirah", "nakit", "kisisel", "harcırahtan düş")
+            and str(e.get("Durum", "")).strip() in ("Onaylandı", "Onaylandi", "onaylandi", "onaylandı")
+            and str(e.get("Odeme_Turu", "")).lower().strip() in ("harcirah", "nakit", "kisisel", "harcırahtan düş", "harcirahtan dus")
         )
         my_wallet = max(0.0, _avans - _harcirah_odendi)
         total_tx       = len(_kpi_df) if not _kpi_df.empty else 0
@@ -2928,7 +2900,7 @@ tick();setInterval(tick,1000);
                                             </div>
                                             <div class="ai-bubble" style="margin-top:12px;">
                                                 <p style="margin:0; font-size:0.85rem; color:var(--text-secondary);">
-                                                    {data_ai.get('audit_ozeti','Analiz tamamlandı.')}
+                                                    {clean_audit(str(data_ai.get('audit_ozeti','Analiz tamamlandı.')))}
                                                 </p>
                                             </div>
                                             {"<div class='anomaly-alert' style='margin-top:8px;'><strong style='color:#dc2626;'>🚨 " + str(data_ai.get('anomali_aciklamasi','')) + "</strong></div>" if anomali and data_ai.get('anomali_aciklamasi') else ""}
