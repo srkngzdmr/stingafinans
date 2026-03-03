@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # ╔══════════════════════════════════════════════════════════════╗
-# ║          STINGA PRO v14.0 - ULTRA EDITION                   ║
+# ║          STINGA PRO v15.0 - ULTRA EDITION                   ║
 # ║  Geliştiren: AI ile birlikte - Gemini 2.5 Flash Destekli    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -15,8 +15,29 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from PIL import Image
-from fpdf import FPDF
 import hashlib
+# ─── RAPOR KÜTÜPHANELERİ ──────────────────────────────────────
+import io
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors as rl_colors
+from reportlab.lib.units import cm
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    HRFlowable, KeepTogether
+)
+try:
+    from reportlab.platypus import Image as RLImage
+except ImportError:
+    RLImage = None
+from openpyxl import Workbook
+from openpyxl.styles import Font as XLFont, PatternFill, Alignment as XLAlign, Border, Side
+from openpyxl.utils import get_column_letter
+try:
+    from openpyxl.drawing.image import Image as XLImage
+except ImportError:
+    XLImage = None
 import time
 import random
 import base64
@@ -24,7 +45,7 @@ from io import BytesIO
 
 # ─── SAYFA YAPISI ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Stinga Pro v14 ⚡",
+    page_title="Stinga Pro v15 ⚡",
     layout="wide",
     page_icon="⚡",
     initial_sidebar_state="expanded"
@@ -754,117 +775,431 @@ def img_to_b64(img_path):
             return base64.b64encode(f.read()).decode()
     return ""
 
-def export_pdf_advanced(df_export, title="Mali Rapor", ay_bilgisi="Tüm Zamanlar"):
+# ─── RAPOR RENK PALETİ ────────────────────────────────────────
+_R_DARK  = rl_colors.HexColor("#1B3A5C")
+_R_GREEN = rl_colors.HexColor("#1D7A5F")
+_R_LIGHT = rl_colors.HexColor("#EEF2F7")
+_R_LINE  = rl_colors.HexColor("#D1D5DB")
+_R_RED   = rl_colors.HexColor("#DC2626")
+_R_ORN   = rl_colors.HexColor("#D97706")
+_R_GRN   = rl_colors.HexColor("#059669")
+
+_KDV_ORANLARI = {"yakıt":0.20,"yemek":0.10,"konaklama":0.20,"ulaşım":0.20,"kırtasiye":0.20}
+
+def _kdv_hesapla(tutar, kdv_field, kategori):
     try:
-        pdf = FPDF()
-        pdf.add_page()
-        
-        # Header
-        pdf.set_fill_color(0, 120, 80)
-        pdf.rect(0, 0, 210, 38, 'F')
-        pdf.set_font("Arial", "B", 18)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_y(8)
-        pdf.cell(0, 10, tr_fix(f"STINGA ENERJI - {tr_fix(title.upper())} ({tr_fix(ay_bilgisi)})"), align='C', new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Arial", "", 9)
-        pdf.set_text_color(200, 240, 220)
-        pdf.cell(0, 8, tr_fix(f"Uretim Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')} | Stinga Pro v14.0"), align='C', new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(12)
-        
-        if df_export.empty:
-            pdf.set_text_color(100, 100, 100)
-            pdf.set_font("Arial", "", 11)
-            pdf.cell(0, 10, tr_fix("Bu doneme ait veri bulunmamaktadir."), new_x="LMARGIN", new_y="NEXT")
-            return bytes(pdf.output())
-        
-        # Summary
-        total    = df_export['Tutar'].sum() if 'Tutar' in df_export.columns else 0
-        approved = df_export[df_export['Durum']=='Onaylandı']['Tutar'].sum() if 'Durum' in df_export.columns else 0
-        pending  = df_export[df_export['Durum']=='Onay Bekliyor']['Tutar'].sum() if 'Durum' in df_export.columns else 0
-        
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Arial", "B", 11)
-        pdf.cell(0, 8, tr_fix("OZET"), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Arial", "", 9)
-        pdf.cell(0, 6, tr_fix(f"Toplam: {total:,.2f} TL  |  Onaylanan: {approved:,.2f} TL  |  Bekleyen: {pending:,.2f} TL"), new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(5)
-        
-        # Table header
-        pdf.set_fill_color(40, 60, 100)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", "B", 7)
-        cols = [
-            ("ID", 18), ("Fiş Tarihi", 20), ("Yükleme Zamanı", 30), ("Personel", 22),
-            ("Firma", 35), ("Tutar", 20), ("Kategori", 22), ("Durum", 20), ("Risk%", 13)
+        kdv = float(kdv_field) if kdv_field and float(kdv_field) > 0 else None
+    except (TypeError, ValueError):
+        kdv = None
+    if kdv and kdv < tutar:
+        return round(tutar - kdv, 2), round(kdv, 2)
+    k = str(kategori).lower()
+    oran = next((v for key,v in _KDV_ORANLARI.items() if key in k), 0.20)
+    net = round(tutar / (1 + oran), 2)
+    return net, round(tutar - net, 2)
+
+def _rl_styles():
+    def s(name, **kw): return ParagraphStyle(name, **kw)
+    return {
+        "title":   s("T",  fontName="Helvetica-Bold",    fontSize=16, textColor=rl_colors.white, alignment=TA_CENTER, leading=20),
+        "sub":     s("ST", fontName="Helvetica",         fontSize=9,  textColor=rl_colors.HexColor("#B0C4D8"), alignment=TA_CENTER, leading=13),
+        "sec":     s("SC", fontName="Helvetica-Bold",    fontSize=10, textColor=_R_DARK, spaceBefore=12, spaceAfter=4),
+        "n":       s("N",  fontName="Helvetica",         fontSize=8.5,textColor=rl_colors.HexColor("#374151"), leading=12),
+        "sm":      s("SM", fontName="Helvetica",         fontSize=7.5,textColor=rl_colors.HexColor("#6B7280"), leading=11),
+        "ft":      s("FT", fontName="Helvetica-Oblique", fontSize=7,  textColor=rl_colors.HexColor("#6B7280"), alignment=TA_CENTER),
+        "r":       s("R",  fontName="Helvetica",         fontSize=7.5,textColor=rl_colors.HexColor("#374151"), alignment=TA_RIGHT),
+        "b":       s("B",  fontName="Helvetica-Bold",    fontSize=8.5,textColor=_R_DARK),
+        "gr":      s("GR", fontName="Helvetica-Bold",    fontSize=9,  textColor=_R_GRN),
+    }
+
+def _tbl_s(hbg=None):
+    if hbg is None: hbg = _R_DARK
+    ts = TableStyle([
+        ("BACKGROUND",    (0,0),(-1,0), hbg),
+        ("TEXTCOLOR",     (0,0),(-1,0), rl_colors.white),
+        ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
+        ("FONTSIZE",      (0,0),(-1,0), 8),
+        ("TOPPADDING",    (0,0),(-1,0), 6), ("BOTTOMPADDING",(0,0),(-1,0),6),
+        ("FONTNAME",      (0,1),(-1,-1), "Helvetica"),
+        ("FONTSIZE",      (0,1),(-1,-1), 7.5),
+        ("TOPPADDING",    (0,1),(-1,-1), 4), ("BOTTOMPADDING",(0,1),(-1,-1),4),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1), [rl_colors.white, _R_LIGHT]),
+        ("GRID",          (0,0),(-1,-1), 0.4, _R_LINE),
+        ("LINEBELOW",     (0,0),(-1,0), 1, _R_GREEN),
+        ("LEFTPADDING",   (0,0),(-1,-1), 6), ("RIGHTPADDING",(0,0),(-1,-1),6),
+        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+    ])
+    return ts
+
+def _ph(txt, st): return Paragraph(txt, st)
+
+def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_path=None):
+    """Profesyonel muhasebe PDF raporu — KDV ayrıntılı, kategori kırılımlı."""
+    try:
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4,
+            leftMargin=1.8*cm, rightMargin=1.8*cm,
+            topMargin=1.5*cm, bottomMargin=2*cm)
+        W = A4[0] - 3.6*cm
+        ST = _rl_styles()
+        story = []
+        df = df_raw.copy()
+
+        if df.empty:
+            story.append(_ph("Bu döneme ait veri bulunmamaktadır.", ST["n"]))
+            doc.build(story); return buf.getvalue()
+
+        # KDV hesapları
+        df["_t"] = pd.to_numeric(df.get("Tutar", 0), errors="coerce").fillna(0)
+        df["_n"] = 0.0; df["_k"] = 0.0
+        for i, row in df.iterrows():
+            kv = df.get("KDV", pd.Series([None]*len(df))).iloc[i] if "KDV" in df.columns else None
+            kt = df.get("Kategori", pd.Series([""]*len(df))).iloc[i] if "Kategori" in df.columns else ""
+            n, k = _kdv_hesapla(row["_t"], kv, kt)
+            df.at[i,"_n"] = n; df.at[i,"_k"] = k
+
+        def col(*names):
+            for n in names:
+                if n in df.columns: return n
+            return None
+        c_tar = col("Tarih","Fis_Tarihi"); c_per = col("Kullanıcı","Personel")
+        c_fir = col("Firma"); c_kat = col("Kategori"); c_dur = col("Durum")
+        c_ode = col("Odeme_Turu","OdemeTipi")
+        def v(row, c): return str(row[c]) if c and c in row.index else "-"
+
+        tot_b = df["_t"].sum(); tot_k = df["_k"].sum(); tot_n = df["_n"].sum()
+        onay_df = df[df[c_dur].str.contains("Onay",case=False,na=False)] if c_dur else df
+        onay_b = onay_df["_t"].sum(); onay_k = onay_df["_k"].sum(); onay_n = onay_df["_n"].sum()
+        fmt = lambda x: f"₺{x:,.2f}"
+
+        # ── BAŞLIK ──
+        hdr_items = []
+        if logo_path and RLImage:
+            try: hdr_items.append(RLImage(logo_path, width=2*cm, height=2*cm))
+            except: pass
+        hdr_items += [
+            Spacer(1,0.15*cm),
+            _ph("STİNGA ENERJİ A.Ş.", ST["title"]),
+            _ph("GİDER VE KDV RAPORU", ST["title"]),
+            _ph(f"Dönem: {donem}  |  {datetime.now().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v15.0", ST["sub"]),
         ]
-        for col, w in cols:
-            pdf.cell(w, 8, tr_fix(col), border=1, fill=True, align='C')
-        pdf.ln()
-        
-        # Rows
-        for i, (_, row) in enumerate(df_export.iterrows()):
-            fill = i % 2 == 0
-            if fill:
-                pdf.set_fill_color(240, 248, 244)
-            else:
-                pdf.set_fill_color(255, 255, 255)
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font("Arial", "", 6)
-            risk = row.get('Risk_Skoru', 0)
-            
-            # Risk rengini belirle
-            if risk >= 70:
-                pdf.set_text_color(180, 0, 0)
-            elif risk >= 30:
-                pdf.set_text_color(150, 80, 0)
-            else:
-                pdf.set_text_color(0, 100, 50)
-            
-            yukleme = str(row.get('Yukleme_Zamani', row.get('Tarih', '')))
-            kisisel = row.get('Kisisel_Giderler', [])
-            kisisel_str = ", ".join(kisisel) if isinstance(kisisel, list) and kisisel else ""
-            
-            values = [
-                (str(row.get('ID', ''))[-8:], 18),
-                (str(row.get('Tarih', '')), 20),
-                (yukleme[:16], 30),
-                (str(row.get('Kullanıcı', '')), 22),
-                (str(row.get('Firma', ''))[:18], 35),
-                (f"{float(row.get('Tutar', 0)):,.0f} TL", 20),
-                (str(row.get('Kategori', ''))[:12], 22),
-                (tr_fix(str(row.get('Durum', ''))), 20),
-                (f"%{risk}", 13)
+        hdr = Table([[ hdr_items ]], colWidths=[W])
+        hdr.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,-1),_R_DARK),
+            ("TOPPADDING",(0,0),(-1,-1),14),("BOTTOMPADDING",(0,0),(-1,-1),14),
+            ("LEFTPADDING",(0,0),(-1,-1),20),("RIGHTPADDING",(0,0),(-1,-1),20),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ]))
+        story.append(hdr); story.append(Spacer(1,0.5*cm))
+
+        # ── ÖZET KARTLAR ──
+        def card(lbl, br, net, kdv, bg):
+            return [
+                _ph(f"<b>{lbl}</b>", ParagraphStyle("cl",fontName="Helvetica-Bold",fontSize=7.5,
+                    textColor=rl_colors.HexColor("#6B7280"),alignment=TA_CENTER)),
+                _ph(f"<b>{fmt(br)}</b>", ParagraphStyle("cv",fontName="Helvetica-Bold",fontSize=11,
+                    textColor=_R_DARK,alignment=TA_CENTER,spaceBefore=2)),
+                _ph(f"KDV Hariç: {fmt(net)}", ParagraphStyle("cs",fontName="Helvetica",fontSize=7,
+                    textColor=rl_colors.HexColor("#6B7280"),alignment=TA_CENTER)),
+                _ph(f"KDV: {fmt(kdv)}", ParagraphStyle("ck",fontName="Helvetica",fontSize=7,
+                    textColor=_R_GRN,alignment=TA_CENTER)),
             ]
-            
-            pdf.set_text_color(0, 0, 0)
-            for j, (val, w) in enumerate(values):
-                if j == 8:  # Risk sütunu renkli
-                    if risk >= 70: pdf.set_text_color(180, 0, 0)
-                    elif risk >= 30: pdf.set_text_color(150, 80, 0)
-                    else: pdf.set_text_color(0, 120, 60)
-                else:
-                    pdf.set_text_color(0, 0, 0)
-                pdf.cell(w, 6, tr_fix(val), border=1, fill=fill, align='C')
-            pdf.ln()
-            
-            # Kişisel gider varsa alt satırda göster
-            if kisisel_str:
-                pdf.set_font("Arial", "I", 6)
-                pdf.set_text_color(180, 0, 0)
-                pdf.cell(18, 5, "", border=0)
-                pdf.cell(162, 5, tr_fix(f"  ⚠ Kisisel Gider: {kisisel_str}"), border=0)
-                pdf.ln()
-                pdf.set_text_color(0, 0, 0)
-        
-        pdf.ln(8)
-        pdf.set_font("Arial", "I", 7)
-        pdf.set_text_color(150, 150, 150)
-        pdf.cell(0, 5, tr_fix("Bu rapor Stinga Pro v14.0 AI Finans Sistemi tarafindan otomatik uretilmistir."), align='C')
-        
-        return bytes(pdf.output())
+        onay_sayi = len(onay_df)
+        cards = Table([[
+            card("TOPLAM GİDER (BRÜT)", tot_b, tot_n, tot_k, _R_LIGHT),
+            card("ONAYLANAN GİDER", onay_b, onay_n, onay_k, rl_colors.HexColor("#ECFDF5")),
+            [_ph("<b>KDV İADE HAKKI</b>", ParagraphStyle("cl",fontName="Helvetica-Bold",fontSize=7.5,
+                 textColor=rl_colors.HexColor("#6B7280"),alignment=TA_CENTER)),
+             _ph(f"<b>{fmt(onay_k)}</b>", ParagraphStyle("cv",fontName="Helvetica-Bold",fontSize=14,
+                 textColor=_R_GRN,alignment=TA_CENTER,spaceBefore=2)),
+             _ph(f"{onay_sayi} onaylı fiş", ParagraphStyle("cs",fontName="Helvetica",fontSize=7,
+                 textColor=rl_colors.HexColor("#6B7280"),alignment=TA_CENTER)),
+             _ph(f"Oran: %{(onay_k/onay_b*100) if onay_b else 0:.1f}",
+                 ParagraphStyle("ck",fontName="Helvetica",fontSize=7,textColor=_R_GRN,alignment=TA_CENTER))],
+        ]], colWidths=[W/3]*3)
+        cards.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(0,0),_R_LIGHT),
+            ("BACKGROUND",(1,0),(1,0),rl_colors.HexColor("#ECFDF5")),
+            ("BACKGROUND",(2,0),(2,0),rl_colors.HexColor("#EFF6FF")),
+            ("BOX",(0,0),(0,0),0.5,_R_LINE),("BOX",(1,0),(1,0),0.5,_R_LINE),("BOX",(2,0),(2,0),0.5,_R_LINE),
+            ("TOPPADDING",(0,0),(-1,-1),10),("BOTTOMPADDING",(0,0),(-1,-1),10),
+            ("VALIGN",(0,0),(-1,-1),"TOP"),
+        ]))
+        story.append(cards); story.append(Spacer(1,0.6*cm))
+
+        # ── KATEGORİ ANALİZİ ──
+        story.append(_ph("KATEGORİ BAZLI GİDER ANALİZİ", ST["sec"]))
+        story.append(HRFlowable(width=W, thickness=1, color=_R_GREEN, spaceAfter=6))
+        if c_kat:
+            grp = df.groupby(c_kat).agg(Fis=("_t","count"),Brut=("_t","sum"),Net=("_n","sum"),KDV=("_k","sum")).reset_index().sort_values("Brut",ascending=False)
+            def ph(t): return _ph(f"<b>{t}</b>", ParagraphStyle("h",fontName="Helvetica-Bold",fontSize=8,textColor=rl_colors.white))
+            def pr(t,al=TA_LEFT,bold=False,col=None):
+                c2 = col or rl_colors.HexColor("#374151")
+                fn = "Helvetica-Bold" if bold else "Helvetica"
+                return _ph(t, ParagraphStyle("d",fontName=fn,fontSize=7.5,textColor=c2,alignment=al))
+            kat_data = [[ph("KATEGORİ"),ph("FİŞ"),ph("BRÜT"),ph("KDV HARİÇ"),ph("KDV"),ph("ORAN")]]
+            for _,r in grp.iterrows():
+                oran = r["KDV"]/r["Brut"]*100 if r["Brut"] else 0
+                kat_data.append([pr(str(r[c_kat]).title()),pr(str(int(r["Fis"])),TA_CENTER),
+                    pr(fmt(r["Brut"]),TA_RIGHT),pr(fmt(r["Net"]),TA_RIGHT),
+                    pr(fmt(r["KDV"]),TA_RIGHT,True,_R_GRN),pr(f"%{oran:.0f}",TA_CENTER)])
+            last = len(kat_data)
+            kat_data.append([pr("<b>TOPLAM</b>",TA_LEFT,True),pr(f"<b>{len(df)}</b>",TA_CENTER,True),
+                pr(f"<b>{fmt(tot_b)}</b>",TA_RIGHT,True),pr(f"<b>{fmt(tot_n)}</b>",TA_RIGHT,True),
+                pr(f"<b>{fmt(tot_k)}</b>",TA_RIGHT,True,_R_GRN),
+                pr(f"<b>%{(tot_k/tot_b*100) if tot_b else 0:.1f}</b>",TA_CENTER,True)])
+            cw = [W*.22,W*.10,W*.17,W*.17,W*.17,W*.17]
+            kt = Table(kat_data, colWidths=cw)
+            ts2 = _tbl_s()
+            ts2.add("BACKGROUND",(0,last),(-1,last),rl_colors.HexColor("#DBEAFE"))
+            ts2.add("LINEABOVE",(0,last),(-1,last),1,_R_DARK)
+            kt.setStyle(ts2)
+            story.append(kt)
+        story.append(Spacer(1,0.6*cm))
+
+        # ── PERSONEL DAĞILIMI ──
+        if c_per:
+            story.append(_ph("PERSONEL BAZLI GİDER DAĞILIMI", ST["sec"]))
+            story.append(HRFlowable(width=W,thickness=1,color=_R_GREEN,spaceAfter=6))
+            pgrp = df.groupby(c_per).agg(Fis=("_t","count"),Brut=("_t","sum"),Net=("_n","sum"),KDV=("_k","sum")).reset_index().sort_values("Brut",ascending=False)
+            def phh(t): return _ph(f"<b>{t}</b>",ParagraphStyle("ph",fontName="Helvetica-Bold",fontSize=8,textColor=rl_colors.white))
+            def prd(t,al=TA_LEFT,bold=False,col=None):
+                c2=col or rl_colors.HexColor("#374151"); fn="Helvetica-Bold" if bold else "Helvetica"
+                return _ph(t,ParagraphStyle("pd",fontName=fn,fontSize=7.5,textColor=c2,alignment=al))
+            pd_data=[[phh("PERSONEL"),phh("FİŞ"),phh("TOPLAM BRÜT"),phh("KDV HARİÇ"),phh("KDV TUTARI")]]
+            for _,r in pgrp.iterrows():
+                pd_data.append([prd(str(r[c_per])),prd(str(int(r["Fis"])),TA_CENTER),
+                    prd(fmt(r["Brut"]),TA_RIGHT),prd(fmt(r["Net"]),TA_RIGHT),
+                    prd(fmt(r["KDV"]),TA_RIGHT,True,_R_GRN)])
+            pt=Table(pd_data,colWidths=[W*.30,W*.10,W*.20,W*.20,W*.20])
+            pt.setStyle(_tbl_s()); story.append(pt); story.append(Spacer(1,0.6*cm))
+
+        # ── DETAY FİŞ TABLOSU ──
+        story.append(_ph("GİDER FİŞ DETAY LİSTESİ", ST["sec"]))
+        story.append(HRFlowable(width=W,thickness=1,color=_R_GREEN,spaceAfter=6))
+        def dh(t): return _ph(f"<b>{t}</b>",ParagraphStyle("dh",fontName="Helvetica-Bold",fontSize=7.5,textColor=rl_colors.white,alignment=TA_CENTER))
+        det=[[dh("TARİH"),dh("PERSONEL"),dh("FİRMA"),dh("KATEGORİ"),dh("BRÜT"),dh("KDV HARİÇ"),dh("KDV"),dh("ÖDEME"),dh("DURUM")]]
+        for _,row in df.iterrows():
+            dur=v(row,c_dur)
+            dc=_R_GRN if ("Onay" in dur and "Bekl" not in dur) else (_R_RED if "Red" in dur else _R_ORN)
+            def dd(t,al=TA_LEFT,c=None,bold=False):
+                return _ph(t,ParagraphStyle("dd",fontName="Helvetica-Bold" if bold else "Helvetica",fontSize=7.5,
+                    textColor=c or rl_colors.HexColor("#374151"),alignment=al))
+            det.append([dd(v(row,c_tar)),dd(v(row,c_per)),dd(v(row,c_fir)),dd(v(row,c_kat).title()),
+                dd(fmt(row["_t"]),TA_RIGHT),dd(fmt(row["_n"]),TA_RIGHT),
+                dd(fmt(row["_k"]),TA_RIGHT,_R_GRN,True),
+                dd(v(row,c_ode).replace("_"," ").title() if c_ode else "-"),
+                dd(dur,TA_CENTER,dc,True)])
+        cw3=[W*.09,W*.13,W*.16,W*.10,W*.10,W*.10,W*.09,W*.10,W*.13]
+        dt=Table(det,colWidths=cw3,repeatRows=1); dt.setStyle(_tbl_s()); story.append(dt)
+        story.append(Spacer(1,0.8*cm))
+
+        # ── KDV İADE KUTUSU ──
+        story.append(KeepTogether([
+            HRFlowable(width=W,thickness=1,color=_R_DARK,spaceBefore=4,spaceAfter=8),
+            _ph("KDV İADE ÖZETİ", ST["sec"]),
+        ]))
+        def kd(l,v2,bold=False,vcol=None):
+            fn="Helvetica-Bold" if bold else "Helvetica"
+            sz=12 if bold else 9
+            return [
+                _ph(l,ParagraphStyle("kl",fontName=fn,fontSize=sz,textColor=_R_DARK)),
+                _ph(v2,ParagraphStyle("kv",fontName=fn,fontSize=sz,textColor=vcol or _R_DARK,alignment=TA_RIGHT))
+            ]
+        kdv_tbl=Table([
+            kd("Onaylanan Toplam Brüt Tutar", fmt(onay_b)),
+            kd("Onaylanan Toplam KDV Hariç Tutar", fmt(onay_n)),
+            kd("İade Talep Edilebilecek KDV", f"<b>{fmt(onay_k)}</b>", bold=True, vcol=_R_GRN),
+        ], colWidths=[W*.6,W*.4])
+        kdv_tbl.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,1),_R_LIGHT),
+            ("BACKGROUND",(0,2),(-1,2),rl_colors.HexColor("#ECFDF5")),
+            ("LINEBELOW",(0,1),(-1,1),1,_R_DARK),
+            ("BOX",(0,0),(-1,-1),1,_R_GREEN),
+            ("TOPPADDING",(0,0),(-1,-1),7),("BOTTOMPADDING",(0,0),(-1,-1),7),
+            ("LEFTPADDING",(0,0),(-1,-1),10),("RIGHTPADDING",(0,0),(-1,-1),10),
+            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ]))
+        story.append(kdv_tbl)
+        story.append(Spacer(1,0.5*cm))
+        story.append(HRFlowable(width=W,thickness=0.5,color=_R_LINE))
+        story.append(Spacer(1,0.2*cm))
+        story.append(_ph("Bu rapor Stinga Pro v15.0 Mali Yönetim Sistemi tarafından otomatik olarak üretilmiştir. "
+            "KDV hesaplamaları fiş verileri ve standart KDV oranları baz alınarak yapılmıştır. "
+            "Resmi muhasebe işlemleri için yetkili mali müşavirinize danışınız.", ST["ft"]))
+
+        doc.build(story)
+        return buf.getvalue()
     except Exception as e:
-        # PDF oluşturulamadıysa boş bytes dön
         return b"%PDF-1.4\n"
+
+
+def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
+    """Profesyonel muhasebe Excel raporu — 4 sayfalı, KDV kırılımlı."""
+    try:
+        df = df_raw.copy()
+        df["_t"] = pd.to_numeric(df.get("Tutar",0), errors="coerce").fillna(0)
+        df["_n"] = 0.0; df["_k"] = 0.0
+        for i, row in df.iterrows():
+            kv = df["KDV"].iloc[i] if "KDV" in df.columns else None
+            kt = df["Kategori"].iloc[i] if "Kategori" in df.columns else ""
+            n, k = _kdv_hesapla(row["_t"], kv, kt)
+            df.at[i,"_n"] = n; df.at[i,"_k"] = k
+
+        def col(*names):
+            for n in names:
+                if n in df.columns: return n
+            return None
+        c_tar=col("Tarih","Fis_Tarihi"); c_per=col("Kullanıcı","Personel")
+        c_fir=col("Firma"); c_kat=col("Kategori"); c_dur=col("Durum")
+        c_ode=col("Odeme_Turu","OdemeTipi")
+        def v(row,c): return str(row[c]) if c and c in row.index else "-"
+
+        wb = Workbook()
+        MONEY  = '#,##0.00 ₺'
+        BDR    = Border(left=Side(style="thin",color="D1D5DB"),right=Side(style="thin",color="D1D5DB"),
+                        top=Side(style="thin",color="D1D5DB"),bottom=Side(style="thin",color="D1D5DB"))
+        C = XLAlign(horizontal="center",vertical="center",wrap_text=True)
+        R = XLAlign(horizontal="right",vertical="center")
+        L = XLAlign(horizontal="left",vertical="center")
+
+        def hc(ws,r,c,t,bg="1B3A5C"):
+            cell=ws.cell(row=r,column=c,value=t)
+            cell.font=XLFont(name="Calibri",bold=True,size=10,color="FFFFFF")
+            cell.fill=PatternFill("solid",fgColor=bg); cell.alignment=C; cell.border=BDR
+        def dc(ws,r,c,v2,fmt=None,bold=False,bg=None,al=None,col=None):
+            cell=ws.cell(row=r,column=c,value=v2)
+            cell.font=XLFont(name="Calibri",size=10,bold=bold,color=col or "000000")
+            cell.alignment=al or L; cell.border=BDR
+            if fmt: cell.number_format=fmt
+            if bg: cell.fill=PatternFill("solid",fgColor=bg)
+
+        tot_b=df["_t"].sum(); tot_n=df["_n"].sum(); tot_k=df["_k"].sum()
+        onay_df=df[df[c_dur].str.contains("Onay",case=False,na=False)] if c_dur else df
+
+        # ── SAYFA 1: ÖZET ──
+        ws1=wb.active; ws1.title="📊 Özet"; ws1.sheet_view.showGridLines=False
+        ws1.column_dimensions["A"].width=32; ws1.column_dimensions["B"].width=18
+        ws1.column_dimensions["C"].width=22
+        if logo_path and XLImage:
+            try:
+                xi=XLImage(logo_path); xi.width=80; xi.height=80; ws1.add_image(xi,"A1")
+            except: pass
+        ws1.row_dimensions[1].height=70
+        ws1.merge_cells("B1:C1"); ws1["B1"].value="STİNGA ENERJİ A.Ş. — GİDER VE KDV RAPORU"
+        ws1["B1"].font=XLFont(name="Calibri",bold=True,size=15,color="1B3A5C"); ws1["B1"].alignment=C
+        ws1.merge_cells("A2:C2"); ws1["A2"].value=f"Dönem: {donem}  |  {datetime.now().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v15.0"
+        ws1["A2"].font=XLFont(name="Calibri",size=10,italic=True,color="6B7280"); ws1["A2"].alignment=C
+        r=4
+        for lbl,b,n,k,clr in [
+            ("TOPLAM GİDER",tot_b,tot_n,tot_k,"1B3A5C"),
+            ("ONAYLANAN GİDER",onay_df["_t"].sum(),onay_df["_n"].sum(),onay_df["_k"].sum(),"1D7A5F"),
+        ]:
+            ws1.merge_cells(f"A{r}:A{r+2}"); c2=ws1[f"A{r}"]
+            c2.value=lbl; c2.font=XLFont(name="Calibri",bold=True,size=11,color="FFFFFF")
+            c2.fill=PatternFill("solid",fgColor=clr); c2.alignment=C; c2.border=BDR
+            for lbl2,val,rr in [("Toplam Brüt",b,r),("KDV Hariç",n,r+1),("İndirilecek KDV",k,r+2)]:
+                ws1[f"B{rr}"].value=lbl2; ws1[f"B{rr}"].font=XLFont(name="Calibri",size=10); ws1[f"B{rr}"].border=BDR; ws1[f"B{rr}"].alignment=L
+                ws1[f"C{rr}"].value=val; ws1[f"C{rr}"].number_format=MONEY
+                ws1[f"C{rr}"].font=XLFont(name="Calibri",bold=True,size=11,color=clr)
+                ws1[f"C{rr}"].alignment=R; ws1[f"C{rr}"].border=BDR
+            r+=4
+
+        # ── SAYFA 2: KATEGORİ ──
+        ws2=wb.create_sheet("📂 Kategori Analizi"); ws2.sheet_view.showGridLines=False
+        for i,w in enumerate([28,10,18,18,18,12],1): ws2.column_dimensions[get_column_letter(i)].width=w
+        ws2.merge_cells("A1:F1"); ws2["A1"].value="KATEGORİ BAZLI GİDER ANALİZİ"
+        ws2["A1"].font=XLFont(name="Calibri",bold=True,size=13,color="FFFFFF")
+        ws2["A1"].fill=PatternFill("solid",fgColor="1B3A5C"); ws2["A1"].alignment=C; ws2.row_dimensions[1].height=28
+        for ci,h in enumerate(["KATEGORİ","FİŞ SAYISI","TOPLAM BRÜT","KDV HARİÇ","KDV TUTARI","KDV ORANI"],1):
+            hc(ws2,2,ci,h,"1D7A5F")
+        ws2.row_dimensions[2].height=22
+        if c_kat:
+            grp=df.groupby(c_kat).agg(Fis=("_t","count"),Brut=("_t","sum"),Net=("_n","sum"),KDV=("_k","sum")).reset_index().sort_values("Brut",ascending=False)
+            ri2=3
+            for _,row in grp.iterrows():
+                bg="EEF2F7" if ri2%2==0 else None
+                oran=row["KDV"]/row["Brut"] if row["Brut"] else 0
+                dc(ws2,ri2,1,str(row[c_kat]).title(),bg=bg)
+                dc(ws2,ri2,2,int(row["Fis"]),bg=bg,al=C)
+                dc(ws2,ri2,3,row["Brut"],MONEY,bg=bg,al=R)
+                dc(ws2,ri2,4,row["Net"],MONEY,bg=bg,al=R)
+                dc(ws2,ri2,5,row["KDV"],MONEY,True,bg="ECFDF5",al=R,col="059669")
+                dc(ws2,ri2,6,oran,"0%",bg=bg,al=C)
+                ri2+=1
+            tr=ri2+1
+            ws2[f"A{tr}"].value="GENEL TOPLAM"; ws2[f"A{tr}"].font=XLFont(name="Calibri",bold=True,size=11,color="1B3A5C")
+            ws2[f"A{tr}"].fill=PatternFill("solid",fgColor="DBEAFE"); ws2[f"A{tr}"].alignment=L; ws2[f"A{tr}"].border=BDR
+            ws2[f"B{tr}"].value=f"=SUM(B3:B{ri2-1})"; ws2[f"B{tr}"].font=XLFont(name="Calibri",bold=True,size=11)
+            ws2[f"B{tr}"].fill=PatternFill("solid",fgColor="DBEAFE"); ws2[f"B{tr}"].alignment=C; ws2[f"B{tr}"].border=BDR
+            for cl in ["C","D","E"]:
+                ws2[f"{cl}{tr}"].value=f"=SUM({cl}3:{cl}{ri2-1})"
+                ws2[f"{cl}{tr}"].number_format=MONEY
+                ws2[f"{cl}{tr}"].font=XLFont(name="Calibri",bold=True,size=11,color="1B3A5C")
+                ws2[f"{cl}{tr}"].fill=PatternFill("solid",fgColor="DBEAFE"); ws2[f"{cl}{tr}"].alignment=R; ws2[f"{cl}{tr}"].border=BDR
+            ws2[f"F{tr}"].value=f"=E{tr}/C{tr}"; ws2[f"F{tr}"].number_format="0%"
+            ws2[f"F{tr}"].font=XLFont(name="Calibri",bold=True,size=11)
+            ws2[f"F{tr}"].fill=PatternFill("solid",fgColor="DBEAFE"); ws2[f"F{tr}"].alignment=C; ws2[f"F{tr}"].border=BDR
+
+        # ── SAYFA 3: DETAY ──
+        ws3=wb.create_sheet("📋 Gider Detayı"); ws3.sheet_view.showGridLines=False; ws3.freeze_panes="A3"
+        for i,w in enumerate([13,20,28,14,15,15,15,16,15],1): ws3.column_dimensions[get_column_letter(i)].width=w
+        ws3.merge_cells("A1:I1"); ws3["A1"].value=f"GİDER FİŞ DETAY LİSTESİ — {donem}"
+        ws3["A1"].font=XLFont(name="Calibri",bold=True,size=13,color="FFFFFF")
+        ws3["A1"].fill=PatternFill("solid",fgColor="1B3A5C"); ws3["A1"].alignment=C; ws3.row_dimensions[1].height=28
+        for ci,h in enumerate(["TARİH","PERSONEL","FİRMA","KATEGORİ","BRÜT TUTAR","KDV HARİÇ","KDV TUTARI","ÖDEME","DURUM"],1):
+            hc(ws3,2,ci,h,"1D7A5F")
+        ws3.row_dimensions[2].height=22
+        ri3=3
+        for _,row in df.iterrows():
+            bg="EEF2F7" if ri3%2==0 else None
+            dur=v(row,c_dur)
+            dc3="059669" if ("Onay" in dur and "Bekl" not in dur) else ("DC2626" if "Red" in dur else "D97706")
+            dc(ws3,ri3,1,v(row,c_tar),bg=bg); dc(ws3,ri3,2,v(row,c_per),bg=bg)
+            dc(ws3,ri3,3,v(row,c_fir),bg=bg); dc(ws3,ri3,4,v(row,c_kat).title() if c_kat else "-",bg=bg)
+            dc(ws3,ri3,5,row["_t"],MONEY,bg=bg,al=R); dc(ws3,ri3,6,row["_n"],MONEY,bg=bg,al=R)
+            dc(ws3,ri3,7,row["_k"],MONEY,True,bg="ECFDF5",al=R,col="059669")
+            ode=v(row,c_ode).replace("_"," ").title() if c_ode else "-"
+            dc(ws3,ri3,8,ode,bg=bg); dc(ws3,ri3,9,dur,bold=True,bg=bg,al=C,col=dc3)
+            ri3+=1
+        tr3=ri3+1
+        for cl,ci in [("E",5),("F",6),("G",7)]:
+            ws3[f"{cl}{tr3}"].value=f"=SUM({cl}3:{cl}{ri3-1})"
+            ws3[f"{cl}{tr3}"].number_format=MONEY
+            ws3[f"{cl}{tr3}"].font=XLFont(name="Calibri",bold=True,size=11,color="1B3A5C")
+            ws3[f"{cl}{tr3}"].fill=PatternFill("solid",fgColor="DBEAFE"); ws3[f"{cl}{tr3}"].alignment=R; ws3[f"{cl}{tr3}"].border=BDR
+
+        # ── SAYFA 4: KDV İADE ──
+        ws4=wb.create_sheet("🧾 KDV İade Tablosu"); ws4.sheet_view.showGridLines=False
+        for i,w in enumerate([30,12,20,20,12],1): ws4.column_dimensions[get_column_letter(i)].width=w
+        ws4.merge_cells("A1:E1"); ws4["A1"].value="KDV İADE BAŞVURU TABLOSU — ONAYLANAN GİDERLER"
+        ws4["A1"].font=XLFont(name="Calibri",bold=True,size=13,color="FFFFFF")
+        ws4["A1"].fill=PatternFill("solid",fgColor="1D7A5F"); ws4["A1"].alignment=C; ws4.row_dimensions[1].height=30
+        ws4.merge_cells("A2:E2"); ws4["A2"].value=f"STİNGA ENERJİ A.Ş.  |  Dönem: {donem}  |  Tarih: {datetime.now().strftime('%d.%m.%Y')}"
+        ws4["A2"].font=XLFont(name="Calibri",size=10,italic=True,color="6B7280"); ws4["A2"].alignment=C
+        for ci,h in enumerate(["KATEGORİ","FİŞ SAYISI","MATRAH (KDV HARİÇ)","HESAPLANAN KDV","KDV ORANI"],1):
+            hc(ws4,3,ci,h,"1D7A5F")
+        ws4.row_dimensions[3].height=22
+        if c_kat and len(onay_df):
+            kgrp=onay_df.groupby(c_kat).agg(Fis=("_t","count"),Net=("_n","sum"),KDV=("_k","sum")).reset_index()
+            ri4=4
+            for _,row in kgrp.iterrows():
+                bg="EEF2F7" if ri4%2==0 else None
+                oran=row["KDV"]/(row["Net"]+row["KDV"]) if (row["Net"]+row["KDV"]) else 0
+                dc(ws4,ri4,1,str(row[c_kat]).title(),bg=bg); dc(ws4,ri4,2,int(row["Fis"]),bg=bg,al=C)
+                dc(ws4,ri4,3,row["Net"],MONEY,bg=bg,al=R); dc(ws4,ri4,4,row["KDV"],MONEY,True,bg="ECFDF5",al=R,col="059669")
+                dc(ws4,ri4,5,oran,"0%",bg=bg,al=C); ri4+=1
+            tr4=ri4+1
+            ws4.merge_cells(f"A{tr4}:C{tr4}"); ws4[f"A{tr4}"].value="İADE TALEBİ TOPLAM KDV"
+            ws4[f"A{tr4}"].font=XLFont(name="Calibri",bold=True,size=12,color="1B3A5C")
+            ws4[f"A{tr4}"].fill=PatternFill("solid",fgColor="ECFDF5"); ws4[f"A{tr4}"].border=BDR; ws4[f"A{tr4}"].alignment=L
+            ws4[f"D{tr4}"].value=f"=SUM(D4:D{ri4-1})"; ws4[f"D{tr4}"].number_format=MONEY
+            ws4[f"D{tr4}"].font=XLFont(name="Calibri",bold=True,size=14,color="059669")
+            ws4[f"D{tr4}"].fill=PatternFill("solid",fgColor="ECFDF5"); ws4[f"D{tr4}"].alignment=R; ws4[f"D{tr4}"].border=BDR
+
+        buf=io.BytesIO(); wb.save(buf); return buf.getvalue()
+    except Exception as e:
+        return b""
 
 # ─── AI FONKSİYONLARI ─────────────────────────────────────────
 def analyze_receipt_pro(image, model):
@@ -3299,16 +3634,23 @@ else:
                 
                 clean_df = filtered.drop(columns=['Tarih_DT','Ay_Yil'], errors='ignore')
                 
-                d1, d2 = st.columns(2)
+                d1, d2, d3 = st.columns(3)
                 d1.download_button(
-                    "📥 Excel/CSV İndir", 
+                    "📥 CSV İndir",
                     clean_df.to_csv(index=False).encode('utf-8-sig'),
                     f"Stinga_Rapor_{secilen_ay}_{secilen_proje}.csv",
                     "text/csv", use_container_width=True
                 )
                 d2.download_button(
-                    "📄 PDF Yönetici Raporu",
-                    export_pdf_advanced(clean_df, "Mali Rapor", secilen_ay),
+                    "📊 Muhasebe Excel (.xlsx)",
+                    export_excel_muhasebe(clean_df, secilen_ay, logo_path="logo.png"),
+                    f"Stinga_Excel_{secilen_ay}.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+                d3.download_button(
+                    "📄 Muhasebe PDF",
+                    export_pdf_muhasebe(clean_df, "Mali Rapor", secilen_ay, logo_path="logo.png"),
                     f"Stinga_PDF_{secilen_ay}.pdf",
                     "application/pdf", use_container_width=True
                 )
