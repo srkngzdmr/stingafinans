@@ -552,47 +552,52 @@ def hash_password(pwd):
 
 # ── Kullanıcı Sistemi ─────────────────────────────────────────
 # role: "admin"   → tüm fişleri görür + onaylayabilir (Zeynep, Serkan)
-# role: "user"    → sadece kendi fişlerini görür (Okan, Şenol)
+# role: "user"    → sadece kendi fişlerini görür (Okan İlhan)
+# role: "admin"   → tüm fişleri görür (Zeynep Özyaman, Şenol Faik Özyaman, Serkan Güzdemir)
 #
 # Şifre → WhatsApp bot sifre alanıyla eşleşiyor:
-#   Zeynep: 789 | Serkan: 123 | Okan: 321 | Şenol: 456
+#   Zeynep Özyaman: 789 | Serkan Güzdemir: 123 | Okan İlhan: 321 | Şenol Faik Özyaman: 456
 USERS = {
     "zeynep": {
-        "name": "Zeynep",
+        "name": "Zeynep Özyaman",
         "password": hash_password("789"),
         "role": "admin",
         "avatar": "👑",
+        "title": "Yönetim Kurulu Başkanı",
         "department": "Yönetim Kurulu",
         "monthly_limit": 50000,
-        "xp": 1250
+        "xp": 0
+    },
+    "senol": {
+        "name": "Şenol Faik Özyaman",
+        "password": hash_password("456"),
+        "role": "admin",
+        "avatar": "🏢",
+        "title": "Genel Müdür",
+        "department": "Genel Müdürlük",
+        "monthly_limit": 30000,
+        "xp": 0
     },
     "serkan": {
-        "name": "Serkan",
+        "name": "Serkan Güzdemir",
         "password": hash_password("123"),
         "role": "admin",
         "avatar": "📊",
+        "title": "İşletme Müdürü",
         "department": "İşletme Müdürlüğü",
         "monthly_limit": 25000,
-        "xp": 890
+        "xp": 0
     },
     "okan": {
-        "name": "Okan",
+        "name": "Okan İlhan",
         "password": hash_password("321"),
         "role": "user",
         "avatar": "🔧",
+        "title": "Saha Personeli",
         "department": "Saha",
         "monthly_limit": 5000,
-        "xp": 430
+        "xp": 0
     },
-    "senol": {
-        "name": "Şenol",
-        "password": hash_password("456"),
-        "role": "user",
-        "avatar": "🏢",
-        "department": "Genel Müdürlük",
-        "monthly_limit": 30000,
-        "xp": 600
-    }
 }
 
 # ─── SESSION STATE ────────────────────────────────────────────
@@ -2112,8 +2117,8 @@ else:
     role = user_info["role"]
 
     # ── ROL BAZLI FİLTRELEME ──────────────────────────────────
-    # admin (Zeynep, Serkan) → tüm fişleri görür + onaylayabilir
-    # user  (Okan, Şenol)   → sadece kendi fişlerini görür
+    # admin (Zeynep Özyaman, Şenol Faik Özyaman, Serkan Güzdemir) → tüm fişleri görür + onaylayabilir
+    # user  (Okan İlhan) → sadece kendi fişlerini görür
     df_full = pd.DataFrame(data_store.get("expenses", []))
     if role == "user" and not df_full.empty and "Kullanıcı" in df_full.columns:
         df = df_full[df_full["Kullanıcı"] == user_name].copy()
@@ -2434,7 +2439,7 @@ else:
         usage_color = "#3ecf8e" if usage_pct < 60 else ("#f0a500" if usage_pct < 85 else "#e03a48")
         role_labels = {"admin": "YÖNETİCİ", "user": "PERSONEL"}
         role_colors = {"admin": "#3ecf8e", "user": "#7eb8d4"}
-        role_label = role_labels.get(role, role.upper())
+        role_label = user_info.get("title", role_labels.get(role, role.upper()))
         role_color = role_colors.get(role, "#00d4ff")
 
         # ── 1. LOGO
@@ -2446,7 +2451,7 @@ else:
             </div>
             <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:0.88rem; font-weight:900;
                         letter-spacing:0.3em; color:#0f1923; margin-top:13px; text-transform:uppercase;">
-                STINGA PRO FINANCE v17.0
+                VELA
             </div>
             <div style="font-family:'JetBrains Mono',monospace; font-size:0.51rem; color:#a0b8ae;
                         letter-spacing:0.18em; margin-top:4px; text-transform:uppercase;">
@@ -2474,7 +2479,7 @@ else:
                 <div class="sxp-fill" style="width:{xp_progress*100:.1f}%;"></div>
             </div>
             <div class="smeta">
-                <span>{user_info.get('department','—')}</span>
+                <span>{user_info.get('title', user_info.get('department','—'))}</span>
                 <span style="color:{usage_color}; font-weight:700;">%{usage_pct:.0f} limit</span>
             </div>
         </div>
@@ -3830,7 +3835,7 @@ tick();setInterval(tick,1000);
         </div>
         """, unsafe_allow_html=True)
         
-        xp_data = data_store.get("xp", {"Zeynep": 1250, "Serkan": 890, "Okan": 430, "Şenol": 600})
+        xp_data = data_store.get("xp", {"Zeynep Özyaman": 0, "Şenol Faik Özyaman": 0, "Serkan Güzdemir": 0, "Okan İlhan": 0})
         sorted_users = sorted(xp_data.items(), key=lambda x: x[1], reverse=True)
         
         rank_icons = ["🥇", "🥈", "🥉"]
@@ -3839,8 +3844,16 @@ tick();setInterval(tick,1000);
         st.markdown("### 🏆 XP Sıralaması")
         
         for i, (uname, xp) in enumerate(sorted_users):
-            _lb_key = uname.lower().replace("ş","s").replace("ı","i").replace("ö","o").replace("ü","u").replace("ğ","g").replace("ç","c")
-            user_data = USERS.get(_lb_key, USERS.get(uname.lower(), {}))
+            # USERS dict'inde isim alanına göre eşleştir
+            user_data = {}
+            for _uk, _ui in USERS.items():
+                if _ui.get("name","").lower() == uname.lower():
+                    user_data = _ui
+                    break
+            if not user_data:
+                # fallback: username key dene
+                _lb_key = uname.lower().replace("ş","s").replace("ı","i").replace("ö","o").replace("ü","u").replace("ğ","g").replace("ç","c")
+                user_data = USERS.get(_lb_key, USERS.get(uname.lower(), {}))
             avatar = user_data.get('avatar', '👤')
             level = xp // 500 + 1
             monthly_limit = user_data.get('monthly_limit', 15000)
