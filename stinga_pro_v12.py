@@ -2067,7 +2067,7 @@ else:
     ]
     st.markdown(f"""
 <style>
-#SGNX{{position:fixed;bottom:28px;right:28px;z-index:2147483647;cursor:pointer;width:92px;position:relative;animation:SGNXF 3.8s ease-in-out infinite;filter:drop-shadow(0 8px 24px rgba(17,133,91,.45));}}
+#SGNX{{position:fixed;bottom:28px;right:28px;z-index:2147483647;cursor:pointer;width:92px;animation:SGNXF 3.8s ease-in-out infinite;filter:drop-shadow(0 8px 24px rgba(17,133,91,.45));}}
 #SGNX:hover{{filter:drop-shadow(0 12px 36px rgba(17,133,91,.8));transform:scale(1.07);}}
 @keyframes SGNXF{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-11px)}}}}
 #SGNXSH{{width:56px;height:11px;margin:3px auto 0;background:radial-gradient(ellipse,rgba(17,133,91,.38) 0%,transparent 70%);border-radius:50%;animation:SGNXS 3.8s ease-in-out infinite;}}
@@ -2431,16 +2431,14 @@ else:
             </div>
             """, unsafe_allow_html=True)
             with st.expander("Bildirimleri Gör"):
-                # Bildirimleri okundu olarak işaretle
-                store = load_store()
-                for n in store.get("notifications", []):
+                # Lokal bildirimleri okundu işaretle (session_state)
+                for n in st.session_state.get("local_notifications", []):
+                    n["read"] = True
+                # data_store'daki bildirimleri okundu işaretle (in-memory, rerun'da sıfırlanır)
+                for n in data_store.get("notifications", []):
                     if (str(n.get("user","")) == user_name or str(n.get("user","")) == "Hepsi"
                             or str(n.get("user","")).lower() == user_name.lower()):
                         n["read"] = True
-                save_store(store)
-                # Lokal bildirimleri de temizle
-                for n in st.session_state.get("local_notifications", []):
-                    n["read"] = True
                 for n in reversed(my_notifs[-5:]):
                     icon = {"xp": "🏆", "info": "ℹ️", "warning": "⚠️", "success": "✅"}.get(n.get("type", "info"), "📌")
                     st.markdown(f"""
@@ -2453,7 +2451,45 @@ else:
                         </div>
                     </div>""", unsafe_allow_html=True)
 
-        # ── 4. SEPARATOR + NAV HEADER
+        # ── 4. SAAT / TARİH (İstanbul UTC+3)
+        st.markdown("""
+        <div id="sg-clock-box" style="
+            text-align:center; padding:8px 12px 6px;
+            background:rgba(17,133,91,0.08); border-radius:10px;
+            margin:4px 8px 2px; border:1px solid rgba(17,133,91,0.15);">
+          <div id="sg-clock" style="font-family:'JetBrains Mono',monospace;
+              font-size:1.35rem; font-weight:700; color:#11855B; letter-spacing:2px;">
+            --:--
+          </div>
+          <div id="sg-date" style="font-family:'JetBrains Mono',monospace;
+              font-size:0.62rem; color:#7a96a4; letter-spacing:1px; margin-top:1px;">
+            -- --- ----
+          </div>
+        </div>
+        <script>
+        (function(){
+          var DAYS=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+          var MONTHS=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
+                      'Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+          function pad(n){return n<10?'0'+n:n;}
+          function tick(){
+            // UTC+3 İstanbul saati
+            var now=new Date(new Date().getTime()+3*3600*1000);
+            var h=now.getUTCHours(),m=now.getUTCMinutes(),s=now.getUTCSeconds();
+            var d=now.getUTCDate(),mo=now.getUTCMonth(),y=now.getUTCFullYear();
+            var dw=now.getUTCDay();
+            var cl=document.getElementById('sg-clock');
+            var dt=document.getElementById('sg-date');
+            if(cl)cl.textContent=pad(h)+':'+pad(m)+':'+pad(s);
+            if(dt)dt.textContent=DAYS[dw]+', '+d+' '+MONTHS[mo]+' '+y;
+          }
+          tick();
+          setInterval(tick,1000);
+        })();
+        </script>
+        """, unsafe_allow_html=True)
+
+        # ── 5. SEPARATOR + NAV HEADER
         st.markdown('<div class="ssep" style="margin-top:6px;"></div><div class="snav-hdr">Navigasyon</div>', unsafe_allow_html=True)
 
         # ── 5. NAVIGATION (native Streamlit radio — styled via CSS)
