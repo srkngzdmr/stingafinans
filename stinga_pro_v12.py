@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # ╔══════════════════════════════════════════════════════════════╗
-# ║          STINGA PRO v15.0 - ULTRA EDITION                   ║
+# ║          STINGA PRO v17.0 - ULTRA EDITION                   ║
 # ║  Geliştiren: AI ile birlikte - Gemini 2.5 Flash Destekli    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -2386,7 +2386,7 @@ else:
             </div>
             <div style="font-family:'Plus Jakarta Sans',sans-serif; font-size:0.88rem; font-weight:900;
                         letter-spacing:0.3em; color:#0f1923; margin-top:13px; text-transform:uppercase;">
-                VELA
+                STINGA PRO FINANCE v17.0
             </div>
             <div style="font-family:'JetBrains Mono',monospace; font-size:0.51rem; color:#a0b8ae;
                         letter-spacing:0.18em; margin-top:4px; text-transform:uppercase;">
