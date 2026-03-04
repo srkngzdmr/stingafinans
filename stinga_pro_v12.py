@@ -961,6 +961,22 @@ def _ph(txt, st): return Paragraph(txt, st)
 def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_path=None):
     """Profesyonel muhasebe PDF raporu — KDV ayrıntılı, kategori kırılımlı."""
     try:
+        # Logo yoksa hata vermesin
+        if logo_path and not os.path.exists(logo_path):
+            logo_path = None
+        # ── Sorunlu sütunları kaldır ──
+        df_raw = df_raw.copy()
+        _drop_cols = ['Kalemler','Kisisel_Giderler','Gorsel_B64','Dosya_Yolu',
+                      'Anomaliler','Hash','Konum','Konum_Lat','Konum_Lon',
+                      'ParaBirimi','Sehir','Karakter','IlgincDetay','OdemeTipi',
+                      '_Tarih_DT','_Ay_Yil']
+        df_raw = df_raw.drop(columns=[c for c in _drop_cols if c in df_raw.columns], errors='ignore')
+        # ── List/dict değerleri string'e çevir ──
+        for _c in df_raw.columns:
+            try:
+                if df_raw[_c].apply(lambda x: isinstance(x, (list, dict))).any():
+                    df_raw[_c] = df_raw[_c].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
+            except: pass
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4,
             leftMargin=1.8*cm, rightMargin=1.8*cm,
@@ -1175,13 +1191,46 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
     except Exception as e:
         print(f"PDF EXPORT HATASI: {e}", flush=True)
         import traceback; traceback.print_exc()
-        return b"%PDF-1.4\n"
+        # Fallback: basit PDF oluştur
+        try:
+            _fb_buf = io.BytesIO()
+            _fb_doc = SimpleDocTemplate(_fb_buf, pagesize=A4)
+            _fb_story = []
+            _fb_style = ParagraphStyle("fb", fontName="Helvetica", fontSize=10)
+            _fb_title = ParagraphStyle("fbt", fontName="Helvetica-Bold", fontSize=14)
+            _fb_story.append(Paragraph(title.translate(_TR_MAP), _fb_title))
+            _fb_story.append(Spacer(1, 0.5*cm))
+            for _, row in df_raw.iterrows():
+                line = " | ".join([f"{c}: {str(row[c]).translate(_TR_MAP)}" for c in ["Tarih","Firma","Tutar","Kategori","Durum"] if c in df_raw.columns])
+                _fb_story.append(Paragraph(line, _fb_style))
+                _fb_story.append(Spacer(1, 0.2*cm))
+            _fb_doc.build(_fb_story)
+            print("PDF FALLBACK BAŞARILI", flush=True)
+            return _fb_buf.getvalue()
+        except Exception as e2:
+            print(f"PDF FALLBACK HATASI: {e2}", flush=True)
+            return b"%PDF-1.4\n"
 
 
 def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
     """Profesyonel muhasebe Excel raporu — 4 sayfalı, KDV kırılımlı."""
     try:
         df = df_raw.copy()
+        # Logo yoksa hata vermesin
+        if logo_path and not os.path.exists(logo_path):
+            logo_path = None
+        # ── Sorunlu sütunları kaldır ──
+        _drop_cols = ['Kalemler','Kisisel_Giderler','Gorsel_B64','Dosya_Yolu',
+                      'Anomaliler','Hash','Konum','Konum_Lat','Konum_Lon',
+                      'ParaBirimi','Sehir','Karakter','IlgincDetay','OdemeTipi',
+                      '_Tarih_DT','_Ay_Yil']
+        df = df.drop(columns=[c for c in _drop_cols if c in df.columns], errors='ignore')
+        # ── List/dict değerleri string'e çevir ──
+        for _c in df.columns:
+            try:
+                if df[_c].apply(lambda x: isinstance(x, (list, dict))).any():
+                    df[_c] = df[_c].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
+            except: pass
         df["_t"] = pd.to_numeric(df.get("Tutar",0), errors="coerce").fillna(0)
         df["_n"] = 0.0; df["_k"] = 0.0
         for i, row in df.iterrows():
@@ -1345,7 +1394,31 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
     except Exception as e:
         print(f"EXCEL EXPORT HATASI: {e}", flush=True)
         import traceback; traceback.print_exc()
-        return b""
+        # Fallback: basit Excel oluştur
+        try:
+            _fb_buf = io.BytesIO()
+            _fb_wb = Workbook()
+            _fb_ws = _fb_wb.active
+            _fb_ws.title = "Rapor"
+            # Başlıkları yaz
+            for ci, col_name in enumerate(df_raw.columns, 1):
+                _fb_ws.cell(row=1, column=ci, value=str(col_name))
+            # Verileri yaz
+            for ri, (_, row) in enumerate(df_raw.iterrows(), 2):
+                for ci, col_name in enumerate(df_raw.columns, 1):
+                    val = row[col_name]
+                    if isinstance(val, (list, dict)):
+                        val = str(val)
+                    try:
+                        _fb_ws.cell(row=ri, column=ci, value=val)
+                    except:
+                        _fb_ws.cell(row=ri, column=ci, value=str(val))
+            _fb_wb.save(_fb_buf)
+            print("EXCEL FALLBACK BAŞARILI", flush=True)
+            return _fb_buf.getvalue()
+        except Exception as e2:
+            print(f"EXCEL FALLBACK HATASI: {e2}", flush=True)
+            return b""
 
 # ─── AI FONKSİYONLARI ─────────────────────────────────────────
 def analyze_receipt_pro(image, model):
@@ -4443,13 +4516,15 @@ Kısa ve net ol (max 300 kelime)."""
                     sd1, sd2, sd3 = st.columns(3)
                     sd1.download_button("📥 CSV", _skf_clean.to_csv(index=False).encode('utf-8-sig'),
                         f"SirketKK_{_sk_ay}.csv", "text/csv", use_container_width=True, key="sk_csv")
-                    sd2.download_button("📊 Excel",
-                        export_excel_muhasebe(_skf_clean, f"Şirket K.K. — {_sk_ay}", logo_path="logo.png"),
+                    # Debug: export sonucunu kontrol et
+                    _sk_excel_data = export_excel_muhasebe(_skf_clean, f"Şirket K.K. — {_sk_ay}", logo_path="logo.png")
+                    _sk_pdf_data = export_pdf_muhasebe(_skf_clean, "Şirket Kredi Kartı Raporu", f"Şirket K.K. — {_sk_ay}", logo_path="logo.png")
+                    print(f"SK Excel size: {len(_sk_excel_data)} bytes, PDF size: {len(_sk_pdf_data)} bytes", flush=True)
+                    sd2.download_button("📊 Excel", _sk_excel_data,
                         f"SirketKK_{_sk_ay}.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True, key="sk_xlsx")
-                    sd3.download_button("📄 PDF",
-                        export_pdf_muhasebe(_skf_clean, "Şirket Kredi Kartı Raporu", f"Şirket K.K. — {_sk_ay}", logo_path="logo.png"),
+                    sd3.download_button("📄 PDF", _sk_pdf_data,
                         f"SirketKK_{_sk_ay}.pdf", "application/pdf", use_container_width=True, key="sk_pdf")
 
                     st.dataframe(_skf_clean.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
