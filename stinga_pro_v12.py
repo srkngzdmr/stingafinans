@@ -996,8 +996,8 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         df["_t"] = pd.to_numeric(df.get("Tutar", 0), errors="coerce").fillna(0)
         df["_n"] = 0.0; df["_k"] = 0.0
         for i, row in df.iterrows():
-            kv = df.get("KDV", pd.Series([None]*len(df))).iloc[i] if "KDV" in df.columns else None
-            kt = df.get("Kategori", pd.Series([""]*len(df))).iloc[i] if "Kategori" in df.columns else ""
+            kv = row["KDV"] if "KDV" in df.columns else None
+            kt = row["Kategori"] if "Kategori" in df.columns else ""
             n, k = _kdv_hesapla(row["_t"], kv, kt)
             df.at[i,"_n"] = n; df.at[i,"_k"] = k
 
@@ -1242,8 +1242,8 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
         df["_t"] = pd.to_numeric(df.get("Tutar",0), errors="coerce").fillna(0)
         df["_n"] = 0.0; df["_k"] = 0.0
         for i, row in df.iterrows():
-            kv = df["KDV"].iloc[i] if "KDV" in df.columns else None
-            kt = df["Kategori"].iloc[i] if "Kategori" in df.columns else ""
+            kv = row["KDV"] if "KDV" in df.columns else None
+            kt = row["Kategori"] if "Kategori" in df.columns else ""
             n, k = _kdv_hesapla(row["_t"], kv, kt)
             df.at[i,"_n"] = n; df.at[i,"_k"] = k
 
