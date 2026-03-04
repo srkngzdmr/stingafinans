@@ -1528,6 +1528,8 @@ def clean_audit(text: str) -> str:
     if not text:
         return "Analiz tamamlandı."
     text = str(text)
+    # Önce HTML-escaped tag'leri geri çevir (örn: &lt;div&gt; → <div>)
+    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", '"')
     # Tüm <div ...>...</div> bloklarını kaldır (multi-line dahil)
     text = _re.sub(r'<div[^>]*>.*?</div>', ' ', text, flags=_re.DOTALL | _re.IGNORECASE)
     # Tüm HTML tag'larını kaldır (<tag> veya </tag>)
@@ -1538,13 +1540,18 @@ def clean_audit(text: str) -> str:
     text = _re.sub(r'\{[^}]{0,300}\}', '', text)
     # "Proje: ... · Öncelik: ... · Ödeme: ..." satırlarını kaldır (div kalıntısı)
     text = _re.sub(r'Proje\s*:.*?Ödeme\s*:[^\n]*', '', text, flags=_re.IGNORECASE)
+    # "ŞİRKET KREDİ KARTI — ..." veya "HARCIRAHTAN DÜŞÜLECEK ..." satırlarını kaldır
+    text = _re.sub(r'(ŞİRKET KREDİ KARTI|HARCIRAHTAN DÜŞÜLECEK|Genel merkezden düşülecek|Personel şahsi)[^\n]*', '', text, flags=_re.IGNORECASE)
+    # "Kaynak: WhatsApp" veya "Kaynak: Dashboard" kalıntıları
+    text = _re.sub(r'Kaynak\s*:\s*\w+', '', text, flags=_re.IGNORECASE)
     # &nbsp; ve HTML entity temizle
     text = _re.sub(r'&nbsp;?', ' ', text)
     text = _re.sub(r'&[a-z]+;', ' ', text)
     # Birden fazla boşluk/newline temizle
     text = _re.sub(r'\s+', ' ', text).strip()
-    # HTML escape
-    text = _html.escape(text, quote=False)
+    # · (separator) kalıntılarını temizle
+    text = _re.sub(r'[·•]+\s*', '', text).strip()
+    # HTML escape YAPMA — bu metin zaten unsafe_allow_html=True ile render ediliyor
     return text if text else "Analiz tamamlandı."
 
 

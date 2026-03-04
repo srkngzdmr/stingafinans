@@ -17,15 +17,6 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from collections import defaultdict
 
-# ── Google Drive Persistent Storage ──
-try:
-    from gdrive_sync import drive_save_async, drive_load
-    GDRIVE_ENABLED = True
-    print("GDrive sync modülü yüklendi.", flush=True)
-except ImportError:
-    GDRIVE_ENABLED = False
-    print("GDrive sync modülü bulunamadı — sadece lokal kayıt aktif.", flush=True)
-
 import requests
 from flask import Flask, request, jsonify
 from google import genai
@@ -242,23 +233,6 @@ def load_data() -> dict:
             print(f"DB okuma hatası ({try_file}): {e}", flush=True)
             continue
     print("UYARI: Geçerli DB bulunamadı, default döndürülüyor", flush=True)
-
-    # ── Lokal DB yoksa Google Drive'dan restore et ──
-    if GDRIVE_ENABLED:
-        print("GDrive'dan restore deneniyor...", flush=True)
-        try:
-            gdata = drive_load()
-            if gdata and "expenses" in gdata and len(gdata.get("expenses", [])) > 0:
-                for k, v in default.items():
-                    gdata.setdefault(k, v)
-                save_data(gdata)  # Lokal dosyaya da kaydet
-                print(f"GDrive'dan restore başarılı: {len(gdata.get('expenses',[]))} fiş", flush=True)
-                return gdata
-            else:
-                print("GDrive'da geçerli veri bulunamadı.", flush=True)
-        except Exception as e:
-            print(f"GDrive restore hatası: {e}", flush=True)
-
     return default
 
 import threading as _threading
@@ -290,13 +264,6 @@ def save_data(d: dict):
                     json.dump(d, f, ensure_ascii=False, indent=2)
             except Exception as e2:
                 print(f"FALLBACK KAYIT HATASI: {e2}", flush=True)
-
-    # ── Google Drive'a arka planda yedekle ──
-    if GDRIVE_ENABLED:
-        try:
-            drive_save_async(d)
-        except Exception as e:
-            print(f"GDrive async kayıt hatası: {e}", flush=True)
 
 def load_data_safe() -> dict:
     with _DB_LOCK:
@@ -1335,6 +1302,18 @@ def add_expense_endpoint():
             if (e.get("Firma") == new_e.get("Firma") and abs(float(e.get("Tutar",0)) - float(new_e.get("Tutar",0))) < 1 and e.get("Tarih") == new_e.get("Tarih")):
                 return jsonify({"error": "Mükerrer fiş", "duplicate": True}), 409
         if "AI_Audit" in new_e: new_e["AI_Audit"] = re.sub(r'<[^>]+>', '', str(new_e["AI_Audit"])).strip()
+        # Tüm metin alanlarından HTML tag'lerini temizle
+        _text_fields = ("AI_Audit", "Notlar", "AI_Anomali_Aciklama", "IlgincDetay", "Firma")
+        for _fld in _text_fields:
+            if _fld in new_e and isinstance(new_e[_fld], str):
+                val = new_e[_fld]
+                val = re.sub(r'<div[^>]*>.*?</div>', ' ', val, flags=re.DOTALL | re.IGNORECASE)
+                val = re.sub(r'<[^>]+>', '', val, flags=re.DOTALL)
+                val = re.sub(r'&nbsp;?', ' ', val)
+                val = re.sub(r'&[a-z]+;', ' ', val)
+                val = re.sub(r'style\s*=\s*["\'][^"\']*["\']', '', val)
+                val = re.sub(r'\s+', ' ', val).strip()
+                new_e[_fld] = val
         data["expenses"].append(new_e)
         add_xp(new_e.get("Kullanıcı", ""), 50, "Dashboard fiş tarama", data=data)
         for ukey, uinfo in PHONE_DIRECTORY.items():
@@ -1346,6 +1325,29 @@ def add_expense_endpoint():
         return jsonify({"ok": True, "ID": new_e["ID"]}), 200
     except Exception as e:
         import traceback; print(f"add-expense HATA: {traceback.format_exc()}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/update-expense", methods=["POST"])
+def update_expense():
+    """Mevcut bir fişin belirli alanlarını güncelle."""
+    try:
+        body = request.get_json(force=True) or {}
+        fis_id = str(body.pop("ID", ""))
+        if not fis_id:
+            return jsonify({"error": "ID gerekli"}), 400
+        data = load_data()
+        found = False
+        for e in data.get("expenses", []):
+            if str(e.get("ID", "")) == fis_id:
+                for k, v in body.items():
+                    e[k] = v
+                found = True
+                break
+        if not found:
+            return jsonify({"error": "Fiş bulunamadı", "ID": fis_id}), 404
+        save_data(data)
+        return jsonify({"ok": True, "ID": fis_id}), 200
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/healthz", methods=["GET"])
