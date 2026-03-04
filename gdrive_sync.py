@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════╗
-║  STINGA PRO — Google Drive Persistent Storage Module         ║
+║  STINGA PRO — Google Drive Persistent Storage Module v2      ║
 ║  Deploy/restart sonrası veri kaybını önler.                   ║
 ║                                                              ║
 ║  Kullanım:                                                   ║
 ║    from gdrive_sync import drive_save, drive_load            ║
 ║    drive_save(data_dict)   # Her save_data() çağrısında      ║
 ║    data = drive_load()     # Startup'ta (load_data içinde)   ║
+║                                                              ║
+║  Gerekli env var'lar:                                        ║
+║    GOOGLE_SERVICE_ACCOUNT_JSON  — credential JSON içeriği    ║
+║    DRIVE_DB_FILE_ID             — Drive'daki dosyanın ID'si  ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 
@@ -15,7 +19,6 @@ import json
 import os
 import io
 import threading
-import time
 
 # ── Google Drive API kurulumu ──
 from google.oauth2 import service_account
@@ -32,11 +35,8 @@ _CRED_FILE = os.getenv("GOOGLE_CRED_FILE", "service_account.json")
 # Seçenek 2: Environment variable olarak (Railway'de önerilen)
 _CRED_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
 
-# Google Drive'da yedek dosyanın adı
-DRIVE_FILENAME = os.getenv("DRIVE_DB_FILENAME", "stinga_v13_db.json")
-
-# Google Drive klasör ID'si (opsiyonel — belirtilmezse root'a kaydeder)
-DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "")
+# Google Drive'daki hedef dosyanın ID'si (ZORUNLU)
+DRIVE_FILE_ID = os.getenv("DRIVE_DB_FILE_ID", "")
 
 # Async kaydetme için lock
 _DRIVE_LOCK = threading.Lock()
@@ -52,19 +52,17 @@ def _get_drive_service():
     if _drive_service is not None:
         return _drive_service
 
-    SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+    # Geniş scope — paylaşılan dosyaları okuma/yazma için gerekli
+    SCOPES = ["https://www.googleapis.com/auth/drive"]
 
     try:
         if _CRED_JSON:
-            # Railway / production: env var'dan credential
-            import json as _json
-            cred_dict = _json.loads(_CRED_JSON)
+            cred_dict = json.loads(_CRED_JSON)
             credentials = service_account.Credentials.from_service_account_info(
                 cred_dict, scopes=SCOPES
             )
             print("GDrive: Credential env var'dan yüklendi.", flush=True)
         elif os.path.exists(_CRED_FILE):
-            # Lokal geliştirme: dosyadan credential
             credentials = service_account.Credentials.from_service_account_file(
                 _CRED_FILE, scopes=SCOPES
             )
@@ -83,43 +81,18 @@ def _get_drive_service():
 
 
 # ─────────────────────────────────────────────
-#  YARDIMCI FONKSİYONLAR
-# ─────────────────────────────────────────────
-
-def _find_file_id(service, filename):
-    """Drive'da dosyayı adına göre bul, file_id döndür."""
-    try:
-        query = f"name = '{filename}' and trashed = false"
-        if DRIVE_FOLDER_ID:
-            query += f" and '{DRIVE_FOLDER_ID}' in parents"
-
-        results = service.files().list(
-            q=query,
-            spaces="drive",
-            fields="files(id, name, modifiedTime)",
-            orderBy="modifiedTime desc",
-            pageSize=1
-        ).execute()
-
-        files = results.get("files", [])
-        if files:
-            return files[0]["id"]
-        return None
-    except Exception as e:
-        print(f"GDrive: Dosya arama hatası: {e}", flush=True)
-        return None
-
-
-# ─────────────────────────────────────────────
 #  ANA FONKSİYONLAR
 # ─────────────────────────────────────────────
 
 def drive_save(data: dict) -> bool:
     """
-    Veriyi Google Drive'a JSON olarak kaydet.
-    Dosya varsa günceller, yoksa yeni oluşturur.
+    Veriyi Google Drive'daki mevcut dosyaya kaydet (üzerine yaz).
     Thread-safe.
     """
+    if not DRIVE_FILE_ID:
+        print("GDrive UYARI: DRIVE_DB_FILE_ID tanımlı değil, kayıt atlanıyor.", flush=True)
+        return False
+
     service = _get_drive_service()
     if not service:
         return False
@@ -133,33 +106,13 @@ def drive_save(data: dict) -> bool:
                 resumable=True
             )
 
-            file_id = _find_file_id(service, DRIVE_FILENAME)
+            # Mevcut dosyayı güncelle — yeni dosya OLUŞTURMUYORUZ
+            service.files().update(
+                fileId=DRIVE_FILE_ID,
+                media_body=media
+            ).execute()
 
-            if file_id:
-                # Mevcut dosyayı güncelle
-                service.files().update(
-                    fileId=file_id,
-                    media_body=media
-                ).execute()
-                print(f"GDrive: Güncellendi ({len(data.get('expenses',[]))} fiş)", flush=True)
-            else:
-                # Yeni dosya oluştur — MUTLAKA paylaşılan klasöre kaydet
-                if not DRIVE_FOLDER_ID:
-                    print("GDrive HATA: DRIVE_FOLDER_ID tanımlı değil! Service account'lar kendi alanlarına dosya oluşturamaz.", flush=True)
-                    return False
-
-                file_metadata = {
-                    "name": DRIVE_FILENAME,
-                    "parents": [DRIVE_FOLDER_ID]
-                }
-
-                service.files().create(
-                    body=file_metadata,
-                    media_body=media,
-                    fields="id"
-                ).execute()
-                print(f"GDrive: Yeni dosya oluşturuldu ({len(data.get('expenses',[]))} fiş)", flush=True)
-
+            print(f"GDrive: Güncellendi ({len(data.get('expenses',[]))} fiş)", flush=True)
             return True
 
         except Exception as e:
@@ -169,20 +122,19 @@ def drive_save(data: dict) -> bool:
 
 def drive_load() -> dict | None:
     """
-    Google Drive'dan en güncel veriyi yükle.
-    Başarısız olursa None döndürür (lokal dosyadan devam edilmeli).
+    Google Drive'dan veriyi yükle.
+    Başarısız olursa None döndürür.
     """
+    if not DRIVE_FILE_ID:
+        print("GDrive UYARI: DRIVE_DB_FILE_ID tanımlı değil, yükleme atlanıyor.", flush=True)
+        return None
+
     service = _get_drive_service()
     if not service:
         return None
 
     try:
-        file_id = _find_file_id(service, DRIVE_FILENAME)
-        if not file_id:
-            print("GDrive: Yedek dosya bulunamadı, ilk çalıştırma olabilir.", flush=True)
-            return None
-
-        request_obj = service.files().get_media(fileId=file_id)
+        request_obj = service.files().get_media(fileId=DRIVE_FILE_ID)
         buffer = io.BytesIO()
         downloader = MediaIoBaseDownload(buffer, request_obj)
 
@@ -191,7 +143,13 @@ def drive_load() -> dict | None:
             _, done = downloader.next_chunk()
 
         buffer.seek(0)
-        data = json.loads(buffer.read().decode("utf-8"))
+        raw = buffer.read().decode("utf-8").strip()
+
+        if not raw or raw == "{}":
+            print("GDrive: Dosya boş, ilk çalıştırma olabilir.", flush=True)
+            return None
+
+        data = json.loads(raw)
         fis_count = len(data.get("expenses", []))
         print(f"GDrive: Veri yüklendi ({fis_count} fiş)", flush=True)
         return data
@@ -204,9 +162,8 @@ def drive_load() -> dict | None:
 def drive_save_async(data: dict):
     """
     Veriyi arka planda Google Drive'a kaydet.
-    Ana thread'i bloklamaz — save_data() içinde kullanılır.
+    Ana thread'i bloklamaz.
     """
-    # Deep copy yaparak thread safety sağla
     import copy
     data_copy = copy.deepcopy(data)
     t = threading.Thread(target=drive_save, args=(data_copy,), daemon=True)
