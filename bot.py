@@ -1220,18 +1220,43 @@ def whatsapp_webhook():
                             "Genel Müdür konuştu, sistem dinledi: ONAYLI! ✨",
                             "Şenol Bey'in fişi geldi — kırmızı halı serildi, onay damgası basıldı! 🎖️",
                         ]
-                        _senol_saglik_listesi = [
-                            "💚 Sağlık notu: Uzun süre oturarak çalışıyorsanız, her saat başı 5 dk yürüyüş yapmanız önerilir.",
-                            "💧 Hatırlatma: Günde en az 2 litre su içmeyi unutmayın Şenol Bey!",
-                            "🫀 Sağlık bilgisi: Düzenli kan basıncı kontrolü hayat kurtarır. Son ölçümünüz ne zaman?",
-                            "🥗 Beslenme önerisi: Öğle yemeğinde sebze ağırlıklı beslenme enerji verir.",
-                            "😴 Uyku kalitesi çok önemli — 7-8 saat uyku bağışıklığı %40 güçlendirir.",
-                            "🏃 Günde 30 dakika yürüyüş, kalp sağlığını önemli ölçüde iyileştirir.",
-                        ]
+                        # Fiş kategorisine göre akıllı sağlık mesajları
+                        _fis_turu = fis.get("fis_turu", kategori).lower()
+                        if "restoran" in _fis_turu or "yemek" in _fis_turu or "market" in _fis_turu:
+                            _senol_saglik_listesi = [
+                                "🥗 Diyaliz hastalarının potasyum ve fosfor alımına dikkat etmesi gerekiyor — yemek seçimlerinize özen gösterin Şenol Bey!",
+                                "🍽️ Yemek fişi gördüm — diyaliz diyetinize uygun seçimler yaptığınızı umuyorum Şenol Bey!",
+                                "🧂 Tuz kısıtlaması önemli — bu restoranın yemeklerinin tuzu konusunda dikkatli olun Şenol Bey!",
+                                "💧 Yemek sonrası sıvı alımınıza dikkat etmeyi unutmayın Şenol Bey!",
+                            ]
+                        elif "akaryakıt" in _fis_turu or "akaryakit" in _fis_turu:
+                            _senol_saglik_listesi = [
+                                "🚗 Uzun yolculuklar yorucu olabiliyor — molalar vermeyi unutmayın Şenol Bey!",
+                                "⛽ Seyahatteyseniz, diyaliz randevularınızı aksatmamaya dikkat edin Şenol Bey!",
+                                "🛣️ Yolda kendinize iyi bakın, güvenli sürüşler Şenol Bey!",
+                            ]
+                        elif "otel" in _fis_turu or "konaklama" in _fis_turu:
+                            _senol_saglik_listesi = [
+                                "🏨 Seyahatte diyaliz merkezi ayarlamanız gerekiyorsa önceden planlama yapın Şenol Bey!",
+                                "🌙 İyi dinlenmeler Şenol Bey, uyku sağlığın temelidir!",
+                                "✈️ Seyahatte de düzeninizi bozmamaya çalışın Şenol Bey!",
+                            ]
+                        else:
+                            _senol_saglik_listesi = [
+                                "💚 Bugün nasılsınız Şenol Bey? Umarım enerjiniz yerindedir!",
+                                "🫀 Düzenli kan basıncı kontrolünüzü ihmal etmeyin Şenol Bey!",
+                                "😴 Kaliteli uyku diyaliz hastalarında iyileşmeyi destekler — iyi geceler Şenol Bey!",
+                                "🏃 Hafif yürüyüşler hem moral hem sağlık için çok iyi — fırsatınız olunca deneyin!",
+                                "💪 Ekibiniz size güveniyor — ama sağlığınız her şeyden önce gelir Şenol Bey!",
+                            ]
                         _senol_mesaj = random.choice(_senol_espri_listesi)
-                        # %30 ihtimalle sağlık mesajı da ekle
-                        if random.random() < 0.3:
-                            _senol_mesaj += "\n\n" + random.choice(_senol_saglik_listesi)
+                        # Her zaman kategoriye uygun sağlık mesajı ekle
+                        _senol_mesaj += "\n\n💚 " + random.choice(_senol_saglik_listesi)
+                        # Diyaliz günü ise özel hatırlatma ekle
+                        _bugun_gun = datetime.now().weekday()
+                        _diyaliz_gunleri = {1: "Salı", 3: "Perşembe", 5: "Cumartesi"}
+                        if _bugun_gun in _diyaliz_gunleri:
+                            _senol_mesaj += f"\n💙 Bugün {_diyaliz_gunleri[_bugun_gun]} — diyaliz günün, umarım her şey yolunda Şenol Bey!" 
 
                     # Thumbnail
                     import base64 as _b64mod
@@ -1252,6 +1277,9 @@ def whatsapp_webhook():
                     # belirtilmemişse fiş verisini hazırla ve kullanıcıya sor
                     final_odeme = mesaj_odeme_turu if mesaj_odeme_turu else None
 
+                    # Şenol Bey için ödeme türü: harcırah (kasasından düşülür) + şirkete de işlenir
+                    _senol_odeme_turu = "harcirah" if _is_senol else (final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor"))
+
                     new_expense = {
                         "ID": datetime.now().strftime("%Y%m%d%H%M%S"),
                         "Tarih": fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
@@ -1260,8 +1288,9 @@ def whatsapp_webhook():
                         "Firma": fis.get("firma", "Bilinmiyor"),
                         "Tutar": tutar_try, "KDV": float(fis.get("kdv_tutari", 0)),
                         "ParaBirimi": para_birimi,
-                        "OdemeTipi": final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor"),
-                        "Odeme_Turu": final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor"),
+                        "OdemeTipi": _senol_odeme_turu if _is_senol else (final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor")),
+                        "Odeme_Turu": _senol_odeme_turu if _is_senol else (final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor")),
+                        "Sirket_Gider": True,  # Her fiş şirkete de işlenir
                         "Kategori": kategori, "Durum": durum,
                         "Risk_Skoru": max(int(fis.get("risk_skoru", 0)), sahtelik["guvensizlik_skoru"]),
                         "AI_Audit": re.sub(r'<[^>]+>', '', str(fis.get("audit_notu", ""))).strip(),
@@ -1304,14 +1333,24 @@ def whatsapp_webhook():
 
                         # Şenol Bey ödeme türü sormadan devam etsin
                         if _is_senol:
-                            # Şenol Bey için default: şirket kartı
-                            new_expense["OdemeTipi"] = "sirket_karti"
-                            new_expense["Odeme_Turu"] = "sirket_karti"
+                            # Şenol Bey için default: harcırah (kasasından düşülsün)
+                            new_expense["OdemeTipi"] = "harcirah"
+                            new_expense["Odeme_Turu"] = "harcirah"
                             data["expenses"].append(new_expense)
                             data["duplicate_hashes"].append(img_hash)
                             data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
+                            # Kasasından düş
+                            mevcut_kasa = data.get("wallets", {}).get(user_name, 0)
+                            data.setdefault("wallets", {})[user_name] = mevcut_kasa - tutar_try
                             add_xp(user_name, 50, "WhatsApp fiş tarama", data=data)
                             save_data(data)
+                            # Diyaliz günü kontrolü (Salı=1, Perşembe=3, Cumartesi=5)
+                            _bugun_gun = datetime.now().weekday()
+                            _diyaliz_gunleri = {1: "Salı", 3: "Perşembe", 5: "Cumartesi"}
+                            _diyaliz_uyari = ""
+                            if _bugun_gun in _diyaliz_gunleri:
+                                _diyaliz_uyari = f"\n\n💙 _Bugün {_diyaliz_gunleri[_bugun_gun]} — diyaliz günün, umarım iyi geçiyor Şenol Bey. Kendinize iyi bakın!_"
+                            _yeni_kasa = data.get("wallets", {}).get(user_name, 0)
                             _senol_odeme_msg = (
                                 f"✅ *FİŞ KAYDEDİLDİ — OTOMATİK ONAYLI* 🎩\n{'─'*22}\n"
                                 f"🏢 {fis.get('firma','?')}\n"
@@ -1319,9 +1358,12 @@ def whatsapp_webhook():
                                 f"📅 {fis.get('tarih','—')}\n"
                                 f"🏷️ {kategori}\n"
                                 f"{risk_emoji} Risk: {risk}/100\n"
-                                f"💳 🏦 Şirket Kartı (otomatik)"
+                                f"💵 Harcırah kasanızdan düşüldü\n"
+                                f"💳 Kasa: *{_yeni_kasa:,.0f} ₺*"
                                 + kisisel_uyari
                                 + f"\n\n🎩 _{random.choice(_senol_espri_listesi)}_"
+                                + f"\n💚 _{random.choice(_senol_saglik_listesi)}_"
+                                + _diyaliz_uyari
                             )
                             send_whatsapp(sender_phone, _senol_odeme_msg)
                             return
@@ -1360,7 +1402,7 @@ def whatsapp_webhook():
                         bu_ay_fisler = [e for e in data["expenses"] if e["Kullanıcı"] == user_name and e.get("Tarih","").startswith(datetime.now().strftime("%Y-%m"))]
                         bu_ay_toplam = sum(e["Tutar"] for e in bu_ay_fisler)
                         risk = sahtelik["guvensizlik_skoru"]
-                        is_senol = (user_name == "Şenol Özyaman")
+                        is_senol = user_name in ("Şenol Özyaman", "Şenol Faik Özyaman")
                         if is_senol:
                             espri_prompt = f"""Sen STINGA yapay zekasısın. Şenol Faik Özyaman için hem mali hem kişisel bir not yazıyorsun.
 
