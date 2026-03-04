@@ -573,24 +573,92 @@ def butce_durumu_str(user_name, data):
 #  📍 KONUM & ZAMAN ZEKASI — 3 YENİ ÖZELLİK
 # ─────────────────────────────────────────────
 
-def _koordinat_ara(adres: str) -> tuple:
+def _koordinat_ara(sehir_adi: str) -> tuple:
     """
-    Firma adresini (fişten AI tarafından çıkarılan) koordinata çevirir.
-    Nominatim OpenStreetMap API kullanır — ücretsiz, API key gerekmez.
+    Şehir adından koordinat döndürür.
+    Yerleşik Türkiye şehir tablosu kullanır — API bağımlılığı yok, anında çalışır.
     Döner: (lat, lon) veya (None, None)
     """
-    if not adres or len(adres) < 5:
+    # Türkiye 81 il + büyük ilçe koordinat tablosu
+    SEHIR_KOORDINAT = {
+        "adana": (37.0000, 35.3213), "adıyaman": (37.7648, 38.2786),
+        "afyonkarahisar": (38.7637, 30.5406), "afyon": (38.7637, 30.5406),
+        "ağrı": (39.7191, 43.0503), "aksaray": (38.3687, 34.0370),
+        "amasya": (40.6499, 35.8353), "ankara": (39.9208, 32.8541),
+        "antalya": (36.8969, 30.7133), "ardahan": (41.1105, 42.7022),
+        "artvin": (41.1828, 41.8183), "aydın": (37.8444, 27.8458),
+        "balıkesir": (39.6484, 27.8826), "bartın": (41.6344, 32.3375),
+        "batman": (37.8812, 41.1351), "bayburt": (40.2552, 40.2249),
+        "bilecik": (40.1506, 29.9792), "bingöl": (38.8854, 40.4983),
+        "bitlis": (38.3938, 42.1232), "bolu": (40.7359, 31.6061),
+        "burdur": (37.7204, 30.2903), "bursa": (40.1885, 29.0610),
+        "çanakkale": (40.1553, 26.4142), "çankırı": (40.6013, 33.6134),
+        "çorum": (40.5506, 34.9556), "denizli": (37.7765, 29.0864),
+        "diyarbakır": (37.9144, 40.2306), "düzce": (40.8438, 31.1565),
+        "edirne": (41.6818, 26.5623), "elazığ": (38.6810, 39.2264),
+        "erzincan": (39.7500, 39.5000), "erzurum": (39.9043, 41.2679),
+        "eskişehir": (39.7767, 30.5206), "gaziantep": (37.0662, 37.3833),
+        "giresun": (40.9128, 38.3895), "gümüşhane": (40.4386, 39.4814),
+        "hakkari": (37.5744, 43.7408), "hatay": (36.4018, 36.3498),
+        "iğdır": (39.9167, 44.0333), "isparta": (37.7648, 30.5566),
+        "istanbul": (41.0082, 28.9784), "i̇stanbul": (41.0082, 28.9784),
+        "izmir": (38.4189, 27.1287), "i̇zmir": (38.4189, 27.1287),
+        "kahramanmaraş": (37.5858, 36.9371), "karabük": (41.2061, 32.6204),
+        "karaman": (37.1759, 33.2287), "kars": (40.6013, 43.0975),
+        "kastamonu": (41.3887, 33.7827), "kayseri": (38.7312, 35.4787),
+        "kilis": (36.7184, 37.1212), "kırıkkale": (39.8468, 33.5153),
+        "kırklareli": (41.7333, 27.2167), "kırşehir": (39.1425, 34.1709),
+        "kocaeli": (40.8533, 29.8815), "izmit": (40.7654, 29.9408),
+        "konya": (37.8746, 32.4932), "kütahya": (39.4167, 29.9833),
+        "malatya": (38.3552, 38.3095), "manisa": (38.6191, 27.4289),
+        "mardin": (37.3212, 40.7245), "mersin": (36.8000, 34.6333),
+        "muğla": (37.2154, 28.3636), "muş": (38.7432, 41.4914),
+        "nevşehir": (38.6939, 34.6857), "niğde": (37.9667, 34.6833),
+        "ordu": (40.9862, 37.8797), "osmaniye": (37.0742, 36.2464),
+        "rize": (41.0201, 40.5234), "sakarya": (40.7569, 30.3781),
+        "adapazarı": (40.7896, 30.4036), "samsun": (41.2867, 36.3300),
+        "siirt": (37.9333, 41.9500), "sinop": (42.0231, 35.1531),
+        "sivas": (39.7477, 37.0179), "şanlıurfa": (37.1591, 38.7969),
+        "urfa": (37.1591, 38.7969), "şırnak": (37.5164, 42.4611),
+        "tekirdağ": (40.9833, 27.5167), "tokat": (40.3167, 36.5500),
+        "trabzon": (41.0015, 39.7178), "tunceli": (39.1079, 39.5479),
+        "uşak": (38.6823, 29.4082), "van": (38.4891, 43.4089),
+        "yalova": (40.6500, 29.2667), "yozgat": (39.8181, 34.8147),
+        "zonguldak": (41.4564, 31.7987),
+        # Büyük ilçeler
+        "yenimahalle": (39.9667, 32.8167), "çankaya": (39.9032, 32.8597),
+        "keçiören": (39.9667, 32.8667), "etimesgut": (39.9500, 32.6667),
+        "mamak": (39.9333, 32.9333), "sincan": (39.9833, 32.5833),
+        "kadıköy": (40.9833, 29.0833), "üsküdar": (41.0333, 29.0167),
+        "beşiktaş": (41.0422, 29.0000), "şişli": (41.0614, 28.9869),
+        "bakırköy": (40.9833, 28.8667), "bağcılar": (41.0333, 28.8500),
+        "esenyurt": (41.0333, 28.6667), "başakşehir": (41.0833, 28.8000),
+        "pendik": (40.8667, 29.2333), "maltepe": (40.9167, 29.1500),
+        "kartal": (40.9000, 29.2000), "ataşehir": (40.9833, 29.1333),
+        "bornova": (38.4667, 27.2167), "buca": (38.3833, 27.1833),
+        "karşıyaka": (38.4667, 27.1167), "konak": (38.4167, 27.1333),
+        "çiğli": (38.4833, 27.0500), "osmangazi": (40.1833, 29.0500),
+        "nilüfer": (40.2167, 28.9833), "yıldırım": (40.2000, 29.1000),
+        "muratpaşa": (36.8833, 30.7000), "kepez": (36.9500, 30.7167),
+        "mezitli": (36.7833, 34.5833), "toroslar": (36.8000, 34.5167),
+    }
+
+    if not sehir_adi:
         return None, None
-    try:
-        url = "https://nominatim.openstreetmap.org/search"
-        params = {"q": adres, "format": "json", "limit": 1, "countrycodes": "tr"}
-        r = requests.get(url, params=params,
-                         headers={"User-Agent": "StingaProBot/1.0"}, timeout=6)
-        results = r.json()
-        if results:
-            return float(results[0]["lat"]), float(results[0]["lon"])
-    except Exception as e:
-        print(f"Geocode hatası ({adres}): {e}", flush=True)
+
+    temiz = sehir_adi.lower().strip()
+    # Türkçe karakter normalize
+    temiz = (temiz.replace("ı", "i").replace("ğ", "g").replace("ş", "s")
+             .replace("ç", "c").replace("ö", "o").replace("ü", "u"))
+
+    # Direkt eşleşme
+    for anahtar, koordinat in SEHIR_KOORDINAT.items():
+        anahtar_n = (anahtar.lower()
+                     .replace("ı", "i").replace("ğ", "g").replace("ş", "s")
+                     .replace("ç", "c").replace("ö", "o").replace("ü", "u"))
+        if temiz == anahtar_n or temiz in anahtar_n or anahtar_n in temiz:
+            return koordinat
+
     return None, None
 
 def _mesafe_km(lat1, lon1, lat2, lon2) -> float:
@@ -662,8 +730,8 @@ def konum_celiskisi_kontrol(fis_adresi: str, fis_sehri: str, user_name: str,
         return sonuc
     
     # Farklı şehir — koordinat alıp mesafe hesapla
-    lat1, lon1 = _koordinat_ara(son_fis_sehri + ", Türkiye")
-    lat2, lon2 = _koordinat_ara(yeni_fis_sehri + ", Türkiye")
+    lat1, lon1 = _koordinat_ara(son_fis_sehri)
+    lat2, lon2 = _koordinat_ara(yeni_fis_sehri)
     
     if not lat1 or not lat2:
         # Koordinat bulunamadı ama şehir adları farklı — orta seviye uyarı
@@ -741,8 +809,8 @@ def zaman_mekan_imkansizlik_kontrol(fis_adresi: str, fis_sehri: str, fis_tarihi:
         if not onceki_sehir or not onceki_zaman_str:
             continue
         
-        lat1, lon1 = _koordinat_ara(onceki_sehir + ", Türkiye")
-        lat2, lon2 = _koordinat_ara(fis_sehri + ", Türkiye")
+        lat1, lon1 = _koordinat_ara(onceki_sehir)
+        lat2, lon2 = _koordinat_ara(fis_sehri)
         
         if not lat1 or not lat2:
             continue
@@ -757,6 +825,8 @@ def zaman_mekan_imkansizlik_kontrol(fis_adresi: str, fis_sehri: str, fis_tarihi:
         # İki fişin zamanları arasındaki fark
         try:
             t1 = datetime.strptime(onceki_zaman_str[:16], "%Y-%m-%d %H:%M")
+            # Yeni fişin yükleme zamanı = şu an (webhook'a geldiği an)
+            # Fonksiyon imzasına mesaj_zamani ekleyelim — şimdilik datetime.now() güvenli
             t2 = datetime.now()
             fark_saat = abs((t2 - t1).total_seconds()) / 3600
         except:
@@ -1465,26 +1535,19 @@ def whatsapp_webhook():
 
                     # Fişin adres/şehir bilgisini AI'dan çıkarmaya çalış
                     # AI prompt'unda adres yoksa firma adından tahmin et
-                    fis_adresi_ham = fis.get("adres", "") or fis.get("konum", "") or fis.get("firma", "")
+                    fis_adresi_ham = fis.get("adres", "") or ""
                     fis_sehri_ham  = fis.get("sehir", "") or fis.get("il", "")
 
-                    # Eğer AI'dan şehir gelmediyse, firma adresinden Nominatim ile bul
+                    # Şehir bulunamadıysa firma adından tahmin et (basit kelime eşleştirme)
                     if not fis_sehri_ham and fis_adresi_ham:
-                        try:
-                            geo_url = "https://nominatim.openstreetmap.org/search"
-                            geo_params = {"q": fis_adresi_ham + ", Türkiye", "format": "json", "limit": 1}
-                            geo_r = requests.get(geo_url, params=geo_params,
-                                                  headers={"User-Agent": "StingaProBot/1.0"}, timeout=5)
-                            geo_results = geo_r.json()
-                            if geo_results:
-                                display_name = geo_results[0].get("display_name", "")
-                                # display_name genellikle "Mahalle, İlçe, Şehir, Türkiye" formatında
-                                parcalar = [p.strip() for p in display_name.split(",")]
-                                # Türkiye'den önceki eleman il olur (son 2. eleman)
-                                if len(parcalar) >= 3:
-                                    fis_sehri_ham = parcalar[-2].strip()
-                        except Exception as _geo_err:
-                            print(f"Fis sehir geocode hatası: {_geo_err}", flush=True)
+                        _adres_lower = fis_adresi_ham.lower()
+                        _sehirler = ["ankara","istanbul","izmir","bursa","antalya","adana",
+                                     "konya","gaziantep","mersin","kayseri","diyarbakır",
+                                     "trabzon","erzurum","samsun","eskişehir","denizli"]
+                        for _s in _sehirler:
+                            if _s in _adres_lower:
+                                fis_sehri_ham = _s.capitalize()
+                                break
 
                     # ── ÖZELLİK 1: Konum Çelişkisi ──────────────────
                     konum_celiski = konum_celiskisi_kontrol(
@@ -1792,9 +1855,19 @@ Fiş bilgileri:
 Görev: 2 cümle yaz. İlk cümle fişle ilgili esprili/samimi bir yorum. İkinci cümle Şenol'a sağlığını, diyalizini, beslenmesini ya da günlük hayatını ince bir şekilde hatırlatan, asla tıbbi tavsiye vermeyen, içten ve sıcak bir hatırlatma — her seferinde farklı ve özgün olsun, klişe olmasın.
 STINGA yapay zekası olarak yaz, samimi ve kişisel ol. Türkçe. Sadece yorumu yaz."""
                         else:
-                            espri_prompt = f"""Sen STINGA yapay zekasısın. Kullanıcı: {user_name}
-Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/100 - Bugün {len(bugun_fisler)} fiş - Bu ay {bu_ay_toplam:.0f} TL
-1-2 cümle Türkçe, eğlenceli, enerjik yorum. İsim kullan, klişe olma."""
+                            espri_prompt = (
+                                f"Sen STINGA yapay zekasısın — robotik değil, gerçekten orada olan biri gibi konuşursun.\n\n"
+                                f"Kullanıcı: {user_name}\n"
+                                f"Firma: {fis.get('firma','?')} | Tutar: {tutar_try:.0f} TL | Kategori: {kategori}\n"
+                                f"Risk: {risk}/100 | Bugün {len(bugun_fisler)}. fiş | Bu ay toplam: {bu_ay_toplam:.0f} TL\n\n"
+                                "Görev: 1-2 cümle yaz.\n"
+                                "- İsmiyle hitap et, ama sadece bir kez\n"
+                                "- O firmaya, o tutara, o kategoriye özel bir şey söyle — genel kalıplar yok\n"
+                                "- Samimi ve sıcak ol: bu kişi sahada çalışıyor, emek veriyor — bunu hissettir\n"
+                                "- İlham verici ama hafif bir kapanış: 'devam', 'yolda', 'ekip' gibi temalar kullanabilirsin\n"
+                                "- 1-2 emoji, doğal yere koy\n"
+                                "- Türkçe. Sadece yorumu yaz."
+                            )
                         ai_espri = ai_call(espri_prompt)
                     except:
                         ai_espri = "Fiş sisteme düştü, onay bekleniyor. 📋"
@@ -2096,10 +2169,20 @@ Görev: 3-4 cümle yaz.
 3) Son cümle: sağlığını, diyalizini veya beslenmesini ince bir şekilde hatırlat (tıbbi tavsiye verme, sıcak ve samimi ol)
 Muhasebe kayıt no'yu 🔖 ile belirt. Türkçe. Sadece mesajı yaz."""
                         else:
-                            onay_prompt = f"""Sen esprili muhasebe asistanısın.
-Kullanıcı: {kullanici} | Firma: {firma} | Tutar: {tutar:.0f} TL | Kategori: {fis_kategori}
-Ödeme: {odeme_bilgi} | Bu kategoride {len(kat_fis)} onaylı fiş | Kayıt no: {fis_id}
-Onay bildirimi yaz: ismiyle hitap et, ödeme türünü belirt (harcırah mı şirket kartı mı), esprili, 3-4 cümle. Sadece mesajı yaz."""
+                            onay_prompt = (
+                                f"Sen STINGA yapay zekasısın — sıcak, samimi, insan gibi konuşan bir finans asistanı.\n\n"
+                                f"Kullanıcı: {kullanici}\n"
+                                f"Firma: {firma} | Tutar: {tutar:.0f} TL | Kategori: {fis_kategori}\n"
+                                f"Ödeme türü: {odeme_bilgi} | Bu kategoride daha önce {len(kat_fis)} onaylı fiş var | Kayıt no: {fis_id}\n\n"
+                                "Görev: Onay bildirimi yaz. Şu kurallara uy:\n"
+                                "1) İsmiyle samimice hitap et — sanki gerçekten tanıyorsun onu\n"
+                                "2) Harcamanın onaylandığını ve ödeme türünü (harcırah / şirket kartı) sade ve net belirt\n"
+                                "3) O kategoriye/firmaya/tutara özel içten bir yorum yap — klişe olmasın, o kişiyle o an konuşuyormuş gibi hissettir\n"
+                                "4) Kısa ama ilham verici kapanış: sahaya çıkmak, işi büyütmek, emeklerinin karşılığını almak temalarından birini seç — vaaz verme, sohbet et\n"
+                                "5) Mesajın sonuna kayıt numarasını 🔖 ile ekle\n"
+                                "6) 3-4 cümle, fazlası değil. Emoji kullan ama abartma — 2-3 yeterli.\n"
+                                "7) Türkçe. Sadece mesajı yaz, açıklama ekleme."
+                            )
                         mesaj = ai_call(onay_prompt)
                     except:
                         mesaj = f"✅ *{kullanici}*! {firma} ({tutar:,.0f} ₺) harcamanız onaylandı.\n💳 {odeme_bilgi}\n🔖 `{fis_id}`"
