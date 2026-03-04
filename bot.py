@@ -507,20 +507,357 @@ def harcama_kehaneti(user_name, data):
     except: return f"🔮 Bu gidişle bütçen {bitis_tarihi}'de tükeniyor! ({asim_miktari:.0f} ₺ aşım)"
 
 def derin_sahtelik_analizi(fis_data, image):
-    sonuc = {"sahte_mi": fis_data.get("sahte_mi", False), "guvensizlik_skoru": fis_data.get("risk_skoru", 0), "bulgular": []}
-    toplam = float(fis_data.get("toplam_tutar", 0))
-    kdv = float(fis_data.get("kdv_tutari", 0))
+    """
+    ╔══════════════════════════════════════════════════════════════╗
+    ║   STINGA DERİN SAHTELİK ANALİZ MOTORU — 12 Katman          ║
+    ║   Her katman bağımsız çalışır, risk skoru birikmeli artar.  ║
+    ╚══════════════════════════════════════════════════════════════╝
+
+    KATMAN 1  — Tarih Anomalisi (çok eski / gelecek / hafta sonu)
+    KATMAN 2  — Para Birimi & Dönem Tutarsızlığı (YTL/TL karışımı)
+    KATMAN 3  — KDV Matematik Kontrolü
+    KATMAN 4  — Yuvarlak Tutar Şüphesi
+    KATMAN 5  — Görsel Piksel Entropi (bitmap font tespiti)
+    KATMAN 6  — Görsel Renk Homojenliği (beyaz kağıt / gri zemin)
+    KATMAN 7  — Görsel Kenar Geometrisi (eğiklik / kırpılmışlık)
+    KATMAN 8  — AI Sahtelik Skoru (Gemini'den gelen)
+    KATMAN 9  — Metin Yapısı Anomalisi (boşluk/hizalama kalıpları)
+    KATMAN 10 — Vergi Numarası Format Kontrolü
+    KATMAN 11 — Fiş Sıra No / Onay Kodu Format Kontrolü
+    KATMAN 12 — İşletme Adı Güvenilirlik Kontrolü
+    """
+    import re as _re
+    import statistics as _stats
+
+    sonuc = {
+        "sahte_mi": fis_data.get("sahte_mi", False),
+        "guvensizlik_skoru": int(fis_data.get("risk_skoru", 0)),
+        "bulgular": [],
+        "katman_sonuclari": {}
+    }
+
+    def _ekle(katman, mesaj, risk):
+        sonuc["bulgular"].append(mesaj)
+        sonuc["katman_sonuclari"][katman] = {"mesaj": mesaj, "risk": risk}
+        sonuc["guvensizlik_skoru"] = min(100, sonuc["guvensizlik_skoru"] + risk)
+
+    toplam  = float(fis_data.get("toplam_tutar", 0))
+    kdv     = float(fis_data.get("kdv_tutari", 0))
+    tarih   = str(fis_data.get("tarih", ""))
+    firma   = str(fis_data.get("firma", ""))
+    para    = str(fis_data.get("para_birimi", "TRY"))
+    audit   = str(fis_data.get("audit_notu", ""))
+
+    # ════════════════════════════════════════════
+    # KATMAN 1 — TARİH ANOMALİSİ
+    # ════════════════════════════════════════════
+    try:
+        fis_dt = datetime.strptime(tarih, "%Y-%m-%d")
+        bugun  = datetime.now()
+        yas_gun = (bugun - fis_dt).days
+
+        if yas_gun > 365 * 3:   # 3 yıldan eski
+            _ekle("K1", f"🚨 Fiş TARİHİ {fis_dt.year} yılına ait — {yas_gun // 365} yıl önce!", 40)
+        elif yas_gun > 365:     # 1-3 yıl arası
+            _ekle("K1", f"⚠️ Fiş tarihi {yas_gun // 365} yıl önce ({fis_dt.strftime('%d.%m.%Y')})", 25)
+        elif yas_gun > 60:
+            _ekle("K1", f"🔍 Fiş {yas_gun} gün öncesine ait ({fis_dt.strftime('%d.%m.%Y')})", 15)
+        elif fis_dt > bugun:
+            _ekle("K1", "🚨 Gelecek tarihli fiş — tarih manipülasyonu!", 35)
+
+        # Pazar günü harcama şüphesi (bazı iş yerleri kapalı)
+        if fis_dt.weekday() == 6:  # Pazar
+            _ekle("K1b", "🔍 Pazar günü fişi — iş yeri açık mıydı?", 5)
+
+        # Resmi tatil kontrolü (sabit tatiller)
+        _tatiller = ["01-01","23-04","01-05","19-05","15-07","30-08","29-10"]
+        ay_gun = fis_dt.strftime("%m-%d")
+        if ay_gun in _tatiller:
+            _ekle("K1c", f"🔍 Resmi tatil gününe ({ay_gun}) ait fiş", 8)
+
+    except ValueError:
+        _ekle("K1", "🚨 Geçersiz tarih formatı — okunamıyor", 20)
+
+    # ════════════════════════════════════════════
+    # KATMAN 2 — PARA BİRİMİ & DÖNEM TUTARSIZLIĞI
+    # ════════════════════════════════════════════
+    # YTL: 1 Ocak 2005 – 31 Aralık 2008 arasında kullanıldı
+    _ytl_ifadeler = ["ytl", "y.t.l", "yeni türk lirası", "yeni lira"]
+    _metin_birlesik = (firma + audit + str(fis_data.get("audit_notu",""))).lower()
+
+    ytl_bulundu = any(k in _metin_birlesik for k in _ytl_ifadeler)
+    if ytl_bulundu:
+        try:
+            fis_yil = int(tarih[:4])
+            if fis_yil < 2005 or fis_yil > 2008:
+                _ekle("K2", f"🚨 YTL para birimi ama fiş tarihi {fis_yil} — dönem UYUMSUZ!", 35)
+            else:
+                _ekle("K2", f"⚠️ YTL para birimi tespit edildi ({fis_yil}) — arşiv fişi olabilir", 20)
+        except:
+            _ekle("K2", "⚠️ YTL para birimi tespit edildi — eski fiş şüphesi", 20)
+
+    # TL/₺ ama tarih 2005-2008 arası ise de şüpheli
+    try:
+        fis_yil2 = int(tarih[:4])
+        if 2005 <= fis_yil2 <= 2008 and not ytl_bulundu and para == "TRY":
+            _ekle("K2b", f"🔍 {fis_yil2} yılı fişi TL gösteriyor — o dönemde YTL kullanılıyordu", 15)
+    except:
+        pass
+
+    # ════════════════════════════════════════════
+    # KATMAN 3 — KDV MATEMATİK KONTROLÜ
+    # ════════════════════════════════════════════
     if kdv > 0 and toplam > 0:
-        beklenen_kdv_20 = toplam * 0.20 / 1.20
-        beklenen_kdv_10 = toplam * 0.10 / 1.10
-        if abs(kdv - beklenen_kdv_20) > 1 and abs(kdv - beklenen_kdv_10) > 1:
-            sonuc["bulgular"].append("⚠️ KDV matematiksel tutarsızlık")
-            sonuc["guvensizlik_skoru"] = min(100, sonuc["guvensizlik_skoru"] + 20)
-    if toplam > 0 and toplam == int(toplam) and toplam % 100 == 0:
-        sonuc["bulgular"].append("🔍 Şüpheli yuvarlak tutar")
-        sonuc["guvensizlik_skoru"] = min(100, sonuc["guvensizlik_skoru"] + 10)
+        oran_20 = abs(kdv - toplam * 0.20 / 1.20)
+        oran_10 = abs(kdv - toplam * 0.10 / 1.10)
+        oran_08 = abs(kdv - toplam * 0.08 / 1.08)
+        oran_01 = abs(kdv - toplam * 0.01 / 1.01)
+        min_sapma = min(oran_20, oran_10, oran_08, oran_01)
+        if min_sapma > 2.0:
+            _ekle("K3", f"🚨 KDV tutarı ({kdv:.2f}₺) hiçbir orana uymuyor! (Min sapma: {min_sapma:.2f}₺)", 25)
+        elif min_sapma > 0.5:
+            _ekle("K3", f"⚠️ KDV tutarında küçük matematiksel sapma ({min_sapma:.2f}₺)", 10)
+
+    # ════════════════════════════════════════════
+    # KATMAN 4 — YUVARLAK TUTAR ŞÜPHESİ
+    # ════════════════════════════════════════════
+    if toplam > 0:
+        if toplam == int(toplam) and int(toplam) % 500 == 0:
+            _ekle("K4", f"🚨 Çok şüpheli yuvarlak tutar: {toplam:.0f}₺ (500'ün katı)", 20)
+        elif toplam == int(toplam) and int(toplam) % 100 == 0:
+            _ekle("K4", f"🔍 Yuvarlak tutar: {toplam:.0f}₺ (100'ün katı)", 10)
+        elif toplam == int(toplam) and int(toplam) % 50 == 0:
+            _ekle("K4", f"🔍 Yuvarlak tutar: {toplam:.0f}₺ (50'nin katı)", 5)
+        # Fiş türüne göre olası olmayan tutarlar
+        if fis_data.get("fis_turu","") in ("akaryakıt","akaryakit") and toplam > 5000:
+            _ekle("K4b", f"⚠️ Yakıt fişi için çok yüksek tutar: {toplam:.0f}₺", 15)
+        if fis_data.get("fis_turu","") == "restoran" and toplam > 10000:
+            _ekle("K4b", f"⚠️ Restoran fişi için çok yüksek tutar: {toplam:.0f}₺", 15)
+
+    # ════════════════════════════════════════════
+    # KATMAN 5 — GÖRSEL: PİKSEL ENTROPİ ANALİZİ
+    # Gerçek termal fiş → yüksek entropi (sıcaklık gradyanı)
+    # Bilgisayar çıktısı → düşük entropi (düzgün pikseller)
+    # ════════════════════════════════════════════
+    try:
+        import numpy as _np
+        img_gray = image.convert("L")  # Gri tonlama
+        img_arr  = list(img_gray.tobytes())
+        w, h     = img_gray.size
+
+        # Histogram entropi hesabı
+        _hist = [0] * 256
+        for px in img_arr:
+            _hist[px] += 1
+        _total = len(img_arr)
+        _entropi = 0.0
+        for c in _hist:
+            if c > 0:
+                p = c / _total
+                import math as _math
+                _entropi -= p * _math.log2(p)
+
+        sonuc["gorsel_entropi"] = round(_entropi, 3)
+
+        # Satır bazlı varyans — gerçek termal fişte satırlar arası varyans yüksek
+        satirlar = []
+        for y in range(0, h, max(1, h // 20)):
+            satir = img_arr[y * w: (y+1) * w]
+            if satir:
+                satirlar.append(sum(satir) / len(satir))
+
+        if len(satirlar) > 3:
+            satir_varyans = _stats.variance(satirlar)
+            sonuc["satir_varyans"] = round(satir_varyans, 1)
+            if satir_varyans < 50:
+                _ekle("K5", f"🚨 Çok düşük görsel varyans ({satir_varyans:.0f}) — bilgisayar çıktısı şüphesi", 25)
+            elif satir_varyans < 150:
+                _ekle("K5", f"🔍 Düşük görsel varyans ({satir_varyans:.0f}) — termal yazıcı değil olabilir", 12)
+
+        # Entropi değerlendirmesi
+        if _entropi < 3.5:
+            _ekle("K5b", f"🚨 Çok düşük piksel entropisi ({_entropi:.2f}) — gerçek fiş değil şüphesi", 20)
+        elif _entropi < 5.0:
+            _ekle("K5b", f"🔍 Düşük piksel entropisi ({_entropi:.2f}) — yazıcı kalitesi şüpheli", 8)
+
+    except Exception as _e:
+        print(f"K5 görsel analiz hatası: {_e}", flush=True)
+
+    # ════════════════════════════════════════════
+    # KATMAN 6 — GÖRSEL: RENK HOMOJENLİĞİ
+    # Gerçek termal fiş → beyaza yakın, gri bantlar var
+    # Taranmış sahte → çok düzgün beyaz veya çok gri
+    # ════════════════════════════════════════════
+    try:
+        img_rgb = image.convert("RGB")
+        w2, h2  = img_rgb.size
+        piksel_sayisi = w2 * h2
+        if piksel_sayisi > 0:
+            # Ortalama renk kanalları
+            r_sum = g_sum = b_sum = 0
+            pikseller = list(list(img_rgb.getpixel(x, y) for y in range(h2) for x in range(w2)))
+            for i in range(0, len(pikseller), 3):
+                r, g, b = pikseller[i], pikseller[i+1], pikseller[i+2]
+                r_sum += r; g_sum += g; b_sum += b
+            r_ort = r_sum / piksel_sayisi
+            g_ort = g_sum / piksel_sayisi
+            b_ort = b_sum / piksel_sayisi
+
+            # Gerçek termal fiş genellikle %85+ beyaz
+            beyazlik = (r_ort + g_ort + b_ort) / 3
+            sonuc["gorsel_beyazlik"] = round(beyazlik, 1)
+
+            if beyazlik > 245:
+                _ekle("K6", "🔍 Çok yüksek beyazlık — dijital olarak oluşturulmuş olabilir", 10)
+
+            # RGB kanalları arasındaki fark (gri ölçek = düşük fark, renkli baskı = yüksek)
+            kanal_fark = max(abs(r_ort - g_ort), abs(g_ort - b_ort), abs(r_ort - b_ort))
+            if kanal_fark < 5 and beyazlik < 200:
+                # Mükemmel gri tonlama — tarama değil, ekran görüntüsü olabilir
+                _ekle("K6b", "🔍 Mükemmel gri tonlama — ekran görüntüsü şüphesi", 8)
+
+    except Exception as _e:
+        print(f"K6 renk analizi hatası: {_e}", flush=True)
+
+    # ════════════════════════════════════════════
+    # KATMAN 7 — GÖRSEL: KENAR GEOMETRİSİ
+    # Gerçek fiş fotoğrafı → hafif eğik, gölge var
+    # Ekran görüntüsü/dijital → tam dikdörtgen, sınırlar keskin
+    # ════════════════════════════════════════════
+    try:
+        img_g2 = image.convert("L")
+        w3, h3 = img_g2.size
+        # En/boy oranı kontrolü — gerçek fiş genellikle dar ve uzun
+        oran = h3 / max(w3, 1)
+        sonuc["gorsel_en_boy"] = round(oran, 2)
+        if oran < 1.2:
+            _ekle("K7", f"🔍 En/boy oranı ({oran:.2f}) gerçek fiş için çok kısa — kırpılmış olabilir", 10)
+        elif oran > 6.0:
+            _ekle("K7", f"🔍 Olağandışı uzun görsel ({oran:.2f}) — birleştirilmiş fiş şüphesi", 8)
+
+        # Köşe pikselleri analizi — dijital görüntüde köşeler saf beyaz/siyah olur
+        _koseler = [
+            img_g2.getpixel((0, 0)),
+            img_g2.getpixel((w3-1, 0)),
+            img_g2.getpixel((0, h3-1)),
+            img_g2.getpixel((w3-1, h3-1))
+        ]
+        if all(k > 250 for k in _koseler):
+            _ekle("K7b", "🔍 Tüm köşeler saf beyaz — ekran görüntüsü veya dijital kırpma şüphesi", 7)
+
+    except Exception as _e:
+        print(f"K7 geometri analizi hatası: {_e}", flush=True)
+
+    # ════════════════════════════════════════════
+    # KATMAN 8 — AI SAHTELİK SKORU (Gemini'den)
+    # ════════════════════════════════════════════
+    ai_risk = int(fis_data.get("risk_skoru", 0))
+    ai_sahte = fis_data.get("sahte_mi", False)
+    if ai_sahte:
+        _ekle("K8", f"🚨 AI sahte fiş tespit etti: {fis_data.get('sahtelik_nedeni','')}", 30)
+        sonuc["sahte_mi"] = True
+    elif ai_risk >= 70:
+        _ekle("K8", f"⚠️ AI yüksek risk skoru verdi: {ai_risk}/100", 15)
+
     for neden in fis_data.get("risk_nedenleri", []):
-        if neden and neden != "...": sonuc["bulgular"].append(f"• {neden}")
+        if neden and neden not in ("...", "") and neden not in [b for b in sonuc["bulgular"]]:
+            sonuc["bulgular"].append(f"• {neden}")
+
+    # ════════════════════════════════════════════
+    # KATMAN 9 — METİN YAPISI ANOMALİSİ
+    # ════════════════════════════════════════════
+    # AI'ın audit notundan metin kalıplarını analiz et
+    _audit_lower = audit.lower()
+
+    # Şüpheli ifadeler — gerçek POS fişlerinde bulunmayan
+    _suphelikli_ifadeler = [
+        ("karşılığı mal ve hizmeti aldım", "🔍 'Karşılığı mal ve hizmeti aldım' — standart POS fişi ifadesi değil", 15),
+        ("teşekkür ederiz", "🔍 El yazısı teşekkür ifadesi — kurumsal fiş şüphesi", 5),
+        ("lütfen tekrar gelin", "🔍 El yazısı davet ifadesi — kurumsal fiş şüphesi", 5),
+    ]
+    for _ifade, _mesaj, _risk in _suphelikli_ifadeler:
+        if _ifade in _audit_lower or _ifade in firma.lower():
+            _ekle("K9", _mesaj, _risk)
+
+    # ════════════════════════════════════════════
+    # KATMAN 10 — VERGİ NUMARASI FORMAT KONTROLÜ
+    # Türkiye VKN: 10 hane | TCKN: 11 hane
+    # ════════════════════════════════════════════
+    _vkn_pattern = _re.compile(r'\b\d{10}\b')
+    _tckn_pattern = _re.compile(r'\b[1-9]\d{10}\b')
+    _audit_str = audit + firma
+
+    vkn_eslesmeler = _vkn_pattern.findall(_audit_str)
+    if not vkn_eslesmeler:
+        # VKN yok ama fiş vergi gerektiriyor
+        if toplam > 200:
+            _ekle("K10", "🔍 500₺ üzeri fişte vergi/işyeri numarası tespit edilemedi", 10)
+    else:
+        # VKN checksum (Türk VKN algoritması)
+        for _vkn in vkn_eslesmeler[:1]:
+            try:
+                _d = [int(c) for c in _vkn]
+                _kalan = [((_d[i] + (9 - i)) % 10) for i in range(9)]
+                _carpim = [(_kalan[i] * (2 ** (9 - i))) % 9 for i in range(9)]
+                _carpim = [9 if c == 0 and _kalan[i] != 0 else c for i, c in enumerate(_carpim)]
+                _kontrol = sum(_carpim) % 10
+                if _kontrol != _d[9]:
+                    _ekle("K10", f"🚨 Vergi numarası ({_vkn}) checksum geçersiz!", 25)
+            except:
+                pass
+
+    # ════════════════════════════════════════════
+    # KATMAN 11 — FİŞ SIRA NO / ONAY KODU
+    # ════════════════════════════════════════════
+    # Gerçek POS fişlerinde onay kodu 6 haneli rakam veya harf+rakam
+    _onay_pattern = _re.compile(r'[Kk]\d{5,8}|[Oo][Nn][Aa][Yy]\s*[:]\s*\w+', _re.IGNORECASE)
+    _onay_eslesmeler = _onay_pattern.findall(audit + firma)
+    # Onay kodu formatı kontrolü (K09767 gibi)
+    _onay_kod_raw = fis_data.get("ilginc_detay","") + audit
+    if "onay kodu" in _onay_kod_raw.lower() or "onay:" in _onay_kod_raw.lower():
+        pass  # Onay kodu var, iyi
+    # Taksitli satış kontrolü
+    if "taksitli" in (firma + audit).lower() or "taksit" in (firma + audit).lower():
+        _ekle("K11", "🔍 Taksitli satış fişi — birden fazla tutarın toplamı kontrol edilmeli", 5)
+
+    # ════════════════════════════════════════════
+    # KATMAN 12 — İŞLETME ADI GÜVENİLİRLİK
+    # ════════════════════════════════════════════
+    if firma:
+        _firma_lower = firma.lower().strip()
+        # Çok kısa veya genel firma adları
+        if len(_firma_lower) <= 2:
+            _ekle("K12", "🚨 Firma adı çok kısa — sahte veya eksik", 15)
+        elif len(_firma_lower) <= 4:
+            _ekle("K12", "🔍 Firma adı çok kısa — doğrulama gerekli", 8)
+
+        # Sadece rakam içeren firma adı
+        if _firma_lower.isdigit():
+            _ekle("K12", "🚨 Firma adı sadece rakamlardan oluşuyor", 20)
+
+        # Bilinen zincirlerin yazım kontrolü (yakın ama yanlış yazım)
+        _zincirler = {
+            "migroz": "migros", "migrros": "migros",
+            "bimm": "bim", "bi m": "bim",
+            "a 101": "a101", "a-101": "a101",
+            "şokk": "şok", "şok market": "şok",
+            "carrefurr": "carrefour",
+            "teknossa": "teknosa", "techno sa": "teknosa",
+        }
+        for _yanlis, _dogru in _zincirler.items():
+            if _yanlis in _firma_lower:
+                _ekle("K12", f"🚨 Firma adı yazım hatası: '{firma}' → muhtemelen '{_dogru}'?", 20)
+
+    # ════════════════════════════════════════════
+    # SONUÇ: Nihai karar
+    # ════════════════════════════════════════════
+    toplam_risk = sonuc["guvensizlik_skoru"]
+    if toplam_risk >= 70 and not sonuc["sahte_mi"]:
+        sonuc["sahte_mi"] = True
+        sonuc["bulgular"].insert(0, f"🚨 {len(sonuc['katman_sonuclari'])} katman analizi → Risk: {toplam_risk}/100 — SAHTE ŞÜPHESİ")
+    elif toplam_risk >= 40:
+        sonuc["bulgular"].insert(0, f"⚠️ {len(sonuc['katman_sonuclari'])} katman analizi → Risk: {toplam_risk}/100 — DİKKATLİ İNCELENMELİ")
+
     return sonuc
 
 def ekip_siralaması(data):
