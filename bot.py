@@ -44,7 +44,7 @@ def _startup_restore():
     except Exception as e:
         print(f"DB restore hatası: {e}", flush=True)
 
-_startup_restore()
+# _startup_restore() aşağıda DB_FILE tanımlandıktan sonra çağrılacak
 
 # ─────────────────────────────────────────────
 #  YAPILANDIRMA
@@ -81,6 +81,9 @@ DB_FILE   = os.path.join(_DATA_DIR, "stinga_v13_db.json")
 DB_FILE_BACKUP2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stinga_v13_db.json")
 print(f"Ana DB: {DB_FILE}", flush=True)
 DOVIZ_API_URL = "https://api.exchangerate-api.com/v4/latest/TRY"
+
+# ── Startup restore'u DB_FILE tanımlandıktan sonra çağır
+_startup_restore()
 
 PHONE_DIRECTORY = {
     "whatsapp:+905350328406": {
@@ -511,14 +514,25 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_od
         media_url = request.values.get(f'MediaUrl{i}')
         if not media_url: continue
         try:
-            res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
-            if res.status_code in [301, 302, 307, 308]:
-                res = requests.get(res.headers.get('Location'), timeout=15)
+            res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=True, timeout=20)
+            if res.status_code != 200 or len(res.content) < 500:
+                res2 = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
+                if res2.status_code in [301, 302, 307, 308]:
+                    redirect_url = res2.headers.get('Location', '')
+                    if redirect_url: res = requests.get(redirect_url, timeout=15)
+                elif res2.status_code == 200 and len(res2.content) > 500: res = res2
             raw_bytes = res.content
+            if len(raw_bytes) < 500:
+                sonuclar.append(f"⚠️ Fiş {i+1}: Görsel indirilemedi"); continue
             img_hash = gorsel_hash(raw_bytes)
             if img_hash in data["duplicate_hashes"]:
                 sonuclar.append(f"⚠️ Fiş {i+1}: Mükerrer, atlandı"); continue
-            image = Image.open(BytesIO(raw_bytes))
+            try:
+                image = Image.open(BytesIO(raw_bytes))
+                image.verify()
+                image = Image.open(BytesIO(raw_bytes))
+            except:
+                sonuclar.append(f"❌ Fiş {i+1}: Geçersiz görsel"); continue
             bugun = datetime.now().strftime("%Y-%m-%d")
             prompt = f"""Fişi analiz et. Sadece JSON döndür. Bugün: {bugun}
 {{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,
@@ -814,17 +828,51 @@ def whatsapp_webhook():
         def analiz_et_gonder():
             try:
                     data = load_data()
-                    res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
-                    if res.status_code in [301, 302, 307, 308]:
-                        res = requests.get(res.headers.get('Location'), timeout=15)
+                    # Görsel indirme — Twilio redirect'lerini otomatik takip et
+                    res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN),
+                                       allow_redirects=True, timeout=20)
+                    # Eğer yine hata varsa, redirect'i manuel dene
+                    if res.status_code != 200 or len(res.content) < 500:
+                        # Manuel redirect dene
+                        res2 = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN),
+                                            allow_redirects=False, timeout=15)
+                        if res2.status_code in [301, 302, 307, 308]:
+                            redirect_url = res2.headers.get('Location', '')
+                            if redirect_url:
+                                res = requests.get(redirect_url, timeout=15)
+                        elif res2.status_code == 200 and len(res2.content) > 500:
+                            res = res2
+
                     raw_bytes = res.content
+                    content_type = res.headers.get('Content-Type', '')
+                    print(f"Görsel indirildi: {len(raw_bytes)} bytes, type: {content_type}", flush=True)
+
+                    # İçerik doğrulama — görsel mi değil mi?
+                    if len(raw_bytes) < 500 or ('text/html' in content_type or 'application/json' in content_type):
+                        print(f"UYARI: İndirilen dosya görsel değil! ({content_type}, {len(raw_bytes)} bytes)", flush=True)
+                        twilio_client.messages.create(
+                            body="❌ Fiş görseli indirilemedi. Lütfen fotoğrafı tekrar gönderin.",
+                            from_="whatsapp:+14155238886", to=sender_phone)
+                        return
+
                     img_hash = gorsel_hash(raw_bytes)
                     if img_hash in data["duplicate_hashes"]:
                         twilio_client.messages.create(
                             body="⚠️ *Mükerrer Fiş!* Bu fişi daha önce sisteme girdiniz.",
                             from_="whatsapp:+14155238886", to=sender_phone)
                         return
-                    image = Image.open(BytesIO(raw_bytes))
+
+                    # PIL ile aç — hata verirse kullanıcıya bildir
+                    try:
+                        image = Image.open(BytesIO(raw_bytes))
+                        image.verify()  # Geçerli görsel mi kontrol et
+                        image = Image.open(BytesIO(raw_bytes))  # verify sonrası tekrar aç
+                    except Exception as _img_err:
+                        print(f"PIL görsel açma hatası: {_img_err}", flush=True)
+                        twilio_client.messages.create(
+                            body="❌ Gönderilen dosya geçerli bir görsel değil. Lütfen fiş *fotoğrafı* gönderin (PDF, video vb. desteklenmez).",
+                            from_="whatsapp:+14155238886", to=sender_phone)
+                        return
                     bugun = datetime.now().strftime("%Y-%m-%d")
                     prompt = f"""Sen mali denetçi ve adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür.
 ÖNEMLİ: Bugün {bugun}. Fişte yazan tarihi oku (DD-MM-YYYY → YYYY-MM-DD).
@@ -995,9 +1043,24 @@ def whatsapp_webhook():
                         risk = sahtelik["guvensizlik_skoru"]
                         is_senol = (user_name == "Şenol Özyaman")
                         if is_senol:
-                            espri_prompt = f"""Sen STINGA yapay zekasısın. Şenol Özyaman için not yazıyorsun.
-Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Bugün {len(bugun_fisler)} fiş - Bu ay {bu_ay_toplam:.0f} TL
-Şenol diyaliz hastası (Salı-Perşembe-Cumartesi). 2 cümle: 1) fişle ilgili esprili yorum 2) sağlık hatırlatma. Samimi, Türkçe."""
+                            espri_prompt = f"""Sen STINGA yapay zekasısın. Şenol Faik Özyaman için hem mali hem kişisel bir not yazıyorsun.
+
+Fiş bilgileri:
+- Firma: {fis.get('firma','?')}
+- Tutar: {tutar_try:.0f} TL
+- Kategori: {kategori}
+- Risk: {risk}/100
+- Bugün fiş sayısı: {len(bugun_fisler)}
+- Bu ay toplam: {bu_ay_toplam:.0f} TL
+
+Şenol hakkında önemli bilgiler:
+- Diyaliz hastası (Salı-Perşembe-Cumartesi diyaliz günleri)
+- Sıvı kısıtlaması var, fazla sıvı almaması gerekiyor
+- Beslenmeye dikkat etmesi gerekiyor
+- Stinga ekibi ona güveniyor ve varlığına değer veriyor
+
+Görev: 2 cümle yaz. İlk cümle fişle ilgili esprili/samimi bir yorum. İkinci cümle Şenol'a sağlığını, diyalizini, beslenmesini ya da günlük hayatını ince bir şekilde hatırlatan, asla tıbbi tavsiye vermeyen, içten ve sıcak bir hatırlatma — her seferinde farklı ve özgün olsun, klişe olmasın.
+STINGA yapay zekası olarak yaz, samimi ve kişisel ol. Türkçe. Sadece yorumu yaz."""
                         else:
                             espri_prompt = f"""Sen STINGA yapay zekasısın. Kullanıcı: {user_name}
 Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/100 - Bugün {len(bugun_fisler)} fiş - Bu ay {bu_ay_toplam:.0f} TL
@@ -1226,8 +1289,21 @@ def approve_endpoint():
 
                 if action == "approve":
                     odeme_bilgi = odeme_turu_label(odeme_turu_fis)
+                    is_senol_onay = ("şenol" in kullanici.lower() or "senol" in kullanici.lower())
                     try:
-                        onay_prompt = f"""Sen esprili muhasebe asistanısın.
+                        if is_senol_onay:
+                            onay_prompt = f"""Sen STINGA yapay zekasısın. Şenol Faik Özyaman'a onay bildirimi yazıyorsun.
+Firma: {firma} | Tutar: {tutar:.0f} TL | Kategori: {fis_kategori} | Ödeme: {odeme_bilgi} | Kayıt no: {fis_id}
+
+Şenol diyaliz hastası (Salı-Perşembe-Cumartesi). Sıvı kısıtlaması var. Ekip onu çok seviyor.
+
+Görev: 3-4 cümle yaz.
+1) İsmiyle hitap et, onaylandığını bildir, ödeme türünü belirt
+2) Fişle ilgili esprili yorum
+3) Son cümle: sağlığını, diyalizini veya beslenmesini ince bir şekilde hatırlat (tıbbi tavsiye verme, sıcak ve samimi ol)
+Muhasebe kayıt no'yu 🔖 ile belirt. Türkçe. Sadece mesajı yaz."""
+                        else:
+                            onay_prompt = f"""Sen esprili muhasebe asistanısın.
 Kullanıcı: {kullanici} | Firma: {firma} | Tutar: {tutar:.0f} TL | Kategori: {fis_kategori}
 Ödeme: {odeme_bilgi} | Bu kategoride {len(kat_fis)} onaylı fiş | Kayıt no: {fis_id}
 Onay bildirimi yaz: ismiyle hitap et, ödeme türünü belirt (harcırah mı şirket kartı mı), esprili, 3-4 cümle. Sadece mesajı yaz."""
