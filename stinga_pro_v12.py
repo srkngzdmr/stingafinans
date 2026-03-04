@@ -652,7 +652,18 @@ def load_data():
     try:
         r = _req.get(f"{RAILWAY_URL}/all-data", timeout=_API_TIMEOUT)
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        # ── Expense verilerindeki HTML kalıntılarını temizle ──
+        _html_fields = ("AI_Audit", "Notlar", "AI_Anomali_Aciklama", "IlgincDetay", "Firma")
+        for exp in data.get("expenses", []):
+            for _fld in _html_fields:
+                val = exp.get(_fld)
+                if val and isinstance(val, str) and ('<' in val or '&nbsp' in val):
+                    exp[_fld] = _re.sub(r'<[^>]+>', '', val)
+                    exp[_fld] = _re.sub(r'&nbsp;?', ' ', exp[_fld])
+                    exp[_fld] = _re.sub(r'&[a-z]+;', ' ', exp[_fld])
+                    exp[_fld] = _re.sub(r'\s+', ' ', exp[_fld]).strip()
+        return data
     except Exception as e:
         st.error(f"⚠️ Railway bağlantı hatası: {e}")
         return {
@@ -1527,11 +1538,26 @@ def clean_audit(text: str) -> str:
     text = _re.sub(r'\{[^}]{0,300}\}', '', text)
     # "Proje: ... · Öncelik: ... · Ödeme: ..." satırlarını kaldır (div kalıntısı)
     text = _re.sub(r'Proje\s*:.*?Ödeme\s*:[^\n]*', '', text, flags=_re.IGNORECASE)
+    # &nbsp; ve HTML entity temizle
+    text = _re.sub(r'&nbsp;?', ' ', text)
+    text = _re.sub(r'&[a-z]+;', ' ', text)
     # Birden fazla boşluk/newline temizle
     text = _re.sub(r'\s+', ' ', text).strip()
     # HTML escape
     text = _html.escape(text, quote=False)
     return text if text else "Analiz tamamlandı."
+
+
+def strip_html(text) -> str:
+    """Herhangi bir metin alanından HTML tag'lerini ve entity'leri kaldır."""
+    if not text:
+        return ""
+    text = str(text)
+    text = _re.sub(r'<[^>]+>', '', text, flags=_re.DOTALL)
+    text = _re.sub(r'&nbsp;?', ' ', text)
+    text = _re.sub(r'&[a-z]+;', ' ', text)
+    text = _re.sub(r'\s+', ' ', text).strip()
+    return text
 
 
 def odeme_label(raw: str) -> str:
@@ -3204,19 +3230,19 @@ tick();setInterval(tick,1000);
                                     </div>
                                 </div>
                                 <div class="ai-bubble">🤖 {clean_audit(row.get('AI_Audit',''))}</div>
-                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
+                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ " + strip_html(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    📁 Proje: <strong>{row.get('Proje','?')}</strong> &nbsp;·&nbsp;
-                                    ⚡ Öncelik: <strong>{row.get('Oncelik','Normal')}</strong> &nbsp;·&nbsp;
+                                    📁 Proje: <strong>{strip_html(row.get('Proje','?'))}</strong> &nbsp;·&nbsp;
+                                    ⚡ Öncelik: <strong>{strip_html(row.get('Oncelik','Normal'))}</strong> &nbsp;·&nbsp;
                                     💳 Ödeme: <strong>{odeme_label(row.get('Odeme_Turu', row.get('OdemeTipi','—')))}</strong> &nbsp;·&nbsp;
-                                    📱 Kaynak: <strong>{row.get('Kaynak','Dashboard')}</strong>
+                                    📱 Kaynak: <strong>{strip_html(row.get('Kaynak','Dashboard'))}</strong>
                                 </div>
                                 <div style="margin-top:6px; padding:8px 14px; border-radius:8px; font-size:0.82rem; font-weight:700;
                                     {'background:rgba(217,119,6,0.1); border:1px solid rgba(217,119,6,0.3); color:#d97706;' if str(row.get('Odeme_Turu', row.get('OdemeTipi',''))).lower().strip() in ('harcirah','harcırah','harcirahtan dus','harcırahtan düş','harcırahtan düş (nakit / kişisel kart)','nakit','kisisel') else 'background:rgba(8,145,178,0.1); border:1px solid rgba(8,145,178,0.3); color:#0891b2;'}">
                                     {'💵 HARCIRAHTAN DÜŞÜLECEK — Personel şahsi ödeme yapmıştır' if str(row.get('Odeme_Turu', row.get('OdemeTipi',''))).lower().strip() in ('harcirah','harcırah','harcirahtan dus','harcırahtan düş','harcırahtan düş (nakit / kişisel kart)','nakit','kisisel') else '🏦 ŞİRKET KREDİ KARTI — Genel merkezden düşülecek'}
                                 </div>
                                 {_harcirah_html}
-                                {f"<div style='margin-top:6px; font-size:0.75rem;'>📝 {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
+                                {f"<div style='margin-top:6px; font-size:0.75rem;'>📝 {strip_html(row.get('Notlar',''))}</div>" if row.get('Notlar') else ""}
                             </div>
                             """, unsafe_allow_html=True)
 
@@ -3458,14 +3484,14 @@ tick();setInterval(tick,1000);
                                 <div class="ai-bubble">
                                     🤖 {clean_audit(row.get('AI_Audit',''))}
                                 </div>
-                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
+                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: " + strip_html(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    📁 Proje: <strong>{row.get('Proje','?')}</strong> &nbsp;·&nbsp;
-                                    ⚡ Öncelik: <strong>{row.get('Oncelik','Normal')}</strong> &nbsp;·&nbsp;
+                                    📁 Proje: <strong>{strip_html(row.get('Proje','?'))}</strong> &nbsp;·&nbsp;
+                                    ⚡ Öncelik: <strong>{strip_html(row.get('Oncelik','Normal'))}</strong> &nbsp;·&nbsp;
                                     💳 Ödeme: <strong>{odeme_label(row.get('Odeme_Turu','—'))}</strong>
                                 </div>
                                 {_harcirah_html2}
-                                {f"<div style='margin-top:6px; font-size:0.75rem; color:var(--text-secondary);'>📝 Not: {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
+                                {f"<div style='margin-top:6px; font-size:0.75rem; color:var(--text-secondary);'>📝 Not: {strip_html(row.get('Notlar',''))}</div>" if row.get('Notlar') else ""}
                             </div>
                             """, unsafe_allow_html=True)
                             
