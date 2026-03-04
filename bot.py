@@ -513,23 +513,40 @@ def konum_isle(lat, lon, user_name, data):
 
 def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_odeme_turu=None):
     """Birden fazla medya: tüm görselleri sırayla işler. mesaj_odeme_turu varsa her fişe uygulanır."""
+    import re as _re_c
     sonuclar = []
     for i in range(min(num_media, 5)):
-        media_url = request.values.get(f'MediaUrl{i}')
-        if not media_url: continue
+        media_url_raw = request.values.get(f'MediaUrl{i}')
+        if not media_url_raw: continue
+        # URL'deki Account SID'i kendi SID'imizle değiştir
+        media_url = _re_c.sub(r'/Accounts/AC[a-f0-9]+/', f'/Accounts/{TWILIO_SID}/', media_url_raw)
         try:
             # Birden fazla indirme stratejisi dene
             raw_bytes = None
-            for _strat in [
-                lambda: requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=True, timeout=20),
-                lambda: requests.get(media_url, allow_redirects=True, timeout=20),
-            ]:
-                try:
-                    _r = _strat()
-                    _ct = _r.headers.get('Content-Type','').lower()
-                    if len(_r.content) > 500 and 'xml' not in _ct and 'html' not in _ct and 'json' not in _ct:
-                        raw_bytes = _r.content; break
-                except: continue
+            # Strateji A: auth + redirect=False, sonra Location takip
+            try:
+                _r0 = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=20)
+                if _r0.status_code in [301, 302, 303, 307, 308]:
+                    _loc = _r0.headers.get('Location', '')
+                    if _loc:
+                        _r0 = requests.get(_loc, timeout=20)
+                if len(_r0.content) > 500:
+                    _ct0 = _r0.headers.get('Content-Type','').lower()
+                    if 'xml' not in _ct0 and 'html' not in _ct0:
+                        raw_bytes = _r0.content
+            except: pass
+            # Strateji B: fallback'ler
+            if not raw_bytes:
+                for _strat in [
+                    lambda: requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=True, timeout=20),
+                    lambda: requests.get(media_url, allow_redirects=True, timeout=20),
+                ]:
+                    try:
+                        _r = _strat()
+                        _ct = _r.headers.get('Content-Type','').lower()
+                        if len(_r.content) > 500 and 'xml' not in _ct and 'html' not in _ct:
+                            raw_bytes = _r.content; break
+                    except: continue
             if not raw_bytes or len(raw_bytes) < 500:
                 sonuclar.append(f"⚠️ Fiş {i+1}: Görsel indirilemedi"); continue
             img_hash = gorsel_hash(raw_bytes)
@@ -831,10 +848,21 @@ def whatsapp_webhook():
             return str(resp)
 
         # ── TEKİL FİŞ ───────────────────────────────────────────────
-        media_url = request.values.get('MediaUrl0')
+        media_url_raw = request.values.get('MediaUrl0')
         media_content_type = request.values.get('MediaContentType0', '')
-        print(f"📸 Media URL: {media_url}", flush=True)
+        print(f"📸 Media URL (raw): {media_url_raw}", flush=True)
         print(f"📸 Media ContentType: {media_content_type}", flush=True)
+
+        # ── URL'deki Account SID'i kendi SID'imizle değiştir
+        # (Twilio Sandbox bazen farklı/eski Account SID ile URL üretir)
+        import re as _re_url
+        media_url = _re_url.sub(
+            r'/Accounts/AC[a-f0-9]+/',
+            f'/Accounts/{TWILIO_SID}/',
+            media_url_raw
+        )
+        if media_url != media_url_raw:
+            print(f"📸 Media URL (SID düzeltildi): {media_url}", flush=True)
 
         def analiz_et_gonder():
             try:
