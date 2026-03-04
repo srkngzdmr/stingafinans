@@ -906,6 +906,68 @@ def butce_durumu_str(user_name, data):
     bar = "█" * bar_dolu + "░" * (10 - bar_dolu)
     return f"[{bar}] %{oran:.1f} ({ay_top:.0f}/{butce:.0f} ₺)"
 
+# ─────────────────────────────────────────────────────────
+#  🏙️ ŞEHİR TESPİT MOTORU — modül seviyesi, her yerden kullanılabilir
+# ─────────────────────────────────────────────────────────
+_SEHIR_LISTESI = [
+    "adana","adiyaman","afyon","agri","aksaray","amasya","ankara","antalya",
+    "ardahan","artvin","aydin","balikesir","bartin","batman","bayburt",
+    "bilecik","bingol","bitlis","bolu","burdur","bursa","canakkale","cankiri",
+    "corum","denizli","diyarbakir","duzce","edirne","elazig","erzincan",
+    "erzurum","eskisehir","gaziantep","giresun","gumushane","hakkari","hatay",
+    "igdir","isparta","istanbul","izmir","kahramanmaras","karabuk","karaman",
+    "kars","kastamonu","kayseri","kilis","kirikkale","kirklareli","kirsehir",
+    "kocaeli","konya","kutahya","malatya","manisa","mardin","mersin","mugla",
+    "mus","nevsehir","nigde","ordu","osmaniye","rize","sakarya","samsun",
+    "siirt","sinop","sivas","sanliurfa","sirnak","tekirdag","tokat","trabzon",
+    "tunceli","usak","van","yalova","yozgat","zonguldak",
+    "yenimahalle","cankaya","kecoren","etimesgut","mamak","sincan",
+    "kadikoy","uskudar","besiktas","sisli","bakirkoy","bagcilar",
+    "esenyurt","basaksehir","pendik","maltepe","kartal","atasehir",
+    "bornova","buca","karsiyaka","konak","cigli","osmangazi","nilufer",
+    "muratpasa","kepez","mezitli","toroslar","izmit","adapazari",
+]
+_SEHIR_GERCEK = {
+    "adiyaman":"Adıyaman","agri":"Ağrı","aydin":"Aydın","balikesir":"Balıkesir",
+    "bartin":"Bartın","bingol":"Bingöl","canakkale":"Çanakkale","cankiri":"Çankırı",
+    "corum":"Çorum","duzce":"Düzce","elazig":"Elazığ","eskisehir":"Eskişehir",
+    "gumushane":"Gümüşhane","igdir":"Iğdır","kahramanmaras":"Kahramanmaraş",
+    "karabuk":"Karabük","kirikkale":"Kırıkkale","kirklareli":"Kırklareli",
+    "kirsehir":"Kırşehir","kutahya":"Kütahya","mugla":"Muğla","mus":"Muş",
+    "nevsehir":"Nevşehir","nigde":"Niğde","sanliurfa":"Şanlıurfa","sirnak":"Şırnak",
+    "tekirdag":"Tekirdağ","usak":"Uşak","ankara":"Ankara","istanbul":"İstanbul",
+    "izmir":"İzmir","bursa":"Bursa","antalya":"Antalya","adana":"Adana",
+    "konya":"Konya","mersin":"Mersin","gaziantep":"Gaziantep","kayseri":"Kayseri",
+    "eskisehir":"Eskişehir","denizli":"Denizli","trabzon":"Trabzon",
+    "samsun":"Samsun","sakarya":"Sakarya","kocaeli":"Kocaeli",
+    "yenimahalle":"Yenimahalle","cankaya":"Çankaya","kecoren":"Keçiören",
+    "esenyurt":"Esenyurt","kadikoy":"Kadıköy","uskudar":"Üsküdar",
+    "besiktas":"Beşiktaş","sisli":"Şişli","bakirkoy":"Bakırköy",
+    "bagcilar":"Bağcılar","basaksehir":"Başakşehir","karsiyaka":"Karşıyaka",
+    "cigli":"Çiğli","nilufer":"Nilüfer","muratpasa":"Muratpaşa",
+    "adapazari":"Adapazarı","osmangazi":"Osmangazi","izmit":"İzmit",
+}
+
+def _normalize_sehir(t: str) -> str:
+    return (t.lower()
+             .replace("ı","i").replace("ğ","g").replace("ş","s")
+             .replace("ç","c").replace("ö","o").replace("ü","u")
+             .replace("â","a").replace("î","i").replace("û","u"))
+
+def sehir_tespit(metin: str) -> str:
+    """Herhangi bir metinden Türkiye şehri/ilçesi bulur. Modül seviyesi — her yerden çağrılabilir."""
+    if not metin:
+        return ""
+    mn = _normalize_sehir(metin)
+    for _s in _SEHIR_LISTESI:
+        if _s in mn:
+            idx   = mn.find(_s)
+            once  = mn[idx-1] if idx > 0 else " "
+            sonra = mn[idx+len(_s)] if idx+len(_s) < len(mn) else " "
+            if not once.isalpha() and not sonra.isalpha():
+                return _SEHIR_GERCEK.get(_s, _s.title())
+    return ""
+
 # ─────────────────────────────────────────────
 #  📍 KONUM & ZAMAN ZEKASI — 3 YENİ ÖZELLİK
 # ─────────────────────────────────────────────
@@ -1184,71 +1246,92 @@ def zaman_mekan_imkansizlik_kontrol(fis_adresi: str, fis_sehri: str, fis_tarihi:
     return sonuc
 
 
-def fis_yasi_kontrol(raw_bytes: bytes, mesaj_zamani: datetime) -> dict:
+def fis_yasi_kontrol(raw_bytes: bytes, mesaj_zamani: datetime, fis_tarihi: str = "") -> dict:
     """
-    ÖZELLİK 3: Fotoğrafın EXIF'inden çekilme tarihini okur,
-    yükleme zamanıyla karşılaştırır. WhatsApp bazen EXIF'i siliyor —
-    o zaman sessizce geçer, hata vermez.
-    
-    Döner: {"yasli": bool, "gun_farki": int, "risk_artisi": int, "uyari_mesaji": str, "cekme_zamani": str}
+    ÖZELLİK 3: Fişin TARIHINDEN yükleme zamanına kadar geçen süreyi hesaplar.
+    WhatsApp EXIF'i sildiği için fişin kendi tarihini kullanır — %100 güvenilir.
+    Ayrıca EXIF varsa bonus kontrol yapar.
     """
-    sonuc = {"yasli": False, "gun_farki": 0, "risk_artisi": 0, 
+    sonuc = {"yasli": False, "gun_farki": 0, "risk_artisi": 0,
              "uyari_mesaji": "", "cekme_zamani": ""}
+
+    # ── Birincil kaynak: Fişin üzerindeki tarih (AI tarafından okundu)
+    if fis_tarihi:
+        try:
+            fis_dt   = datetime.strptime(fis_tarihi, "%Y-%m-%d")
+            bugun_dt = mesaj_zamani.replace(hour=0, minute=0, second=0, microsecond=0)
+            gun_farki = (bugun_dt - fis_dt).days
+            sonuc["gun_farki"]   = gun_farki
+            sonuc["cekme_zamani"] = fis_dt.strftime("%d.%m.%Y")
+
+            if gun_farki < 0:
+                sonuc["yasli"]        = True
+                sonuc["risk_artisi"]  = 35
+                sonuc["uyari_mesaji"] = (
+                    f"🚨 *Gelecek Tarihli Fiş!*\n"
+                    f"Fiş tarihi *{fis_dt.strftime('%d.%m.%Y')}* — bu tarih henüz gelmedi.\n"
+                    f"Tarih manipülasyonu şüphesi. +35 risk."
+                )
+            elif gun_farki >= 365:
+                sonuc["yasli"]        = True
+                sonuc["risk_artisi"]  = 50
+                sonuc["uyari_mesaji"] = (
+                    f"🚨 *{gun_farki // 365} YILLIK FİŞ!*\n"
+                    f"Bu fiş *{fis_dt.strftime('%d.%m.%Y')}* tarihli — {gun_farki} gün önce!\n"
+                    f"Bu yaşta bir fiş şirket gideri olarak kabul edilemez. +50 risk."
+                )
+            elif gun_farki >= 60:
+                sonuc["yasli"]        = True
+                sonuc["risk_artisi"]  = 35
+                sonuc["uyari_mesaji"] = (
+                    f"🗓️ *Çok Eski Fiş — {gun_farki} Gün!*\n"
+                    f"Fiş tarihi {fis_dt.strftime('%d.%m.%Y')} — {gun_farki} gün önce.\n"
+                    f"2 aydan eski fiş neden şimdi geliyor? Yönetici onayı gerekiyor. +35 risk."
+                )
+            elif gun_farki >= 30:
+                sonuc["yasli"]        = True
+                sonuc["risk_artisi"]  = 25
+                sonuc["uyari_mesaji"] = (
+                    f"🗓️ *Geç Gelen Fiş — {gun_farki} Gün*\n"
+                    f"Fiş tarihi {fis_dt.strftime('%d.%m.%Y')} — 1 aydan eski.\n"
+                    f"Açıklama yazabilirsin, yönetici de görecek. +25 risk."
+                )
+            elif gun_farki >= 14:
+                sonuc["yasli"]        = True
+                sonuc["risk_artisi"]  = 15
+                sonuc["uyari_mesaji"] = (
+                    f"📅 *{gun_farki} Günlük Fiş*\n"
+                    f"Bu fiş {fis_dt.strftime('%d.%m.%Y')} tarihli, {gun_farki} gün gecikmeli yüklendi. +15 risk."
+                )
+            elif gun_farki >= 7:
+                sonuc["yasli"]        = True
+                sonuc["risk_artisi"]  = 10
+                sonuc["uyari_mesaji"] = (
+                    f"📅 Fiş {gun_farki} gün önce ({fis_dt.strftime('%d.%m.%Y')}) — geç yükleme. +10 risk."
+                )
+        except ValueError:
+            pass
+
+    # ── İkincil kaynak: EXIF (WhatsApp silmemişse bonus kontrol)
     try:
         from PIL.ExifTags import TAGS
-        img = Image.open(BytesIO(raw_bytes))
-        exif_data = img._getexif()
-        if not exif_data:
-            return sonuc
-        
-        exif = {TAGS.get(k, k): v for k, v in exif_data.items()}
-        
-        # DateTimeOriginal önce, DateTime sonra
-        dt_str = exif.get("DateTimeOriginal") or exif.get("DateTime")
-        if not dt_str:
-            return sonuc
-        
-        cekme_dt = datetime.strptime(str(dt_str), "%Y:%m:%d %H:%M:%S")
-        sonuc["cekme_zamani"] = cekme_dt.strftime("%d.%m.%Y %H:%M")
-        
-        gun_farki = (mesaj_zamani - cekme_dt).days
-        sonuc["gun_farki"] = gun_farki
-        
-        if gun_farki < 0:
-            # Fotoğraf gelecekten gelmiş gibi görünüyor — saat ayarı bozuk olabilir
-            sonuc["yasli"] = True
-            sonuc["risk_artisi"] = 20
-            sonuc["uyari_mesaji"] = (
-                f"🕐 *Zaman Anomalisi!*\n"
-                f"Bu fotoğraf {abs(gun_farki)} gün *sonraki* bir tarih içeriyor.\n"
-                f"Telefon saat ayarın yanlış olabilir veya fiş manipüle edilmiş. +20 risk."
-            )
-        elif gun_farki >= 30:
-            sonuc["yasli"] = True
-            sonuc["risk_artisi"] = 30
-            sonuc["uyari_mesaji"] = (
-                f"🗓️ *Çok Eski Fiş!*\n"
-                f"Bu fotoğraf *{gun_farki} gün önce* ({cekme_dt.strftime('%d.%m.%Y')}) çekilmiş!\n"
-                f"Bu kadar eski bir fişi neden şimdi yüklüyorsun? Açıklama gerekiyor. +30 risk."
-            )
-        elif gun_farki >= 7:
-            sonuc["yasli"] = True
-            sonuc["risk_artisi"] = 20
-            sonuc["uyari_mesaji"] = (
-                f"🗓️ *Geç Yüklenen Fiş*\n"
-                f"Fotoğraf {gun_farki} gün önce ({cekme_dt.strftime('%d.%m.%Y')}) çekilmiş.\n"
-                f"Geç kalmışsın, anlıyoruz — ama yönetici de görecek. +20 risk."
-            )
-        elif gun_farki >= 3:
-            sonuc["yasli"] = True
-            sonuc["risk_artisi"] = 10
-            sonuc["uyari_mesaji"] = (
-                f"📅 Fişi {gun_farki} gün önce çekip bugün yükledin.\n"
-                f"Hızlı yüklemek risk puanını düşürür — bir dahaki sefere! +10 risk."
-            )
-    except Exception as e:
-        print(f"EXIF okuma hatası (sessiz geçildi): {e}", flush=True)
-    
+        img_e     = Image.open(BytesIO(raw_bytes))
+        exif_data = img_e._getexif()
+        if exif_data:
+            exif  = {TAGS.get(k, k): v for k, v in exif_data.items()}
+            dt_str = exif.get("DateTimeOriginal") or exif.get("DateTime")
+            if dt_str:
+                cekme_dt  = datetime.strptime(str(dt_str), "%Y:%m:%d %H:%M:%S")
+                exif_fark = (mesaj_zamani - cekme_dt).days
+                # EXIF tarihi fişin tarihinden çok farklıysa ekstra şüphe
+                if fis_tarihi and abs(exif_fark - sonuc.get("gun_farki", 0)) > 5:
+                    sonuc["bulgular_ekstra"] = (
+                        f"🔍 EXIF tarihi ({cekme_dt.strftime('%d.%m.%Y')}) fiş tarihiyle uyuşmuyor — dikkat."
+                    )
+                    sonuc["risk_artisi"] = min(100, sonuc.get("risk_artisi", 0) + 10)
+    except Exception:
+        pass  # WhatsApp EXIF silmişse sessizce geç
+
     return sonuc
 
 
@@ -1554,12 +1637,15 @@ def whatsapp_webhook():
                             f"📋 {user_name}: {bekleyen['Firma']} ₺{bekleyen['Tutar']:,.0f} ({odeme_turu_label(odeme_secim)})",
                             "info", data=data)
                 save_data(data)
+                # Bekleyen fişte kayıtlı konum/zaman uyarısı varsa gönder
+                _bekleyen_uyari = bekleyen.pop("_zaman_konum_uyari", "")
                 msg.body(
                     f"✅ *Fiş kaydedildi!*\n"
                     f"🏢 {bekleyen['Firma']} — {bekleyen['Tutar']:,.0f} ₺\n"
                     f"💳 Ödeme: *{odeme_turu_label(odeme_secim)}*\n"
                     f"{'💵 Harcırah kasanızdan düşülecek' if odeme_secim == 'harcirah' else '🏦 Genel merkezden düşülecek'}\n"
-                    f"📨 Yönetici onayına gönderildi.\n"
+                    + (_bekleyen_uyari + "\n" if _bekleyen_uyari else "")
+                    + f"📨 Yönetici onayına gönderildi.\n"
                     f"🔖 `{bekleyen['ID']}`"
                 )
             else:
@@ -1871,75 +1957,15 @@ def whatsapp_webhook():
                     mesaj_zamani = datetime.now()
 
                     # ══════════════════════════════════════════════════
-                    # ŞEHİR TESPİTİ — 4 kaynak sırayla denenir
-                    # ══════════════════════════════════════════════════
-                    _SEHIR_LISTESI = [
-                        "adana","adiyaman","afyon","agri","aksaray","amasya","ankara","antalya",
-                        "ardahan","artvin","aydin","balikesir","bartin","batman","bayburt",
-                        "bilecik","bingol","bitlis","bolu","burdur","bursa","canakkale","cankiri",
-                        "corum","denizli","diyarbakir","duzce","edirne","elazig","erzincan",
-                        "erzurum","eskisehir","gaziantep","giresun","gumushane","hakkari","hatay",
-                        "igdir","isparta","istanbul","izmir","kahramanmaras","karabuk","karaman",
-                        "kars","kastamonu","kayseri","kilis","kirikkale","kirklareli","kirsehir",
-                        "kocaeli","konya","kutahya","malatya","manisa","mardin","mersin","mugla",
-                        "mus","nevsehir","nigde","ordu","osmaniye","rize","sakarya","samsun",
-                        "siirt","sinop","sivas","sanliurfa","sirnak","tekirdag","tokat","trabzon",
-                        "tunceli","usak","van","yalova","yozgat","zonguldak",
-                        "yenimahalle","cankaya","kecoren","etimesgut","mamak","sincan",
-                        "kadikoy","uskudar","besiktas","sisli","bakirkoy","bagcilar",
-                        "esenyurt","basaksehir","pendik","maltepe","kartal","atasehir",
-                        "bornova","buca","karsiyaka","konak","cigli","osmangazi","nilufer",
-                        "muratpasa","kepez","mezitli","toroslar","izmit","adapazari",
-                    ]
-                    _SEHIR_GERCEK = {
-                        "adiyaman":"Adıyaman","agri":"Ağrı","aydin":"Aydın","balikesir":"Balıkesir",
-                        "bartin":"Bartın","bingol":"Bingöl","canakkale":"Çanakkale","cankiri":"Çankırı",
-                        "corum":"Çorum","duzce":"Düzce","elazig":"Elazığ","eskisehir":"Eskişehir",
-                        "gumushane":"Gümüşhane","igdir":"Iğdır","kahramanmaras":"Kahramanmaraş",
-                        "karabuk":"Karabük","kirikkale":"Kırıkkale","kirklareli":"Kırklareli",
-                        "kirsehir":"Kırşehir","kocaeli":"Kocaeli","kutahya":"Kütahya",
-                        "mugla":"Muğla","mus":"Muş","nevsehir":"Nevşehir","nigde":"Niğde",
-                        "sanliurfa":"Şanlıurfa","sirnak":"Şırnak","tekirdag":"Tekirdağ",
-                        "usak":"Uşak","yenimahalle":"Yenimahalle","cankaya":"Çankaya",
-                        "kecoren":"Keçiören","besiktas":"Beşiktaş","sisli":"Şişli",
-                        "bakirkoy":"Bakırköy","bagcilar":"Bağcılar","basaksehir":"Başakşehir",
-                        "kadikoy":"Kadıköy","uskudar":"Üsküdar","karsiyaka":"Karşıyaka",
-                        "cigli":"Çiğli","nilufer":"Nilüfer","muratpasa":"Muratpaşa",
-                        "adapazari":"Adapazarı",
-                    }
-
-                    def _normalize(t):
-                        return (t.lower()
-                                 .replace("ı","i").replace("ğ","g").replace("ş","s")
-                                 .replace("ç","c").replace("ö","o").replace("ü","u")
-                                 .replace("â","a").replace("î","i").replace("û","u"))
-
-                    def _sehir_bul(metin: str) -> str:
-                        if not metin: return ""
-                        mn = _normalize(metin)
-                        for _s in _SEHIR_LISTESI:
-                            if _s in mn:
-                                idx = mn.find(_s)
-                                once = mn[idx-1] if idx > 0 else " "
-                                sonra = mn[idx+len(_s)] if idx+len(_s) < len(mn) else " "
-                                if not once.isalpha() and not sonra.isalpha():
-                                    return _SEHIR_GERCEK.get(_s, _s.title())
-                        return ""
-
-                    # Kaynak 1: AI sehir/il alanı
-                    fis_sehri_ham = _normalize_str = fis.get("sehir","") or fis.get("il","")
-                    # Kaynak 2: AI adres alanı
-                    if not fis_sehri_ham:
-                        fis_sehri_ham = _sehir_bul(fis.get("adres","") or "")
-                    # Kaynak 3: Firma adı (en önemli)
-                    if not fis_sehri_ham:
-                        fis_sehri_ham = _sehir_bul(fis.get("firma","") or "")
-                    # Kaynak 4: AI audit notu
-                    if not fis_sehri_ham:
-                        fis_sehri_ham = _sehir_bul(fis.get("audit_notu","") or "")
-
+                    # ── ŞEHİR TESPİTİ — modül seviyesi sehir_tespit() kullanır
+                    fis_sehri_ham = (
+                        fis.get("sehir","") or fis.get("il","") or
+                        sehir_tespit(fis.get("adres","") or "") or
+                        sehir_tespit(fis.get("firma","") or "") or
+                        sehir_tespit(fis.get("audit_notu","") or "")
+                    )
                     fis_adresi_ham = fis.get("adres","") or ""
-                    print(f"[KONUM_TESPIT] firma='{fis.get('firma','')}' → sehir='{fis_sehri_ham}'", flush=True)
+                    print(f"[KONUM] '{fis.get('firma','')}' → şehir:'{fis_sehri_ham}'", flush=True)
 
                     # ── ÖZELLİK 1: Konum Çelişkisi ──────────────────
                     konum_celiski = konum_celiskisi_kontrol(
@@ -1962,7 +1988,7 @@ def whatsapp_webhook():
                     )
 
                     # ── ÖZELLİK 3: Fiş Yaşı Sensörü ─────────────────
-                    yas_kontrol = fis_yasi_kontrol(raw_bytes, mesaj_zamani)
+                    yas_kontrol = fis_yasi_kontrol(raw_bytes, mesaj_zamani, fis_tarihi=fis.get("tarih",""))
 
                     # Risk puanına ekle
                     _ek_risk = (
@@ -2149,6 +2175,8 @@ def whatsapp_webhook():
                         data["duplicate_hashes"].append(img_hash)
                         data.setdefault("user_states", {}).setdefault(user_name, {})
                         data["user_states"][user_name][ODEME_BEKLE_FLAG] = True
+                        # Konum/zaman uyarısını bekleyen fişe ekle — ödeme seçilince gösterilsin
+                        new_expense["_zaman_konum_uyari"] = _zaman_konum_str
                         data["user_states"][user_name][ODEME_BEKLE_DATA] = new_expense
                         save_data(data)
                         risk = max(int(fis.get("risk_skoru", 0)), sahtelik["guvensizlik_skoru"])
@@ -2199,8 +2227,9 @@ def whatsapp_webhook():
                                 f"📅 {fis.get('tarih','—')}\n"
                                 f"🏷️ {kategori}\n"
                                 f"{risk_emoji} Risk: {risk}/100"
-                                + kisisel_uyari +
-                                f"\n\n💳 *Bu harcama nasıl ödendi?*\n\n"
+                                + kisisel_uyari
+                                + _zaman_konum_str
+                                + f"\n\n💳 *Bu harcama nasıl ödendi?*\n\n"
                                 f"*1* veya *harcırah* yazın → 💵 Harcırahtan düşülsün\n"
                                 f"*2* veya *şirket* yazın → 🏦 Şirket kartından düşülsün"
                             )
@@ -2298,25 +2327,29 @@ STINGA yapay zekası olarak yaz, samimi ve kişisel ol. Türkçe. Sadece yorumu 
                     else:
                         _baslik = f"✅ *FİŞ KAYDEDİLDİ — ONAYA GÖNDERİLDİ*\n{'─'*13}"
 
+                    # Fiş yaşı uyarısı varsa risk_emoji'yi güncelle
+                    risk = max(risk, min(100, risk + yas_kontrol.get("risk_artisi", 0)))
+                    risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
+
                     yanit = (
                         f"{_baslik}\n"
-                        f"🏢 {fis.get('firma','?')}\n"
-                        f"💰 {tutar_try:,.2f} ₺" + (f" ({fis['toplam_tutar']:.2f} {para_birimi})" if para_birimi != "TRY" else "") +
+                        f"🏢 *{fis.get('firma','?')}*\n"
+                        f"💰 {tutar_try:,.0f} ₺" + (f" ({fis['toplam_tutar']:.2f} {para_birimi})" if para_birimi != "TRY" else "") +
                         f"\n📅 {fis.get('tarih','—')}"
-                        f"\n💳 *{odeme_bilgi}*"
+                        f"\n💳 {odeme_bilgi}"
                         f"\n   _{odeme_aciklama}_"
                         f"\n🏷️ {kategori}"
                         f"\n{risk_emoji} Risk: {risk}/100"
-                        + kalemler_str + ilginc_str
+                        + kalemler_str
                         + kisisel_uyari
                         + _zaman_konum_str
+                        + (f"\n\n{yas_kontrol['uyari_mesaji']}" if yas_kontrol.get("yasli") and yas_kontrol.get("uyari_mesaji") else "")
                         + f"\n\n💬 _{ai_espri}_"
                         + (f"\n\n🎩 _{_senol_mesaj}_" if _senol_mesaj else "")
-                        + f"\n\n💳 Kasa: *{kasa_bakiye:,.0f} ₺*"
-                        + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
+                        + f"\n💳 Kasa: *{kasa_bakiye:,.0f} ₺*"
+                        + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)}. fişin"
                         + sahte_str + anomali_str
-                        + ("" if _is_senol else f"\n\n📨 Onay sonrası bildirim alacaksınız.")
-                        + f"\n📍 Konum eklemek için konum pini gönder!"
+                        + ("" if _is_senol else f"\n\n📨 Onay/ret durumunda bilgilendirileceksiniz.")
                         + f"\n🔖 `{new_expense['ID']}`"
                     )
                     send_whatsapp(sender_phone, yanit)
