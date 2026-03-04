@@ -1765,7 +1765,7 @@ def login():
         st.markdown("""
         <div style="text-align:center; margin-top:20px; color:#7a96a4; font-size:0.72rem;
                     font-family:'JetBrains Mono',monospace; letter-spacing:0.05em;">
-            🔒 256-BIT AES · ZERO-KNOWLEDGE AUTH · GEMINI AI
+            🔒 256-BIT AES · STINGA PRO FINANCE v17.0
         </div>
         """, unsafe_allow_html=True)
 
