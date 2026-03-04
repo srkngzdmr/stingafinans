@@ -143,10 +143,15 @@ def drive_save(data: dict) -> bool:
                 ).execute()
                 print(f"GDrive: Güncellendi ({len(data.get('expenses',[]))} fiş)", flush=True)
             else:
-                # Yeni dosya oluştur
-                file_metadata = {"name": DRIVE_FILENAME}
-                if DRIVE_FOLDER_ID:
-                    file_metadata["parents"] = [DRIVE_FOLDER_ID]
+                # Yeni dosya oluştur — MUTLAKA paylaşılan klasöre kaydet
+                if not DRIVE_FOLDER_ID:
+                    print("GDrive HATA: DRIVE_FOLDER_ID tanımlı değil! Service account'lar kendi alanlarına dosya oluşturamaz.", flush=True)
+                    return False
+
+                file_metadata = {
+                    "name": DRIVE_FILENAME,
+                    "parents": [DRIVE_FOLDER_ID]
+                }
 
                 service.files().create(
                     body=file_metadata,
