@@ -652,7 +652,18 @@ def load_data():
     try:
         r = _req.get(f"{RAILWAY_URL}/all-data", timeout=_API_TIMEOUT)
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        # ── Expense verilerindeki HTML kalıntılarını temizle ──
+        _html_fields = ("AI_Audit", "Notlar", "AI_Anomali_Aciklama", "IlgincDetay", "Firma")
+        for exp in data.get("expenses", []):
+            for _fld in _html_fields:
+                val = exp.get(_fld)
+                if val and isinstance(val, str) and ('<' in val or '&nbsp' in val):
+                    exp[_fld] = _re.sub(r'<[^>]+>', '', val)
+                    exp[_fld] = _re.sub(r'&nbsp;?', ' ', exp[_fld])
+                    exp[_fld] = _re.sub(r'&[a-z]+;', ' ', exp[_fld])
+                    exp[_fld] = _re.sub(r'\s+', ' ', exp[_fld]).strip()
+        return data
     except Exception as e:
         st.error(f"⚠️ Railway bağlantı hatası: {e}")
         return {
@@ -1527,11 +1538,25 @@ def clean_audit(text: str) -> str:
     text = _re.sub(r'\{[^}]{0,300}\}', '', text)
     # "Proje: ... · Öncelik: ... · Ödeme: ..." satırlarını kaldır (div kalıntısı)
     text = _re.sub(r'Proje\s*:.*?Ödeme\s*:[^\n]*', '', text, flags=_re.IGNORECASE)
+    # &nbsp; ve HTML entity temizle
+    text = _re.sub(r'&nbsp;?', ' ', text)
+    text = _re.sub(r'&[a-z]+;', ' ', text)
     # Birden fazla boşluk/newline temizle
     text = _re.sub(r'\s+', ' ', text).strip()
     # HTML escape
     text = _html.escape(text, quote=False)
     return text if text else "Analiz tamamlandı."
+
+def strip_html(text) -> str:
+    """Herhangi bir metin alanından HTML tag'lerini kaldır."""
+    if not text:
+        return ""
+    text = str(text)
+    text = _re.sub(r'<[^>]+>', '', text, flags=_re.DOTALL)
+    text = _re.sub(r'&nbsp;?', ' ', text)
+    text = _re.sub(r'&[a-z]+;', ' ', text)
+    text = _re.sub(r'\s+', ' ', text).strip()
+    return text
 
 
 def odeme_label(raw: str) -> str:
@@ -1545,44 +1570,6 @@ def odeme_label(raw: str) -> str:
     elif v:
         return raw  # bilinmeyen değerleri olduğu gibi göster
     return "—"
-
-
-def detect_odeme_turu_from_whatsapp(message_text: str) -> str:
-    """
-    WhatsApp mesaj metninden ödeme türünü tespit eder.
-    Kullanıcı 'harcırah', 'harcirah', 'HARCIRAH' vb. yazarsa → harcirah
-    Kullanıcı 'şirket', 'sirket', 'ŞİRKET', 'SİRKET' vb. yazarsa → sirket_karti
-    Hiçbiri eşleşmezse → None (mevcut davranış korunur)
-
-    NOT: Bu fonksiyon Railway bot tarafında (bot.py) da kullanılmalıdır.
-    Bot tarafında fiş gönderilirken mesaj metni parse edilip Odeme_Turu alanı
-    buna göre set edilmelidir. Örnek bot.py entegrasyonu:
-
-        # bot.py (Railway) — fiş kaydetme kısmında:
-        msg_lower = user_message.lower().replace('ı','i').replace('ş','s')
-        if 'harcirah' in msg_lower or 'harcırah' in msg_lower:
-            expense['Odeme_Turu'] = 'harcirah'
-        elif 'sirket' in msg_lower or 'şirket' in msg_lower:
-            expense['Odeme_Turu'] = 'sirket_karti'
-    """
-    if not message_text:
-        return None
-    txt = str(message_text).lower().strip()
-    # Türkçe karakter normalize
-    txt_n = txt.replace("ı", "i").replace("ş", "s").replace("İ", "i").replace("Ş", "s")
-
-    harcirah_kws = ["harcirah", "harcırah", "harcırahtan", "harcirahtan"]
-    sirket_kws = ["sirket", "şirket", "şirket kartı", "sirket karti"]
-
-    for kw in harcirah_kws:
-        kw_n = kw.replace("ı", "i").replace("ş", "s")
-        if kw in txt or kw_n in txt_n:
-            return "harcirah"
-    for kw in sirket_kws:
-        kw_n = kw.replace("ı", "i").replace("ş", "s")
-        if kw in txt or kw_n in txt_n:
-            return "sirket_karti"
-    return None
 
 
 def detect_anomalies(df, model=None):
@@ -2610,9 +2597,8 @@ tick();setInterval(tick,1000);
             pages_keys = [
                 "🏠 Dashboard", "📑 Fiş Tarama", "💰 Finans & Kasa",
                 "⚖️ Onay Merkezi", "🔬 Anomali Dedektörü", "📊 Analitik Merkezi",
-                "🤖 AI Asistan", "🏆 Leaderboard",
-                "🧠 AI Bütçe Koçu", "🔮 Gider Tahmincisi",
-                "📂 Gider Kategorileri", "🗄️ Arşiv & Rapor",
+                "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor",
+                "🧠 AI Bütçe Koçu", "🔮 Gider Tahmincisi"
             ]
         else:
             # Personel: Dashboard, Fiş Tarama + 2 yeni AI özellik
@@ -3204,19 +3190,14 @@ tick();setInterval(tick,1000);
                                     </div>
                                 </div>
                                 <div class="ai-bubble">🤖 {clean_audit(row.get('AI_Audit',''))}</div>
-                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
+                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ " + strip_html(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    📁 Proje: <strong>{row.get('Proje','?')}</strong> &nbsp;·&nbsp;
-                                    ⚡ Öncelik: <strong>{row.get('Oncelik','Normal')}</strong> &nbsp;·&nbsp;
-                                    💳 Ödeme: <strong>{odeme_label(row.get('Odeme_Turu', row.get('OdemeTipi','—')))}</strong> &nbsp;·&nbsp;
-                                    📱 Kaynak: <strong>{row.get('Kaynak','Dashboard')}</strong>
-                                </div>
-                                <div style="margin-top:6px; padding:8px 14px; border-radius:8px; font-size:0.82rem; font-weight:700;
-                                    {'background:rgba(217,119,6,0.1); border:1px solid rgba(217,119,6,0.3); color:#d97706;' if str(row.get('Odeme_Turu', row.get('OdemeTipi',''))).lower().strip() in ('harcirah','harcırah','harcirahtan dus','harcırahtan düş','harcırahtan düş (nakit / kişisel kart)','nakit','kisisel') else 'background:rgba(8,145,178,0.1); border:1px solid rgba(8,145,178,0.3); color:#0891b2;'}">
-                                    {'💵 HARCIRAHTAN DÜŞÜLECEK — Personel şahsi ödeme yapmıştır' if str(row.get('Odeme_Turu', row.get('OdemeTipi',''))).lower().strip() in ('harcirah','harcırah','harcirahtan dus','harcırahtan düş','harcırahtan düş (nakit / kişisel kart)','nakit','kisisel') else '🏦 ŞİRKET KREDİ KARTI — Genel merkezden düşülecek'}
+                                    📁 Proje: <strong>{strip_html(row.get('Proje','?'))}</strong> &nbsp;·&nbsp;
+                                    ⚡ Öncelik: <strong>{strip_html(row.get('Oncelik','Normal'))}</strong> &nbsp;·&nbsp;
+                                    💳 Ödeme: <strong>{odeme_label(row.get('Odeme_Turu', row.get('OdemeTipi','—')))}</strong>
                                 </div>
                                 {_harcirah_html}
-                                {f"<div style='margin-top:6px; font-size:0.75rem;'>📝 {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
+                                {f"<div style='margin-top:6px; font-size:0.75rem;'>📝 {strip_html(row.get('Notlar',''))}</div>" if row.get('Notlar') else ""}
                             </div>
                             """, unsafe_allow_html=True)
 
@@ -3458,14 +3439,14 @@ tick();setInterval(tick,1000);
                                 <div class="ai-bubble">
                                     🤖 {clean_audit(row.get('AI_Audit',''))}
                                 </div>
-                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
+                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: " + strip_html(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
                                 <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    📁 Proje: <strong>{row.get('Proje','?')}</strong> &nbsp;·&nbsp;
-                                    ⚡ Öncelik: <strong>{row.get('Oncelik','Normal')}</strong> &nbsp;·&nbsp;
+                                    📁 Proje: <strong>{strip_html(row.get('Proje','?'))}</strong> &nbsp;·&nbsp;
+                                    ⚡ Öncelik: <strong>{strip_html(row.get('Oncelik','Normal'))}</strong> &nbsp;·&nbsp;
                                     💳 Ödeme: <strong>{odeme_label(row.get('Odeme_Turu','—'))}</strong>
                                 </div>
                                 {_harcirah_html2}
-                                {f"<div style='margin-top:6px; font-size:0.75rem; color:var(--text-secondary);'>📝 Not: {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
+                                {f"<div style='margin-top:6px; font-size:0.75rem; color:var(--text-secondary);'>📝 Not: {strip_html(row.get('Notlar',''))}</div>" if row.get('Notlar') else ""}
                             </div>
                             """, unsafe_allow_html=True)
                             
@@ -3991,10 +3972,7 @@ Kısa ve net ol (max 300 kelime)."""
     elif selected == "🗄️ Arşiv & Rapor":
         st.markdown('<div class="page-header"><div class="page-title">ARŞİV & RAPORLAMA</div></div>', unsafe_allow_html=True)
         
-        tab_r, tab_a, tab_h, tab_harc, tab_zk, tab_sk = st.tabs([
-            "📑 Raporlama", "🔍 Arşiv", "📜 Geçmiş AI Analizleri",
-            "💵 Harcırah Harcamaları", "💳 Zeynep Özyaman K.K.", "🏦 Şirket Kredi Kartı"
-        ])
+        tab_r, tab_a, tab_h = st.tabs(["📑 Raporlama", "🔍 Arşiv", "📜 Geçmiş AI Analizleri"])
         
         with tab_r:
             if not df.empty:
@@ -4148,247 +4126,6 @@ Kısa ve net ol (max 300 kelime)."""
                     <div style="font-size:0.8rem; margin-top:8px;">Anomali Dedektörü'nden derin analiz başlat!</div>
                 </div>
                 """, unsafe_allow_html=True)
-
-        # ── TAB: HARCIRAH HARCAMALARI ─────────────────────────
-        with tab_harc:
-            st.markdown("### 💵 Harcırah Harcamaları")
-            st.markdown("""
-            <div style="background:rgba(17,133,91,0.07); border:1px solid rgba(17,133,91,0.18);
-                        border-radius:12px; padding:14px 18px; margin-bottom:16px; font-size:0.85rem; color:#3d5260;">
-                Personel harcırah hesabından (nakit / şahsi kart) yapılan tüm harcamalar.
-            </div>
-            """, unsafe_allow_html=True)
-
-            _harc_odeme_keys = ("harcirah", "harcırah", "harcirahtan dus", "harcırahtan düş",
-                                "harcırahtan düş (nakit / kişisel kart)", "nakit", "kisisel")
-            if not df_full.empty and 'Odeme_Turu' in df_full.columns:
-                harc_df = df_full[df_full['Odeme_Turu'].str.lower().str.strip().isin(_harc_odeme_keys)].copy()
-            else:
-                harc_df = pd.DataFrame()
-
-            if not harc_df.empty:
-                hc1, hc2, hc3 = st.columns(3)
-                with hc1:
-                    _harc_personel = st.selectbox("Personel", ["Tümü"] + sorted(harc_df['Kullanıcı'].unique().tolist()), key="harc_per")
-                with hc2:
-                    harc_df['_Tarih_DT'] = pd.to_datetime(harc_df['Tarih'], errors='coerce')
-                    harc_df['_Ay_Yil'] = harc_df['_Tarih_DT'].dt.strftime('%Y-%m')
-                    _harc_aylar = ["Tüm Zamanlar"] + sorted(harc_df['_Ay_Yil'].dropna().unique().tolist(), reverse=True)
-                    _harc_ay = st.selectbox("Dönem", _harc_aylar, key="harc_ay")
-                with hc3:
-                    _harc_durum = st.selectbox("Durum", ["Tümü", "Onaylandı", "Onay Bekliyor", "Reddedildi"], key="harc_dur")
-
-                _hf = harc_df.copy()
-                if _harc_personel != "Tümü":
-                    _hf = _hf[_hf['Kullanıcı'] == _harc_personel]
-                if _harc_ay != "Tüm Zamanlar":
-                    _hf = _hf[_hf['_Ay_Yil'] == _harc_ay]
-                if _harc_durum != "Tümü":
-                    _hf = _hf[_hf['Durum'] == _harc_durum]
-
-                if not _hf.empty:
-                    hm1, hm2, hm3, hm4 = st.columns(4)
-                    hm1.metric("Toplam İşlem", len(_hf))
-                    hm2.metric("Toplam Tutar", f"₺{_hf['Tutar'].sum():,.0f}")
-                    _hf_onay = _hf[_hf['Durum'] == 'Onaylandı']
-                    hm3.metric("Onaylı Tutar", f"₺{_hf_onay['Tutar'].sum():,.0f}")
-                    hm4.metric("Bekleyen", f"₺{_hf[_hf['Durum']=='Onay Bekliyor']['Tutar'].sum():,.0f}")
-
-                    # Personel bazlı bakiye özeti
-                    if _harc_personel == "Tümü":
-                        st.markdown("#### 👥 Personel Harcırah Bakiyeleri")
-                        for _ukey, _uinfo in USERS.items():
-                            _p_name = _uinfo["name"]
-                            _p_bal = get_user_wallet_balance(_p_name, data_store)
-                            _p_harc = _hf[_hf['Kullanıcı'] == _p_name]['Tutar'].sum() if not _hf[_hf['Kullanıcı'] == _p_name].empty else 0
-                            if _p_harc > 0 or _p_bal != 0:
-                                st.markdown(f"""
-                                <div style="display:flex; justify-content:space-between; align-items:center;
-                                            padding:10px 16px; background:#fff; border:1px solid rgba(0,0,0,0.07);
-                                            border-radius:10px; margin:4px 0;">
-                                    <div><strong>{_uinfo['avatar']} {_p_name}</strong></div>
-                                    <div style="display:flex; gap:20px; font-size:0.85rem;">
-                                        <span>Harcama: <strong>₺{_p_harc:,.0f}</strong></span>
-                                        <span>Bakiye: <strong style="color:{'#dc2626' if _p_bal < 0 else '#007850'}">
-                                            {'−' if _p_bal < 0 else ''}₺{abs(_p_bal):,.0f}</strong></span>
-                                    </div>
-                                </div>
-                                """, unsafe_allow_html=True)
-
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    _hf_clean = _hf.drop(columns=['_Tarih_DT', '_Ay_Yil'], errors='ignore')
-                    hd1, hd2, hd3 = st.columns(3)
-                    hd1.download_button("📥 CSV İndir", _hf_clean.to_csv(index=False).encode('utf-8-sig'),
-                        f"Harcirah_{_harc_ay}.csv", "text/csv", use_container_width=True, key="harc_csv")
-                    hd2.download_button("📊 Excel İndir",
-                        export_excel_muhasebe(_hf_clean, f"Harcırah — {_harc_ay}", logo_path="logo.png"),
-                        f"Harcirah_{_harc_ay}.xlsx",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True, key="harc_xlsx")
-                    hd3.download_button("📄 PDF İndir",
-                        export_pdf_muhasebe(_hf_clean, "Harcırah Raporu", f"Harcırah — {_harc_ay}", logo_path="logo.png"),
-                        f"Harcirah_{_harc_ay}.pdf", "application/pdf", use_container_width=True, key="harc_pdf")
-
-                    st.dataframe(_hf_clean.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
-                else:
-                    st.info("Seçili filtrelere uygun harcırah harcaması bulunamadı.")
-            else:
-                st.markdown("""
-                <div class="empty-state"><div class="empty-icon">💵</div>
-                <div>Harcırah kaydı bulunamadı.</div></div>""", unsafe_allow_html=True)
-
-        # ── TAB: ZEYNEP ÖZYAMAN ŞAHSİ KREDİ KARTI ───────────
-        with tab_zk:
-            st.markdown("### 💳 Zeynep Özyaman — Şahsi Kredi Kartı Harcamaları")
-            st.markdown("""
-            <div style="background:rgba(47,60,110,0.07); border:1px solid rgba(47,60,110,0.18);
-                        border-radius:12px; padding:14px 18px; margin-bottom:16px; font-size:0.85rem; color:#3d5260;">
-                Zeynep Özyaman'ın şahsi kredi kartından yapılan şirket harcamaları.
-            </div>
-            """, unsafe_allow_html=True)
-
-            # Zeynep'in harcırah ile yaptığı ödemeler — şahsi kart
-            if not df_full.empty and 'Kullanıcı' in df_full.columns and 'Odeme_Turu' in df_full.columns:
-                _zk_mask = (
-                    df_full['Kullanıcı'].str.contains('Zeynep', case=False, na=False) &
-                    df_full['Odeme_Turu'].str.lower().str.strip().isin(_harc_odeme_keys)
-                )
-                zk_df = df_full[_zk_mask].copy()
-            else:
-                zk_df = pd.DataFrame()
-
-            if not zk_df.empty:
-                zk_df['_Tarih_DT'] = pd.to_datetime(zk_df['Tarih'], errors='coerce')
-                zk_df['_Ay_Yil'] = zk_df['_Tarih_DT'].dt.strftime('%Y-%m')
-                zc1, zc2 = st.columns(2)
-                with zc1:
-                    _zk_aylar = ["Tüm Zamanlar"] + sorted(zk_df['_Ay_Yil'].dropna().unique().tolist(), reverse=True)
-                    _zk_ay = st.selectbox("Dönem", _zk_aylar, key="zk_ay")
-                with zc2:
-                    _zk_durum = st.selectbox("Durum", ["Tümü", "Onaylandı", "Onay Bekliyor", "Reddedildi"], key="zk_dur")
-
-                _zkf = zk_df.copy()
-                if _zk_ay != "Tüm Zamanlar":
-                    _zkf = _zkf[_zkf['_Ay_Yil'] == _zk_ay]
-                if _zk_durum != "Tümü":
-                    _zkf = _zkf[_zkf['Durum'] == _zk_durum]
-
-                if not _zkf.empty:
-                    zm1, zm2, zm3 = st.columns(3)
-                    zm1.metric("Toplam İşlem", len(_zkf))
-                    zm2.metric("Toplam Tutar", f"₺{_zkf['Tutar'].sum():,.0f}")
-                    zm3.metric("Onaylı Tutar", f"₺{_zkf[_zkf['Durum']=='Onaylandı']['Tutar'].sum():,.0f}")
-
-                    # Kategori kırılımı
-                    if 'Kategori' in _zkf.columns:
-                        _zk_kat = _zkf.groupby('Kategori')['Tutar'].agg(['sum','count']).sort_values('sum', ascending=False)
-                        st.markdown("#### 📂 Kategori Kırılımı")
-                        for kat, row in _zk_kat.iterrows():
-                            st.markdown(f"- **{kat}**: ₺{row['sum']:,.0f} ({int(row['count'])} fiş)")
-
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    _zkf_clean = _zkf.drop(columns=['_Tarih_DT', '_Ay_Yil'], errors='ignore')
-                    zd1, zd2, zd3 = st.columns(3)
-                    zd1.download_button("📥 CSV", _zkf_clean.to_csv(index=False).encode('utf-8-sig'),
-                        f"ZeynepKK_{_zk_ay}.csv", "text/csv", use_container_width=True, key="zk_csv")
-                    zd2.download_button("📊 Excel",
-                        export_excel_muhasebe(_zkf_clean, f"Zeynep Özyaman K.K. — {_zk_ay}", logo_path="logo.png"),
-                        f"ZeynepKK_{_zk_ay}.xlsx",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True, key="zk_xlsx")
-                    zd3.download_button("📄 PDF",
-                        export_pdf_muhasebe(_zkf_clean, "Zeynep Özyaman Şahsi K.K. Raporu", f"Zeynep K.K. — {_zk_ay}", logo_path="logo.png"),
-                        f"ZeynepKK_{_zk_ay}.pdf", "application/pdf", use_container_width=True, key="zk_pdf")
-
-                    st.dataframe(_zkf_clean.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
-                else:
-                    st.info("Seçili filtrelere uygun kayıt bulunamadı.")
-            else:
-                st.markdown("""
-                <div class="empty-state"><div class="empty-icon">💳</div>
-                <div>Zeynep Özyaman şahsi kart kaydı bulunamadı.</div></div>""", unsafe_allow_html=True)
-
-        # ── TAB: ŞİRKET KREDİ KARTI ─────────────────────────
-        with tab_sk:
-            st.markdown("### 🏦 Şirket Kredi Kartı Harcamaları")
-            st.markdown("""
-            <div style="background:rgba(8,145,178,0.07); border:1px solid rgba(8,145,178,0.18);
-                        border-radius:12px; padding:14px 18px; margin-bottom:16px; font-size:0.85rem; color:#3d5260;">
-                Stinga Enerji şirket kredi kartından yapılan tüm harcamalar.
-            </div>
-            """, unsafe_allow_html=True)
-
-            _sirket_odeme_keys = ("sirket_karti", "sirket karti", "kredi_karti", "kredi kartı",
-                                   "şirket", "sirket", "şirket kredi kartı", "sirket kredi karti")
-            if not df_full.empty and 'Odeme_Turu' in df_full.columns:
-                sk_df = df_full[df_full['Odeme_Turu'].str.lower().str.strip().isin(_sirket_odeme_keys)].copy()
-            else:
-                sk_df = pd.DataFrame()
-
-            if not sk_df.empty:
-                sk_df['_Tarih_DT'] = pd.to_datetime(sk_df['Tarih'], errors='coerce')
-                sk_df['_Ay_Yil'] = sk_df['_Tarih_DT'].dt.strftime('%Y-%m')
-                sc_c1, sc_c2, sc_c3 = st.columns(3)
-                with sc_c1:
-                    _sk_aylar = ["Tüm Zamanlar"] + sorted(sk_df['_Ay_Yil'].dropna().unique().tolist(), reverse=True)
-                    _sk_ay = st.selectbox("Dönem", _sk_aylar, key="sk_ay")
-                with sc_c2:
-                    _sk_personel = st.selectbox("Personel", ["Tümü"] + sorted(sk_df['Kullanıcı'].unique().tolist()), key="sk_per")
-                with sc_c3:
-                    _sk_durum = st.selectbox("Durum", ["Tümü", "Onaylandı", "Onay Bekliyor", "Reddedildi"], key="sk_dur")
-
-                _skf = sk_df.copy()
-                if _sk_ay != "Tüm Zamanlar":
-                    _skf = _skf[_skf['_Ay_Yil'] == _sk_ay]
-                if _sk_personel != "Tümü":
-                    _skf = _skf[_skf['Kullanıcı'] == _sk_personel]
-                if _sk_durum != "Tümü":
-                    _skf = _skf[_skf['Durum'] == _sk_durum]
-
-                if not _skf.empty:
-                    sm1, sm2, sm3, sm4 = st.columns(4)
-                    sm1.metric("Toplam İşlem", len(_skf))
-                    sm2.metric("Toplam Tutar", f"₺{_skf['Tutar'].sum():,.0f}")
-                    sm3.metric("Onaylı Tutar", f"₺{_skf[_skf['Durum']=='Onaylandı']['Tutar'].sum():,.0f}")
-                    sm4.metric("KDV Toplamı", f"₺{_skf['KDV'].sum():,.0f}" if 'KDV' in _skf.columns else "N/A")
-
-                    # Kategori kırılımı
-                    if 'Kategori' in _skf.columns:
-                        _sk_kat = _skf.groupby('Kategori')['Tutar'].agg(['sum','count']).sort_values('sum', ascending=False)
-                        fig_sk = go.Figure(go.Bar(
-                            x=_sk_kat['sum'].values, y=_sk_kat.index,
-                            orientation='h',
-                            marker=dict(color='#0891b2'),
-                            text=[f"₺{v:,.0f}" for v in _sk_kat['sum'].values],
-                            textposition='outside'
-                        ))
-                        fig_sk.update_layout(title='Şirket Kartı — Kategori Bazlı Harcama',
-                            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                            font=dict(color='#4a5568'), height=280,
-                            xaxis=dict(showgrid=False), yaxis=dict(showgrid=False))
-                        st.plotly_chart(fig_sk, use_container_width=True)
-
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    _skf_clean = _skf.drop(columns=['_Tarih_DT', '_Ay_Yil'], errors='ignore')
-                    sd1, sd2, sd3 = st.columns(3)
-                    sd1.download_button("📥 CSV", _skf_clean.to_csv(index=False).encode('utf-8-sig'),
-                        f"SirketKK_{_sk_ay}.csv", "text/csv", use_container_width=True, key="sk_csv")
-                    sd2.download_button("📊 Excel",
-                        export_excel_muhasebe(_skf_clean, f"Şirket K.K. — {_sk_ay}", logo_path="logo.png"),
-                        f"SirketKK_{_sk_ay}.xlsx",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True, key="sk_xlsx")
-                    sd3.download_button("📄 PDF",
-                        export_pdf_muhasebe(_skf_clean, "Şirket Kredi Kartı Raporu", f"Şirket K.K. — {_sk_ay}", logo_path="logo.png"),
-                        f"SirketKK_{_sk_ay}.pdf", "application/pdf", use_container_width=True, key="sk_pdf")
-
-                    st.dataframe(_skf_clean.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
-                else:
-                    st.info("Seçili filtrelere uygun kayıt bulunamadı.")
-            else:
-                st.markdown("""
-                <div class="empty-state"><div class="empty-icon">🏦</div>
-                <div>Şirket kredi kartı kaydı bulunamadı.</div></div>""", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
     # SAYFA: AI BÜTÇE KOÇU
@@ -4747,203 +4484,3 @@ Somut rakamlar ve yüzdeler kullan. Profesyonel ama anlaşılır ol.
                 <div style="font-size:0.72rem; color:{color};">%30 artış riski</div>
             </div>
             """, unsafe_allow_html=True)
-
-    # ══════════════════════════════════════════════════════════
-    # SAYFA: GİDER KATEGORİLERİ (Ödeme Tipi + Kategori Bazlı Raporlar)
-    # ══════════════════════════════════════════════════════════
-    elif selected == "📂 Gider Kategorileri":
-        st.markdown('<div class="page-header"><div class="page-title">📂 GİDER KATEGORİLERİ & ÖDEME TİPİ RAPORLARI</div></div>', unsafe_allow_html=True)
-
-        _harc_odeme_keys_gk = ("harcirah", "harcırah", "harcirahtan dus", "harcırahtan düş",
-                            "harcırahtan düş (nakit / kişisel kart)", "nakit", "kisisel")
-        _sirket_odeme_keys_gk = ("sirket_karti", "sirket karti", "kredi_karti", "kredi kartı",
-                               "şirket", "sirket", "şirket kredi kartı", "sirket kredi karti")
-
-        tab_gk_harc, tab_gk_zeynep, tab_gk_sirket = st.tabs([
-            "💵 Harcırah Harcamaları", "💳 Zeynep Özyaman Şahsi K.K.", "🏦 Şirket Kredi Kartı"
-        ])
-
-        # ── Kategori tanımları — her bir kategorinin hangi tipe ait olduğu
-        _GIDER_KATEGORILERI = {
-            "ECZANE GİDERLERİ (ŞAHSİ)":      {"tip": "sahsi",  "keywords": ["eczane", "ilaç", "ilac", "pharmacy", "sağlık", "saglik"]},
-            "KIRTASİYE GİDERLERİ (ŞİRKET)":  {"tip": "sirket", "keywords": ["kırtasiye", "kirtasiye", "kalem", "kağıt", "kagit", "toner", "ofis"]},
-            "HIRDAVAT GİDERLERİ (ŞİRKET)":   {"tip": "sirket", "keywords": ["hırdavat", "hirdavat", "nalbur", "vida", "çivi", "boya", "donanım"]},
-            "YAKIT GİDERLERİ (ŞİRKET)":      {"tip": "sirket", "keywords": ["yakıt", "yakit", "akaryakıt", "benzin", "motorin", "shell", "bp", "total", "opet"]},
-            "YEMEK GİDERLERİ (ŞİRKET)":      {"tip": "sirket", "keywords": ["yemek", "restoran", "lokanta", "kafe", "cafe", "kebab", "köfte"]},
-            "PATENT GİDERLERİ (ŞİRKET)":     {"tip": "sirket", "keywords": ["patent", "marka", "tescil", "lisans"]},
-            "ŞENOL BEY SAĞLIK GİDERLERİ (ŞAHSİ)": {"tip": "sahsi", "keywords": ["sağlık", "saglik", "hastane", "doktor", "eczane", "ilaç", "ilac", "muayene"]},
-        }
-
-        def _categorize_expense(row):
-            """Fişin firma, kategori ve kalemlerinden gider kategorisini tespit et."""
-            _text = " ".join([
-                str(row.get("Firma", "")).lower(),
-                str(row.get("Kategori", "")).lower(),
-                str(row.get("Notlar", "")).lower(),
-                " ".join([str(k) for k in row.get("Kalemler", [])]).lower() if isinstance(row.get("Kalemler"), list) else str(row.get("Kalemler","")).lower(),
-            ])
-            for cat_name, cat_info in _GIDER_KATEGORILERI.items():
-                for kw in cat_info["keywords"]:
-                    if kw in _text:
-                        # Şenol Bey Sağlık — sadece Şenol'un fişleri
-                        if "ŞENOL" in cat_name.upper():
-                            if "şenol" in str(row.get("Kullanıcı","")).lower() or "senol" in str(row.get("Kullanıcı","")).lower():
-                                return cat_name
-                        else:
-                            return cat_name
-            return "DİĞER GİDERLER"
-
-        def _render_gider_kategori_tab(source_df, tab_title):
-            """Ödeme tipine ait fişleri kategori bazlı raporla."""
-            if source_df.empty:
-                st.markdown(f"""
-                <div class="empty-state"><div class="empty-icon">📂</div>
-                <div>{tab_title} kaydı bulunamadı.</div></div>""", unsafe_allow_html=True)
-                return
-
-            source_df = source_df.copy()
-            source_df['_Gider_Kategori'] = source_df.apply(_categorize_expense, axis=1)
-            source_df['_Tarih_DT'] = pd.to_datetime(source_df['Tarih'], errors='coerce')
-            source_df['_Ay_Yil'] = source_df['_Tarih_DT'].dt.strftime('%Y-%m')
-
-            # Filtreler
-            gkc1, gkc2 = st.columns(2)
-            with gkc1:
-                _gk_aylar = ["Tüm Zamanlar"] + sorted(source_df['_Ay_Yil'].dropna().unique().tolist(), reverse=True)
-                _gk_ay = st.selectbox("Dönem", _gk_aylar, key=f"gk_{tab_title}_ay")
-            with gkc2:
-                _gk_cats = ["Tümü"] + sorted(source_df['_Gider_Kategori'].unique().tolist())
-                _gk_cat = st.selectbox("Gider Kategorisi", _gk_cats, key=f"gk_{tab_title}_cat")
-
-            _gkf = source_df.copy()
-            if _gk_ay != "Tüm Zamanlar":
-                _gkf = _gkf[_gkf['_Ay_Yil'] == _gk_ay]
-            if _gk_cat != "Tümü":
-                _gkf = _gkf[_gkf['_Gider_Kategori'] == _gk_cat]
-
-            if _gkf.empty:
-                st.info("Seçili filtrelere uygun kayıt yok.")
-                return
-
-            # Genel metrikler
-            gm1, gm2, gm3 = st.columns(3)
-            gm1.metric("Toplam İşlem", len(_gkf))
-            gm2.metric("Toplam Tutar", f"₺{_gkf['Tutar'].sum():,.0f}")
-            gm3.metric("Onaylı Tutar", f"₺{_gkf[_gkf['Durum']=='Onaylandı']['Tutar'].sum():,.0f}" if 'Durum' in _gkf.columns else "N/A")
-
-            # Kategori bazlı rakamsal rapor kartları
-            st.markdown("#### 📊 Kategori Bazlı Rakamsal Rapor")
-            _kat_grp = _gkf.groupby('_Gider_Kategori')['Tutar'].agg(['sum', 'count', 'mean']).sort_values('sum', ascending=False)
-            _kat_total = _gkf['Tutar'].sum()
-
-            _kat_colors = {
-                "ECZANE": "#dc2626", "KIRTASİYE": "#2F3C6E", "HIRDAVAT": "#d97706",
-                "YAKIT": "#0891b2", "YEMEK": "#11855B", "PATENT": "#7c3aed",
-                "ŞENOL": "#059669", "DİĞER": "#64748b"
-            }
-            _kat_icons = {
-                "ECZANE": "💊", "KIRTASİYE": "📎", "HIRDAVAT": "🔩",
-                "YAKIT": "⛽", "YEMEK": "🍽️", "PATENT": "📜",
-                "ŞENOL": "🏥", "DİĞER": "📦"
-            }
-
-            cols_per_row = 3
-            items = list(_kat_grp.iterrows())
-            for row_start in range(0, len(items), cols_per_row):
-                row_items = items[row_start:row_start + cols_per_row]
-                cols = st.columns(cols_per_row)
-                for ci, (kat, row) in enumerate(row_items):
-                    pct = (row['sum'] / _kat_total * 100) if _kat_total > 0 else 0
-                    _c = "#64748b"
-                    _ic = "📦"
-                    for _k, _v in _kat_colors.items():
-                        if _k in kat.upper():
-                            _c = _v; break
-                    for _k, _v in _kat_icons.items():
-                        if _k in kat.upper():
-                            _ic = _v; break
-                    with cols[ci]:
-                        st.markdown(f"""
-                        <div style="background:#fff; border:1px solid {_c}33; border-radius:14px;
-                                    padding:18px; text-align:center; border-top:3px solid {_c};">
-                            <div style="font-size:1.6rem; margin-bottom:6px;">{_ic}</div>
-                            <div style="font-size:0.72rem; font-weight:700; color:{_c};
-                                        letter-spacing:0.05em; margin-bottom:8px;">{kat}</div>
-                            <div style="font-size:1.4rem; font-weight:900; color:#0f1923;">₺{row['sum']:,.0f}</div>
-                            <div style="display:flex; justify-content:center; gap:16px; margin-top:8px; font-size:0.72rem; color:#7a96a4;">
-                                <span>{int(row['count'])} fiş</span>
-                                <span>ort. ₺{row['mean']:,.0f}</span>
-                                <span style="font-weight:700; color:{_c};">%{pct:.1f}</span>
-                            </div>
-                            <div style="margin-top:8px; height:4px; background:rgba(0,0,0,0.06); border-radius:99px;">
-                                <div style="height:100%; width:{min(pct,100):.0f}%; background:{_c}; border-radius:99px;"></div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-            # Grafik
-            if len(_kat_grp) > 1:
-                st.markdown("<br>", unsafe_allow_html=True)
-                fig_gk = go.Figure(go.Pie(
-                    labels=_kat_grp.index.tolist(),
-                    values=_kat_grp['sum'].values.tolist(),
-                    hole=0.55,
-                    textinfo='label+percent',
-                    textfont=dict(size=11)
-                ))
-                fig_gk.update_layout(
-                    title=f'{tab_title} — Kategori Dağılımı',
-                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#4a5568'), height=350,
-                    legend=dict(bgcolor='rgba(0,0,0,0)')
-                )
-                st.plotly_chart(fig_gk, use_container_width=True)
-
-            # Export + tablo
-            st.markdown("<br>", unsafe_allow_html=True)
-            _gkf_clean = _gkf.drop(columns=['_Tarih_DT', '_Ay_Yil'], errors='ignore')
-            _gkf_clean = _gkf_clean.rename(columns={'_Gider_Kategori': 'Gider Kategorisi'})
-            gd1, gd2, gd3 = st.columns(3)
-            _safe_title = tab_title.replace(" ","_").replace("/","")
-            gd1.download_button("📥 CSV", _gkf_clean.to_csv(index=False).encode('utf-8-sig'),
-                f"Gider_{_safe_title}_{_gk_ay}.csv", "text/csv", use_container_width=True, key=f"gk_{tab_title}_csv")
-            gd2.download_button("📊 Excel",
-                export_excel_muhasebe(_gkf_clean.drop(columns=['Gider Kategorisi'], errors='ignore'), f"{tab_title} — {_gk_ay}", logo_path="logo.png"),
-                f"Gider_{_safe_title}_{_gk_ay}.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, key=f"gk_{tab_title}_xlsx")
-            gd3.download_button("📄 PDF",
-                export_pdf_muhasebe(_gkf_clean.drop(columns=['Gider Kategorisi'], errors='ignore'), f"{tab_title} Raporu", f"{tab_title} — {_gk_ay}", logo_path="logo.png"),
-                f"Gider_{_safe_title}_{_gk_ay}.pdf", "application/pdf", use_container_width=True, key=f"gk_{tab_title}_pdf")
-
-            st.dataframe(_gkf_clean.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
-
-        # ── TAB: Harcırah
-        with tab_gk_harc:
-            st.markdown("### 💵 Harcırah Harcamaları — Kategori Bazlı")
-            if not df_full.empty and 'Odeme_Turu' in df_full.columns:
-                _harc_gk = df_full[df_full['Odeme_Turu'].str.lower().str.strip().isin(_harc_odeme_keys_gk)].copy()
-            else:
-                _harc_gk = pd.DataFrame()
-            _render_gider_kategori_tab(_harc_gk, "Harcırah")
-
-        # ── TAB: Zeynep Özyaman Şahsi K.K.
-        with tab_gk_zeynep:
-            st.markdown("### 💳 Zeynep Özyaman Şahsi K.K. — Kategori Bazlı")
-            if not df_full.empty and 'Kullanıcı' in df_full.columns and 'Odeme_Turu' in df_full.columns:
-                _zk_gk = df_full[
-                    df_full['Kullanıcı'].str.contains('Zeynep', case=False, na=False) &
-                    df_full['Odeme_Turu'].str.lower().str.strip().isin(_harc_odeme_keys_gk)
-                ].copy()
-            else:
-                _zk_gk = pd.DataFrame()
-            _render_gider_kategori_tab(_zk_gk, "Zeynep Özyaman K.K.")
-
-        # ── TAB: Şirket Kredi Kartı
-        with tab_gk_sirket:
-            st.markdown("### 🏦 Şirket Kredi Kartı — Kategori Bazlı")
-            if not df_full.empty and 'Odeme_Turu' in df_full.columns:
-                _sk_gk = df_full[df_full['Odeme_Turu'].str.lower().str.strip().isin(_sirket_odeme_keys_gk)].copy()
-            else:
-                _sk_gk = pd.DataFrame()
-            _render_gider_kategori_tab(_sk_gk, "Şirket Kredi Kartı")
