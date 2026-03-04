@@ -4518,10 +4518,21 @@ Kısa ve net ol (max 300 kelime)."""
                     sd1, sd2, sd3 = st.columns(3)
                     sd1.download_button("📥 CSV", _skf_clean.to_csv(index=False).encode('utf-8-sig'),
                         f"SirketKK_{_sk_ay}.csv", "text/csv", use_container_width=True, key="sk_csv")
-                    # Debug: export sonucunu kontrol et
-                    _sk_excel_data = export_excel_muhasebe(_skf_clean, f"Şirket K.K. — {_sk_ay}", logo_path="logo.png")
-                    _sk_pdf_data = export_pdf_muhasebe(_skf_clean, "Şirket Kredi Kartı Raporu", f"Şirket K.K. — {_sk_ay}", logo_path="logo.png")
-                    print(f"SK Excel size: {len(_sk_excel_data)} bytes, PDF size: {len(_sk_pdf_data)} bytes", flush=True)
+                    # Debug: export sonucunu kontrol et ve hatayı göster
+                    try:
+                        _sk_excel_data = export_excel_muhasebe(_skf_clean, f"Şirket K.K. — {_sk_ay}", logo_path="logo.png")
+                    except Exception as _sk_err:
+                        _sk_excel_data = b""
+                        st.error(f"Excel hatası: {_sk_err}")
+                    try:
+                        _sk_pdf_data = export_pdf_muhasebe(_skf_clean, "Şirket Kredi Kartı Raporu", f"Şirket K.K. — {_sk_ay}", logo_path="logo.png")
+                    except Exception as _sk_perr:
+                        _sk_pdf_data = b"%PDF-1.4\n"
+                        st.error(f"PDF hatası: {_sk_perr}")
+                    if len(_sk_excel_data) < 100:
+                        st.warning(f"⚠️ Excel raporu oluşturulamadı ({len(_sk_excel_data)} byte). Sütunlar: {list(_skf_clean.columns)}")
+                    if len(_sk_pdf_data) < 100:
+                        st.warning(f"⚠️ PDF raporu oluşturulamadı ({len(_sk_pdf_data)} byte)")
                     sd2.download_button("📊 Excel", _sk_excel_data,
                         f"SirketKK_{_sk_ay}.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
