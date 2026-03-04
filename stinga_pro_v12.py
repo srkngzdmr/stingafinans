@@ -3223,6 +3223,7 @@ tick();setInterval(tick,1000);
                     with st.expander(f"{'🔴' if risk > 70 else '🟡'} {kaynak_icon} {row.get('Kullanıcı','?')} · {row.get('Firma','?')} · ₺{float(row.get('Tutar',0)):,.0f} · {row.get('Proje','?')}"):
                         ca, cb = st.columns([2, 1])
                         with ca:
+                            # ── Üst kısım: Firma, Tutar, Risk, Durum ──
                             st.markdown(f"""
                             <div class="ultra-card">
                                 <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
@@ -3237,21 +3238,30 @@ tick();setInterval(tick,1000);
                                     </div>
                                 </div>
                                 <div class="ai-bubble">🤖 {clean_audit(row.get('AI_Audit',''))}</div>
-                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ " + strip_html(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
-                                <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    📁 Proje: <strong>{strip_html(row.get('Proje','?'))}</strong> &nbsp;·&nbsp;
-                                    ⚡ Öncelik: <strong>{strip_html(row.get('Oncelik','Normal'))}</strong> &nbsp;·&nbsp;
-                                    💳 Ödeme: <strong>{odeme_label(row.get('Odeme_Turu', row.get('OdemeTipi','—')))}</strong> &nbsp;·&nbsp;
-                                    📱 Kaynak: <strong>{strip_html(row.get('Kaynak','Dashboard'))}</strong>
-                                </div>
-                                <div style="margin-top:6px; padding:8px 14px; border-radius:8px; font-size:0.82rem; font-weight:700;
-                                    {'background:rgba(217,119,6,0.1); border:1px solid rgba(217,119,6,0.3); color:#d97706;' if str(row.get('Odeme_Turu', row.get('OdemeTipi',''))).lower().strip() in ('harcirah','harcırah','harcirahtan dus','harcırahtan düş','harcırahtan düş (nakit / kişisel kart)','nakit','kisisel') else 'background:rgba(8,145,178,0.1); border:1px solid rgba(8,145,178,0.3); color:#0891b2;'}">
-                                    {'💵 HARCIRAHTAN DÜŞÜLECEK — Personel şahsi ödeme yapmıştır' if str(row.get('Odeme_Turu', row.get('OdemeTipi',''))).lower().strip() in ('harcirah','harcırah','harcirahtan dus','harcırahtan düş','harcırahtan düş (nakit / kişisel kart)','nakit','kisisel') else '🏦 ŞİRKET KREDİ KARTI — Genel merkezden düşülecek'}
-                                </div>
-                                {_harcirah_html}
-                                {f"<div style='margin-top:6px; font-size:0.75rem;'>📝 {strip_html(row.get('Notlar',''))}</div>" if row.get('Notlar') else ""}
                             </div>
                             """, unsafe_allow_html=True)
+                            # ── Anomali uyarısı ──
+                            if row.get('AI_Anomali'):
+                                st.markdown(f"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ {strip_html(row.get('AI_Anomali_Aciklama',''))}</div>", unsafe_allow_html=True)
+                            # ── Proje / Öncelik / Ödeme / Kaynak bilgileri ──
+                            _proje_str = strip_html(row.get('Proje','?'))
+                            _oncelik_str = strip_html(row.get('Oncelik','Normal'))
+                            _odeme_str = odeme_label(row.get('Odeme_Turu', row.get('OdemeTipi','—')))
+                            _kaynak_str = strip_html(row.get('Kaynak','Dashboard'))
+                            st.markdown(f"📁 **Proje:** {_proje_str}  ·  ⚡ **Öncelik:** {_oncelik_str}  ·  💳 **Ödeme:** {_odeme_str}  ·  📱 **Kaynak:** {_kaynak_str}")
+                            # ── Ödeme türü badge ──
+                            _odeme_raw = str(row.get('Odeme_Turu', row.get('OdemeTipi',''))).lower().strip()
+                            _is_harcirah_odeme = _odeme_raw in ('harcirah','harcırah','harcirahtan dus','harcırahtan düş','harcırahtan düş (nakit / kişisel kart)','nakit','kisisel')
+                            if _is_harcirah_odeme:
+                                st.warning("💵 HARCIRAHTAN DÜŞÜLECEK — Personel şahsi ödeme yapmıştır")
+                            else:
+                                st.info("🏦 ŞİRKET KREDİ KARTI — Genel merkezden düşülecek")
+                            # ── Harcırah bakiye bilgisi ──
+                            if _harcirah_html:
+                                st.markdown(_harcirah_html, unsafe_allow_html=True)
+                            # ── Notlar ──
+                            if row.get('Notlar'):
+                                st.markdown(f"📝 {strip_html(row.get('Notlar',''))}")
 
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"omcent_on_{row['ID']}", use_container_width=True):
@@ -3476,6 +3486,7 @@ tick();setInterval(tick,1000);
                         ca, cb = st.columns([2, 1])
                         
                         with ca:
+                            # ── Üst kısım: Firma, Tutar, Risk ──
                             st.markdown(f"""
                             <div class="ultra-card">
                                 <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
@@ -3491,16 +3502,22 @@ tick();setInterval(tick,1000);
                                 <div class="ai-bubble">
                                     🤖 {clean_audit(row.get('AI_Audit',''))}
                                 </div>
-                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: " + strip_html(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
-                                <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    📁 Proje: <strong>{strip_html(row.get('Proje','?'))}</strong> &nbsp;·&nbsp;
-                                    ⚡ Öncelik: <strong>{strip_html(row.get('Oncelik','Normal'))}</strong> &nbsp;·&nbsp;
-                                    💳 Ödeme: <strong>{odeme_label(row.get('Odeme_Turu','—'))}</strong>
-                                </div>
-                                {_harcirah_html2}
-                                {f"<div style='margin-top:6px; font-size:0.75rem; color:var(--text-secondary);'>📝 Not: {strip_html(row.get('Notlar',''))}</div>" if row.get('Notlar') else ""}
                             </div>
                             """, unsafe_allow_html=True)
+                            # ── Anomali uyarısı ──
+                            if row.get('AI_Anomali'):
+                                st.markdown(f"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: {strip_html(row.get('AI_Anomali_Aciklama',''))}</div>", unsafe_allow_html=True)
+                            # ── Proje / Öncelik / Ödeme bilgileri ──
+                            _proje_str2 = strip_html(row.get('Proje','?'))
+                            _oncelik_str2 = strip_html(row.get('Oncelik','Normal'))
+                            _odeme_str2 = odeme_label(row.get('Odeme_Turu','—'))
+                            st.markdown(f"📁 **Proje:** {_proje_str2}  ·  ⚡ **Öncelik:** {_oncelik_str2}  ·  💳 **Ödeme:** {_odeme_str2}")
+                            # ── Harcırah bakiye bilgisi ──
+                            if _harcirah_html2:
+                                st.markdown(_harcirah_html2, unsafe_allow_html=True)
+                            # ── Notlar ──
+                            if row.get('Notlar'):
+                                st.markdown(f"📝 Not: {strip_html(row.get('Notlar',''))}")
                             
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"on_{row['ID']}", use_container_width=True):
