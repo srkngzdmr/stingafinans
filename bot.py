@@ -308,6 +308,33 @@ def load_data_safe() -> dict:
                     print(f"JSON BOZUK: {try_file}", flush=True); continue
         return {}
 
+def _deep_clean_html(text):
+    """Bir metin alanından TÜM HTML kalıntılarını agresif şekilde temizle."""
+    if not text or not isinstance(text, str):
+        return text
+    # HTML-escaped tag'leri geri çevir
+    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", '"')
+    # <div ...>...</div> bloklarını kaldır (multi-line dahil)
+    text = re.sub(r'<div[^>]*>.*?</div>', ' ', text, flags=re.DOTALL | re.IGNORECASE)
+    # Tüm HTML tag'lerini kaldır
+    text = re.sub(r'<[^>]+>', '', text, flags=re.DOTALL)
+    # CSS style kalıntıları
+    text = re.sub(r'style\s*=\s*["\'][^"\']*["\']', '', text)
+    # HTML entity temizle
+    text = re.sub(r'&nbsp;?', ' ', text)
+    text = re.sub(r'&[a-z]+;', ' ', text)
+    # "Proje: ... Ödeme: ..." kalıntıları
+    text = re.sub(r'Proje\s*:.*?Kaynak\s*:\s*\w+', '', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'Proje\s*:.*?Ödeme\s*:[^\n]*', '', text, flags=re.IGNORECASE)
+    # "ŞİRKET KREDİ KARTI" / "HARCIRAHTAN DÜŞÜLECEK" kalıntıları
+    text = re.sub(r'(ŞİRKET KREDİ KARTI|HARCIRAHTAN DÜŞÜLECEK|Genel merkezden düşülecek|Personel şahsi)[^\n]*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'Kaynak\s*:\s*\w+', '', text, flags=re.IGNORECASE)
+    # Separator kalıntıları
+    text = re.sub(r'[·•]+\s*', '', text)
+    # Çoklu boşluk/newline
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
 def add_notification(target, message, notif_type="info", data=None):
     _own = data is None
     if _own: data = load_data()
@@ -1334,19 +1361,12 @@ def add_expense_endpoint():
         for e in data["expenses"]:
             if (e.get("Firma") == new_e.get("Firma") and abs(float(e.get("Tutar",0)) - float(new_e.get("Tutar",0))) < 1 and e.get("Tarih") == new_e.get("Tarih")):
                 return jsonify({"error": "Mükerrer fiş", "duplicate": True}), 409
-        if "AI_Audit" in new_e: new_e["AI_Audit"] = re.sub(r'<[^>]+>', '', str(new_e["AI_Audit"])).strip()
+        if "AI_Audit" in new_e: new_e["AI_Audit"] = _deep_clean_html(str(new_e["AI_Audit"]))
         # Tüm metin alanlarından HTML tag'lerini temizle
         _text_fields = ("AI_Audit", "Notlar", "AI_Anomali_Aciklama", "IlgincDetay", "Firma")
         for _fld in _text_fields:
             if _fld in new_e and isinstance(new_e[_fld], str):
-                val = new_e[_fld]
-                val = re.sub(r'<div[^>]*>.*?</div>', ' ', val, flags=re.DOTALL | re.IGNORECASE)
-                val = re.sub(r'<[^>]+>', '', val, flags=re.DOTALL)
-                val = re.sub(r'&nbsp;?', ' ', val)
-                val = re.sub(r'&[a-z]+;', ' ', val)
-                val = re.sub(r'style\s*=\s*["\'][^"\']*["\']', '', val)
-                val = re.sub(r'\s+', ' ', val).strip()
-                new_e[_fld] = val
+                new_e[_fld] = _deep_clean_html(new_e[_fld])
         data["expenses"].append(new_e)
         add_xp(new_e.get("Kullanıcı", ""), 50, "Dashboard fiş tarama", data=data)
         for ukey, uinfo in PHONE_DIRECTORY.items():
@@ -1392,6 +1412,24 @@ def reset_wallets():
             data["wallets"][user] = 0
         save_data(data)
         return jsonify({"ok": True, "wallets": data["wallets"], "mesaj": "Tüm bakiyeler sıfırlandı. /transfer ile harcırah gönderin."}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/clean-all-expenses", methods=["POST"])
+def clean_all_expenses():
+    """Tüm expense kayıtlarındaki metin alanlarından HTML kalıntılarını temizle."""
+    try:
+        data = load_data()
+        cleaned = 0
+        text_fields = ("AI_Audit", "Notlar", "AI_Anomali_Aciklama", "IlgincDetay", "Firma")
+        for exp in data.get("expenses", []):
+            for fld in text_fields:
+                val = exp.get(fld, "")
+                if val and isinstance(val, str) and ('<' in val or '&lt;' in val or '&nbsp' in val or 'style=' in val):
+                    exp[fld] = _deep_clean_html(val)
+                    cleaned += 1
+        save_data(data)
+        return jsonify({"ok": True, "cleaned_fields": cleaned, "total_expenses": len(data.get("expenses", []))}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
