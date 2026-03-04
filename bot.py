@@ -669,7 +669,7 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_od
         if e.get("Kaynak") == "WhatsApp-Çoklu" and e.get("Yukleme_Zamani","").startswith(datetime.now().strftime("%Y-%m-%d")) and e["Kullanıcı"] == user_name)
     odeme_str = f"\n💳 Ödeme: *{odeme_turu_label(mesaj_odeme_turu)}*" if mesaj_odeme_turu else ""
     return (f"📦 *{num_media} Fiş İşlendi*\n{'─'*22}\n" + "\n".join(sonuclar) +
-            f"\n\n💰 Bugün eklenen: *{toplam_tutar:,.0f}₺*" + odeme_str + f"\n📨 Tümü onay kuyruğuna gönderildi.")
+            f"\n\n💰 Bugün eklenen: *{toplam_tutar:,.0f}₺*" + odeme_str + f"\n📨 Tümü yönetici onayına gönderildi. Harcaman Onay/Ret durumunda bilgilendirileceksin.")
 
 # ─────────────────────────────────────────────
 #  ANA WEBHOOK
@@ -730,7 +730,7 @@ def whatsapp_webhook():
                     f"🏢 {bekleyen['Firma']} — {bekleyen['Tutar']:,.0f} ₺\n"
                     f"💳 Ödeme: *{odeme_turu_label(odeme_secim)}*\n"
                     f"{'💵 Harcırah kasanızdan düşülecek' if odeme_secim == 'harcirah' else '🏦 Genel merkezden düşülecek'}\n"
-                    f"📨 Onay kuyruğuna gönderildi.\n"
+                    f"📨 Yönetici onayına gönderildi.\n"
                     f"🔖 `{bekleyen['ID']}`"
                 )
             else:
