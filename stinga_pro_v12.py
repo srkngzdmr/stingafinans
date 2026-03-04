@@ -1037,7 +1037,7 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
             Spacer(1,0.05*cm),
             _ph("STİNGA ENERJİ A.Ş.", ST["title"]),
             _ph("GİDER VE KDV RAPORU", ST["title"]),
-            _ph(f"Dönem: {donem}  |  {now_ist().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v15.0", ST["sub"]),
+            _ph(f"Dönem: {donem}  |  {now_ist().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v17.0", ST["sub"]),
         ]
         hdr = Table([[logo_cell, hdr_items]], colWidths=[_logo_w, _title_w])
         hdr.setStyle(TableStyle([
@@ -1186,7 +1186,7 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         story.append(Spacer(1,0.5*cm))
         story.append(HRFlowable(width=W,thickness=0.5,color=_R_LINE))
         story.append(Spacer(1,0.2*cm))
-        story.append(_ph(_tr("Bu rapor Stinga Pro v15.0 Mali Yonetim Sistemi tarafindan otomatik uretilmistir. KDV hesaplamalari fis verileri ve standart KDV oranlari baz alinarak yapilmistir. Resmi muhasebe islemleri icin yetkili mali musavirinize danisiniz."), ST["ft"]))
+        story.append(_ph(_tr("Bu rapor Stinga Pro v17.0 Mali Yonetim Sistemi tarafindan otomatik uretilmistir. KDV hesaplamalari fis verileri ve standart KDV oranlari baz alinarak yapilmistir. Resmi muhasebe islemleri icin yetkili mali musavirinize danisiniz."), ST["ft"]))
 
         doc.build(story)
         return buf.getvalue()
@@ -1289,7 +1289,7 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
         ws1.row_dimensions[1].height=70
         ws1.merge_cells("B1:C1"); ws1["B1"].value="STİNGA ENERJİ A.Ş. — GİDER VE KDV RAPORU"
         ws1["B1"].font=XLFont(name="Calibri",bold=True,size=15,color="1B3A5C"); ws1["B1"].alignment=C
-        ws1.merge_cells("A2:C2"); ws1["A2"].value=f"Dönem: {donem}  |  {now_ist().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v15.0"
+        ws1.merge_cells("A2:C2"); ws1["A2"].value=f"Dönem: {donem}  |  {now_ist().strftime('%d.%m.%Y %H:%M')}  |  Stinga Pro v17.0"
         ws1["A2"].font=XLFont(name="Calibri",size=10,italic=True,color="6B7280"); ws1["A2"].alignment=C
         r=4
         for lbl,b,n,k,clr in [
@@ -1922,7 +1922,7 @@ def login():
         st.markdown("""
         <div style="text-align:center; margin-top:20px; color:#7a96a4; font-size:0.72rem;
                     font-family:'JetBrains Mono',monospace; letter-spacing:0.05em;">
-            🔒 256-BIT AES · ZERO-KNOWLEDGE AUTH · GEMINI AI
+            🔒 256-BIT AES · ZERO-STINGA ENERJI A.S.
         </div>
         """, unsafe_allow_html=True)
 
@@ -2941,7 +2941,7 @@ tick();setInterval(tick,1000);
         if model and not df_full.empty:
             with st.expander("🤖 Günlük AI Finansal Brifingi", expanded=True):
                 if st.button("⚡ Günlük Analizi Oluştur"):
-                    with st.spinner("Gemini AI verilerini işliyor..."):
+                    with st.spinner("Stinga AI verilerini işliyor..."):
                         insight = generate_ai_insight(df_full if role == "admin" else df, model)
                         st.session_state.last_ai_insight = insight
                 
@@ -3003,7 +3003,7 @@ tick();setInterval(tick,1000);
                     if submitted and f:
                         # Ödeme türünü rerun'dan önce session_state'e kaydet
                         st.session_state["_submitted_odeme_turu"] = odeme_turu_sec
-                        with st.spinner("🤖 Gemini AI fişi analiz ediyor..."):
+                        with st.spinner("🤖 Stinga AI fişi analiz ediyor..."):
                             progress = st.progress(0)
                             for i in range(70):
                                 time.sleep(0.01)
@@ -3730,7 +3730,7 @@ tick();setInterval(tick,1000);
             st.markdown("### 🤖 AI Derin Analiz")
             
             if st.button("🔍 Kapsamlı AI Denetimi Başlat"):
-                with st.spinner("Gemini AI tüm verileri tarıyor..."):
+                with st.spinner("Stinga AI tüm verileri tarıyor..."):
                     # Token taşmasını önlemek için özet istatistikler gönder
                     _df_s = df.copy()
                     _tutar_col = next((c for c in ["Tutar","tutar","Amount","amount"] if c in _df_s.columns), None)
@@ -3913,7 +3913,7 @@ Kısa ve net ol (max 300 kelime)."""
                 st.markdown("### 🔮 AI Harcama Tahmini")
                 
                 if st.button("📡 Tahmin Oluştur"):
-                    with st.spinner("Gemini AI pattern analizi yapıyor..."):
+                    with st.spinner("Stinga AI pattern analizi yapıyor..."):
                         pred = predict_monthly_spend(df, model)
                         
                         if pred:

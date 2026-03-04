@@ -772,7 +772,7 @@ def whatsapp_webhook():
         rozet_str = " ".join([ROZETLER[r]["emoji"] for r in rozetler]) if rozetler else "henüz yok"
         yetki_str = "👑 Yönetici" if is_admin else "👤 Personel"
         msg.body(
-            f"🤖 *STINGA PRO v14*\n"
+            f"🤖 *STINGA PRO v17*\n"
             f"{user_info['emoji']} {user_name} | {yetki_str} | {seviye}\n"
             f"🏅 Rozetler: {rozet_str}\n{'─'*28}\n"
             f"📷 Fiş fotoğrafı gönder → AI analiz\n"
@@ -1315,9 +1315,7 @@ Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/1
         t = threading.Thread(target=analiz_et_gonder, daemon=True)
         t.start()
         beklemeler = [
-            "📡 **STİNGA YAPAY ZEKA** fişi analiz merkezine gönderdi. Lütfen bekleyin.⌛",
-            "🏢 **STINGA YAPAY ZEKA** fişinizi dijital dünyaya aktarıyor. ⌛",
-            "🛰️ **STINGA YAPAY ZEKA** fişi işliyor, sonuçlar yükleniyor. ⌛",
+            "📡 **STİNGA YAPAY ZEKA** fişi analiz merkezine gönderdi. Lütfen bekleyin.⌛"                
         ]
         msg.body(random.choice(beklemeler))
         return str(resp)
