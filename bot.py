@@ -514,15 +514,19 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_od
         media_url = request.values.get(f'MediaUrl{i}')
         if not media_url: continue
         try:
-            res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=True, timeout=20)
-            if res.status_code != 200 or len(res.content) < 500:
-                res2 = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=15)
-                if res2.status_code in [301, 302, 307, 308]:
-                    redirect_url = res2.headers.get('Location', '')
-                    if redirect_url: res = requests.get(redirect_url, timeout=15)
-                elif res2.status_code == 200 and len(res2.content) > 500: res = res2
-            raw_bytes = res.content
-            if len(raw_bytes) < 500:
+            # Birden fazla indirme stratejisi dene
+            raw_bytes = None
+            for _strat in [
+                lambda: requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=True, timeout=20),
+                lambda: requests.get(media_url, allow_redirects=True, timeout=20),
+            ]:
+                try:
+                    _r = _strat()
+                    _ct = _r.headers.get('Content-Type','').lower()
+                    if len(_r.content) > 500 and 'xml' not in _ct and 'html' not in _ct and 'json' not in _ct:
+                        raw_bytes = _r.content; break
+                except: continue
+            if not raw_bytes or len(raw_bytes) < 500:
                 sonuclar.append(f"⚠️ Fiş {i+1}: Görsel indirilemedi"); continue
             img_hash = gorsel_hash(raw_bytes)
             if img_hash in data["duplicate_hashes"]:
@@ -828,30 +832,56 @@ def whatsapp_webhook():
         def analiz_et_gonder():
             try:
                     data = load_data()
-                    # Görsel indirme — Twilio redirect'lerini otomatik takip et
-                    res = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN),
-                                       allow_redirects=True, timeout=20)
-                    # Eğer yine hata varsa, redirect'i manuel dene
-                    if res.status_code != 200 or len(res.content) < 500:
-                        # Manuel redirect dene
-                        res2 = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN),
-                                            allow_redirects=False, timeout=15)
-                        if res2.status_code in [301, 302, 307, 308]:
-                            redirect_url = res2.headers.get('Location', '')
-                            if redirect_url:
-                                res = requests.get(redirect_url, timeout=15)
-                        elif res2.status_code == 200 and len(res2.content) > 500:
-                            res = res2
+                    # ── Görsel indirme — birden fazla strateji dene ──
+                    raw_bytes = None
+                    content_type = ""
 
-                    raw_bytes = res.content
-                    content_type = res.headers.get('Content-Type', '')
-                    print(f"Görsel indirildi: {len(raw_bytes)} bytes, type: {content_type}", flush=True)
+                    def _follow_redirect(url):
+                        r = requests.get(url, auth=(TWILIO_SID, TWILIO_TOKEN),
+                                         allow_redirects=False, timeout=15)
+                        if r.status_code in [301, 302, 303, 307, 308]:
+                            loc = r.headers.get('Location', '')
+                            if loc:
+                                return requests.get(loc, timeout=15)
+                        return r
 
-                    # İçerik doğrulama — görsel mi değil mi?
-                    if len(raw_bytes) < 500 or ('text/html' in content_type or 'application/json' in content_type):
-                        print(f"UYARI: İndirilen dosya görsel değil! ({content_type}, {len(raw_bytes)} bytes)", flush=True)
+                    download_strategies = [
+                        # Strateji 1: Auth ile, redirect takipli
+                        lambda: requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN),
+                                             allow_redirects=True, timeout=20),
+                        # Strateji 2: Auth'suz (Twilio Sandbox public URL'ler)
+                        lambda: requests.get(media_url, allow_redirects=True, timeout=20),
+                        # Strateji 3: Auth ile redirect kapalı, sonra Location takip
+                        lambda: _follow_redirect(media_url),
+                    ]
+
+                    for i_strategy, strategy in enumerate(download_strategies):
+                        try:
+                            res = strategy()
+                            ct = res.headers.get('Content-Type', '').lower()
+                            sz = len(res.content)
+                            print(f"İndirme strateji {i_strategy+1}: {sz} bytes, type: {ct}", flush=True)
+                            # Geçerli görsel mi kontrol et
+                            is_image = (
+                                sz > 500 and
+                                'xml' not in ct and
+                                'html' not in ct and
+                                'json' not in ct and
+                                'text/' not in ct
+                            )
+                            if is_image:
+                                raw_bytes = res.content
+                                content_type = ct
+                                print(f"✅ Strateji {i_strategy+1} başarılı: {sz} bytes", flush=True)
+                                break
+                        except Exception as _dl_err:
+                            print(f"Strateji {i_strategy+1} hatası: {_dl_err}", flush=True)
+                            continue
+
+                    if not raw_bytes or len(raw_bytes) < 500:
+                        print(f"HATA: Hiçbir strateji görsel indiremedi!", flush=True)
                         twilio_client.messages.create(
-                            body="❌ Fiş görseli indirilemedi. Lütfen fotoğrafı tekrar gönderin.",
+                            body="❌ Fiş görseli indirilemedi. Lütfen fotoğrafı tekrar gönderin.\n\n💡 İpucu: Fotoğrafı galeriden değil, kamera ile çekip gönderin.",
                             from_="whatsapp:+14155238886", to=sender_phone)
                         return
 
