@@ -1870,21 +1870,76 @@ def whatsapp_webhook():
 
                     mesaj_zamani = datetime.now()
 
-                    # Fişin adres/şehir bilgisini AI'dan çıkarmaya çalış
-                    # AI prompt'unda adres yoksa firma adından tahmin et
-                    fis_adresi_ham = fis.get("adres", "") or ""
-                    fis_sehri_ham  = fis.get("sehir", "") or fis.get("il", "")
+                    # ══════════════════════════════════════════════════
+                    # ŞEHİR TESPİTİ — 4 kaynak sırayla denenir
+                    # ══════════════════════════════════════════════════
+                    _SEHIR_LISTESI = [
+                        "adana","adiyaman","afyon","agri","aksaray","amasya","ankara","antalya",
+                        "ardahan","artvin","aydin","balikesir","bartin","batman","bayburt",
+                        "bilecik","bingol","bitlis","bolu","burdur","bursa","canakkale","cankiri",
+                        "corum","denizli","diyarbakir","duzce","edirne","elazig","erzincan",
+                        "erzurum","eskisehir","gaziantep","giresun","gumushane","hakkari","hatay",
+                        "igdir","isparta","istanbul","izmir","kahramanmaras","karabuk","karaman",
+                        "kars","kastamonu","kayseri","kilis","kirikkale","kirklareli","kirsehir",
+                        "kocaeli","konya","kutahya","malatya","manisa","mardin","mersin","mugla",
+                        "mus","nevsehir","nigde","ordu","osmaniye","rize","sakarya","samsun",
+                        "siirt","sinop","sivas","sanliurfa","sirnak","tekirdag","tokat","trabzon",
+                        "tunceli","usak","van","yalova","yozgat","zonguldak",
+                        "yenimahalle","cankaya","kecoren","etimesgut","mamak","sincan",
+                        "kadikoy","uskudar","besiktas","sisli","bakirkoy","bagcilar",
+                        "esenyurt","basaksehir","pendik","maltepe","kartal","atasehir",
+                        "bornova","buca","karsiyaka","konak","cigli","osmangazi","nilufer",
+                        "muratpasa","kepez","mezitli","toroslar","izmit","adapazari",
+                    ]
+                    _SEHIR_GERCEK = {
+                        "adiyaman":"Adıyaman","agri":"Ağrı","aydin":"Aydın","balikesir":"Balıkesir",
+                        "bartin":"Bartın","bingol":"Bingöl","canakkale":"Çanakkale","cankiri":"Çankırı",
+                        "corum":"Çorum","duzce":"Düzce","elazig":"Elazığ","eskisehir":"Eskişehir",
+                        "gumushane":"Gümüşhane","igdir":"Iğdır","kahramanmaras":"Kahramanmaraş",
+                        "karabuk":"Karabük","kirikkale":"Kırıkkale","kirklareli":"Kırklareli",
+                        "kirsehir":"Kırşehir","kocaeli":"Kocaeli","kutahya":"Kütahya",
+                        "mugla":"Muğla","mus":"Muş","nevsehir":"Nevşehir","nigde":"Niğde",
+                        "sanliurfa":"Şanlıurfa","sirnak":"Şırnak","tekirdag":"Tekirdağ",
+                        "usak":"Uşak","yenimahalle":"Yenimahalle","cankaya":"Çankaya",
+                        "kecoren":"Keçiören","besiktas":"Beşiktaş","sisli":"Şişli",
+                        "bakirkoy":"Bakırköy","bagcilar":"Bağcılar","basaksehir":"Başakşehir",
+                        "kadikoy":"Kadıköy","uskudar":"Üsküdar","karsiyaka":"Karşıyaka",
+                        "cigli":"Çiğli","nilufer":"Nilüfer","muratpasa":"Muratpaşa",
+                        "adapazari":"Adapazarı",
+                    }
 
-                    # Şehir bulunamadıysa firma adından tahmin et (basit kelime eşleştirme)
-                    if not fis_sehri_ham and fis_adresi_ham:
-                        _adres_lower = fis_adresi_ham.lower()
-                        _sehirler = ["ankara","istanbul","izmir","bursa","antalya","adana",
-                                     "konya","gaziantep","mersin","kayseri","diyarbakır",
-                                     "trabzon","erzurum","samsun","eskişehir","denizli"]
-                        for _s in _sehirler:
-                            if _s in _adres_lower:
-                                fis_sehri_ham = _s.capitalize()
-                                break
+                    def _normalize(t):
+                        return (t.lower()
+                                 .replace("ı","i").replace("ğ","g").replace("ş","s")
+                                 .replace("ç","c").replace("ö","o").replace("ü","u")
+                                 .replace("â","a").replace("î","i").replace("û","u"))
+
+                    def _sehir_bul(metin: str) -> str:
+                        if not metin: return ""
+                        mn = _normalize(metin)
+                        for _s in _SEHIR_LISTESI:
+                            if _s in mn:
+                                idx = mn.find(_s)
+                                once = mn[idx-1] if idx > 0 else " "
+                                sonra = mn[idx+len(_s)] if idx+len(_s) < len(mn) else " "
+                                if not once.isalpha() and not sonra.isalpha():
+                                    return _SEHIR_GERCEK.get(_s, _s.title())
+                        return ""
+
+                    # Kaynak 1: AI sehir/il alanı
+                    fis_sehri_ham = _normalize_str = fis.get("sehir","") or fis.get("il","")
+                    # Kaynak 2: AI adres alanı
+                    if not fis_sehri_ham:
+                        fis_sehri_ham = _sehir_bul(fis.get("adres","") or "")
+                    # Kaynak 3: Firma adı (en önemli)
+                    if not fis_sehri_ham:
+                        fis_sehri_ham = _sehir_bul(fis.get("firma","") or "")
+                    # Kaynak 4: AI audit notu
+                    if not fis_sehri_ham:
+                        fis_sehri_ham = _sehir_bul(fis.get("audit_notu","") or "")
+
+                    fis_adresi_ham = fis.get("adres","") or ""
+                    print(f"[KONUM_TESPIT] firma='{fis.get('firma','')}' → sehir='{fis_sehri_ham}'", flush=True)
 
                     # ── ÖZELLİK 1: Konum Çelişkisi ──────────────────
                     konum_celiski = konum_celiskisi_kontrol(
