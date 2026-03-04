@@ -828,62 +828,131 @@ def whatsapp_webhook():
 
         # ── TEKİL FİŞ ───────────────────────────────────────────────
         media_url = request.values.get('MediaUrl0')
+        media_content_type = request.values.get('MediaContentType0', '')
+        print(f"📸 Media URL: {media_url}", flush=True)
+        print(f"📸 Media ContentType: {media_content_type}", flush=True)
 
         def analiz_et_gonder():
             try:
                     data = load_data()
-                    # ── Görsel indirme — birden fazla strateji dene ──
+                    # ── Görsel indirme — kapsamlı strateji ──
                     raw_bytes = None
                     content_type = ""
 
-                    def _follow_redirect(url):
-                        r = requests.get(url, auth=(TWILIO_SID, TWILIO_TOKEN),
-                                         allow_redirects=False, timeout=15)
-                        if r.status_code in [301, 302, 303, 307, 308]:
-                            loc = r.headers.get('Location', '')
-                            if loc:
-                                return requests.get(loc, timeout=15)
-                        return r
+                    # Strateji 1: Twilio client ile media indirme (en güvenilir)
+                    # MediaUrl'den SID'leri çıkar ve Twilio API'sinden indir
+                    try:
+                        print(f"Strateji 1: Twilio API ile indirme...", flush=True)
+                        # MediaUrl formatı: https://api.twilio.com/2010-04-01/Accounts/{SID}/Messages/{MSG_SID}/Media/{MEDIA_SID}
+                        # Doğrudan auth ile indir
+                        res = requests.get(media_url,
+                                           auth=(TWILIO_SID, TWILIO_TOKEN),
+                                           allow_redirects=False,
+                                           timeout=20)
+                        print(f"  Status: {res.status_code}, Size: {len(res.content)}, CT: {res.headers.get('Content-Type','')}", flush=True)
 
-                    download_strategies = [
-                        # Strateji 1: Auth ile, redirect takipli
-                        lambda: requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN),
-                                             allow_redirects=True, timeout=20),
-                        # Strateji 2: Auth'suz (Twilio Sandbox public URL'ler)
-                        lambda: requests.get(media_url, allow_redirects=True, timeout=20),
-                        # Strateji 3: Auth ile redirect kapalı, sonra Location takip
-                        lambda: _follow_redirect(media_url),
-                    ]
+                        # Twilio 301/302 redirect ile gerçek dosyaya yönlendirir
+                        if res.status_code in [301, 302, 303, 307, 308]:
+                            real_url = res.headers.get('Location', '')
+                            print(f"  Redirect → {real_url[:120]}...", flush=True)
+                            if real_url:
+                                res2 = requests.get(real_url, timeout=20)
+                                ct2 = res2.headers.get('Content-Type', '').lower()
+                                print(f"  Redirect sonuç: {len(res2.content)} bytes, {ct2}", flush=True)
+                                if len(res2.content) > 500 and 'image' in ct2:
+                                    raw_bytes = res2.content
+                                    content_type = ct2
+                                    print(f"✅ Strateji 1 (redirect) başarılı", flush=True)
+                                elif len(res2.content) > 500 and 'xml' not in ct2 and 'html' not in ct2:
+                                    raw_bytes = res2.content
+                                    content_type = ct2
+                                    print(f"✅ Strateji 1 (redirect, non-image CT) başarılı", flush=True)
+                        elif res.status_code == 200 and len(res.content) > 500:
+                            ct1 = res.headers.get('Content-Type', '').lower()
+                            if 'xml' not in ct1 and 'html' not in ct1:
+                                raw_bytes = res.content
+                                content_type = ct1
+                                print(f"✅ Strateji 1 (direct) başarılı", flush=True)
+                    except Exception as _e1:
+                        print(f"Strateji 1 hatası: {_e1}", flush=True)
 
-                    for i_strategy, strategy in enumerate(download_strategies):
+                    # Strateji 2: Auth'suz indirme (bazı Twilio konfigürasyonlarında çalışır)
+                    if not raw_bytes:
                         try:
-                            res = strategy()
+                            print(f"Strateji 2: Auth'suz indirme...", flush=True)
+                            res = requests.get(media_url, allow_redirects=True, timeout=20)
                             ct = res.headers.get('Content-Type', '').lower()
-                            sz = len(res.content)
-                            print(f"İndirme strateji {i_strategy+1}: {sz} bytes, type: {ct}", flush=True)
-                            # Geçerli görsel mi kontrol et
-                            is_image = (
-                                sz > 500 and
-                                'xml' not in ct and
-                                'html' not in ct and
-                                'json' not in ct and
-                                'text/' not in ct
-                            )
-                            if is_image:
+                            print(f"  Status: {res.status_code}, Size: {len(res.content)}, CT: {ct}", flush=True)
+                            if len(res.content) > 500 and 'xml' not in ct and 'html' not in ct and 'text/' not in ct:
                                 raw_bytes = res.content
                                 content_type = ct
-                                print(f"✅ Strateji {i_strategy+1} başarılı: {sz} bytes", flush=True)
-                                break
-                        except Exception as _dl_err:
-                            print(f"Strateji {i_strategy+1} hatası: {_dl_err}", flush=True)
-                            continue
+                                print(f"✅ Strateji 2 başarılı", flush=True)
+                        except Exception as _e2:
+                            print(f"Strateji 2 hatası: {_e2}", flush=True)
+
+                    # Strateji 3: Twilio REST API — media listesinden URL al
+                    if not raw_bytes:
+                        try:
+                            print(f"Strateji 3: Twilio REST API ile media listesi...", flush=True)
+                            # URL'den Message SID çıkar
+                            import re as _re
+                            msg_sid_match = _re.search(r'/Messages/(SM[a-f0-9]+)/', media_url)
+                            if msg_sid_match:
+                                msg_sid = msg_sid_match.group(1)
+                                # Twilio API'den media listesini al
+                                api_url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages/{msg_sid}/Media.json"
+                                api_res = requests.get(api_url, auth=(TWILIO_SID, TWILIO_TOKEN), timeout=10)
+                                if api_res.status_code == 200:
+                                    media_list = api_res.json().get("media_list", [])
+                                    print(f"  Media listesi: {len(media_list)} öğe", flush=True)
+                                    for m in media_list:
+                                        m_uri = m.get("uri", "").replace(".json", "")
+                                        if m_uri:
+                                            m_full_url = f"https://api.twilio.com{m_uri}"
+                                            m_res = requests.get(m_full_url, auth=(TWILIO_SID, TWILIO_TOKEN),
+                                                                 allow_redirects=False, timeout=15)
+                                            if m_res.status_code in [301, 302, 303, 307, 308]:
+                                                loc = m_res.headers.get('Location', '')
+                                                if loc:
+                                                    m_res = requests.get(loc, timeout=15)
+                                            ct3 = m_res.headers.get('Content-Type', '').lower()
+                                            if len(m_res.content) > 500 and 'xml' not in ct3 and 'html' not in ct3:
+                                                raw_bytes = m_res.content
+                                                content_type = ct3
+                                                print(f"✅ Strateji 3 başarılı", flush=True)
+                                                break
+                        except Exception as _e3:
+                            print(f"Strateji 3 hatası: {_e3}", flush=True)
+
+                    # Strateji 4: URL'e .json yerine direkt eriş
+                    if not raw_bytes:
+                        try:
+                            print(f"Strateji 4: URL varyasyonları...", flush=True)
+                            # Bazen URL sonunda / eksik olabiliyor veya format farklı
+                            for url_variant in [media_url, media_url.rstrip('/'), media_url + '.json']:
+                                try:
+                                    res = requests.get(url_variant,
+                                                       auth=(TWILIO_SID, TWILIO_TOKEN),
+                                                       headers={'Accept': 'image/*'},
+                                                       allow_redirects=True, timeout=15)
+                                    ct4 = res.headers.get('Content-Type', '').lower()
+                                    if len(res.content) > 500 and 'image' in ct4:
+                                        raw_bytes = res.content
+                                        content_type = ct4
+                                        print(f"✅ Strateji 4 başarılı: {url_variant[:80]}", flush=True)
+                                        break
+                                except: continue
+                        except Exception as _e4:
+                            print(f"Strateji 4 hatası: {_e4}", flush=True)
 
                     if not raw_bytes or len(raw_bytes) < 500:
-                        print(f"HATA: Hiçbir strateji görsel indiremedi!", flush=True)
+                        print(f"❌ HATA: Hiçbir strateji görsel indiremedi! URL: {media_url}", flush=True)
                         twilio_client.messages.create(
-                            body="❌ Fiş görseli indirilemedi. Lütfen fotoğrafı tekrar gönderin.\n\n💡 İpucu: Fotoğrafı galeriden değil, kamera ile çekip gönderin.",
+                            body="❌ Fiş görseli indirilemedi. Lütfen fotoğrafı tekrar gönderin.\n\n💡 İpucu: Fotoğrafı galeriden değil, doğrudan kamera ile çekip gönderin.",
                             from_="whatsapp:+14155238886", to=sender_phone)
                         return
+
+                    print(f"📸 Görsel başarıyla indirildi: {len(raw_bytes)} bytes, {content_type}", flush=True)
 
                     img_hash = gorsel_hash(raw_bytes)
                     if img_hash in data["duplicate_hashes"]:
