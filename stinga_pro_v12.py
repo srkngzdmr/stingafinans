@@ -1173,6 +1173,8 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         doc.build(story)
         return buf.getvalue()
     except Exception as e:
+        print(f"PDF EXPORT HATASI: {e}", flush=True)
+        import traceback; traceback.print_exc()
         return b"%PDF-1.4\n"
 
 
@@ -1341,6 +1343,8 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
 
         buf=io.BytesIO(); wb.save(buf); return buf.getvalue()
     except Exception as e:
+        print(f"EXCEL EXPORT HATASI: {e}", flush=True)
+        import traceback; traceback.print_exc()
         return b""
 
 # ─── AI FONKSİYONLARI ─────────────────────────────────────────
@@ -4074,7 +4078,11 @@ Kısa ve net ol (max 300 kelime)."""
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                clean_df = filtered.drop(columns=['Tarih_DT','Ay_Yil'], errors='ignore')
+                clean_df = filtered.drop(columns=['Tarih_DT','Ay_Yil', 'Kalemler', 'Kisisel_Giderler', 'Gorsel_B64', 'Dosya_Yolu'], errors='ignore')
+                # List/dict sütunlarını string'e çevir
+                for _col in clean_df.columns:
+                    if clean_df[_col].apply(lambda x: isinstance(x, (list, dict))).any():
+                        clean_df[_col] = clean_df[_col].apply(str)
                 
                 d1, d2, d3 = st.columns(3)
                 d1.download_button(
@@ -4266,7 +4274,11 @@ Kısa ve net ol (max 300 kelime)."""
                                 """, unsafe_allow_html=True)
 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    _hf_clean = _hf.drop(columns=['_Tarih_DT', '_Ay_Yil'], errors='ignore')
+                    _hf_clean = _hf.drop(columns=['_Tarih_DT', '_Ay_Yil', 'Kalemler', 'Kisisel_Giderler', 'Gorsel_B64', 'Dosya_Yolu'], errors='ignore')
+                    # List/dict sütunlarını string'e çevir
+                    for _col in _hf_clean.columns:
+                        if _hf_clean[_col].apply(lambda x: isinstance(x, (list, dict))).any():
+                            _hf_clean[_col] = _hf_clean[_col].apply(str)
                     hd1, hd2, hd3 = st.columns(3)
                     hd1.download_button("📥 CSV İndir", _hf_clean.to_csv(index=False).encode('utf-8-sig'),
                         f"Harcirah_{_harc_ay}.csv", "text/csv", use_container_width=True, key="harc_csv")
@@ -4337,7 +4349,11 @@ Kısa ve net ol (max 300 kelime)."""
                             st.markdown(f"- **{kat}**: ₺{row['sum']:,.0f} ({int(row['count'])} fiş)")
 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    _zkf_clean = _zkf.drop(columns=['_Tarih_DT', '_Ay_Yil'], errors='ignore')
+                    _zkf_clean = _zkf.drop(columns=['_Tarih_DT', '_Ay_Yil', 'Kalemler', 'Kisisel_Giderler', 'Gorsel_B64', 'Dosya_Yolu'], errors='ignore')
+                    # List/dict sütunlarını string'e çevir
+                    for _col in _zkf_clean.columns:
+                        if _zkf_clean[_col].apply(lambda x: isinstance(x, (list, dict))).any():
+                            _zkf_clean[_col] = _zkf_clean[_col].apply(str)
                     zd1, zd2, zd3 = st.columns(3)
                     zd1.download_button("📥 CSV", _zkf_clean.to_csv(index=False).encode('utf-8-sig'),
                         f"ZeynepKK_{_zk_ay}.csv", "text/csv", use_container_width=True, key="zk_csv")
@@ -4419,7 +4435,11 @@ Kısa ve net ol (max 300 kelime)."""
                         st.plotly_chart(fig_sk, use_container_width=True)
 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    _skf_clean = _skf.drop(columns=['_Tarih_DT', '_Ay_Yil'], errors='ignore')
+                    _skf_clean = _skf.drop(columns=['_Tarih_DT', '_Ay_Yil', 'Kalemler', 'Kisisel_Giderler', 'Gorsel_B64', 'Dosya_Yolu'], errors='ignore')
+                    # List/dict sütunlarını string'e çevir
+                    for _col in _skf_clean.columns:
+                        if _skf_clean[_col].apply(lambda x: isinstance(x, (list, dict))).any():
+                            _skf_clean[_col] = _skf_clean[_col].apply(str)
                     sd1, sd2, sd3 = st.columns(3)
                     sd1.download_button("📥 CSV", _skf_clean.to_csv(index=False).encode('utf-8-sig'),
                         f"SirketKK_{_sk_ay}.csv", "text/csv", use_container_width=True, key="sk_csv")
