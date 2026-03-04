@@ -59,6 +59,91 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ─── ROBOT GÖZLERI HTMLI & JAVASCRIPTI ────────────────────────
+ROBOT_EYES_HTML = """
+<div style="display: flex; justify-content: center; align-items: center; margin: 20px 0;">
+    <canvas id="robotEyesCanvas" width="300" height="200" 
+            style="border: 2px solid #11855B; border-radius: 15px; 
+                   background: linear-gradient(135deg, #f0faf5 0%, #ffffff 100%); 
+                   box-shadow: 0 4px 15px rgba(17,133,91,0.2);"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById('robotEyesCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    const leftEyeX = canvas.width / 3;
+    const rightEyeX = 2 * canvas.width / 3;
+    const eyeY = canvas.height / 2;
+    const eyeRadius = 35;
+    const irisRadius = 15;
+    const pupilRadius = 8;
+    
+    function drawEyes(mouseX, mouseY) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.font = 'bold 16px Arial';
+        ctx.fillStyle = '#11855B';
+        ctx.textAlign = 'center';
+        ctx.fillText('🤖 Seni Takip Ediyorum!', canvas.width / 2, 25);
+        
+        drawEye(leftEyeX, eyeY, mouseX, mouseY);
+        drawEye(rightEyeX, eyeY, mouseX, mouseY);
+    }
+    
+    function drawEye(eyeX, eyeY, mouseX, mouseY) {
+        // Göz beyazı
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#11855B';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(eyeX, eyeY, eyeRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        // İris
+        const angle = Math.atan2(mouseY - eyeY, mouseX - eyeX);
+        const irisX = eyeX + Math.cos(angle) * (eyeRadius - irisRadius);
+        const irisY = eyeY + Math.sin(angle) * (eyeRadius - irisRadius);
+        
+        ctx.fillStyle = '#2F3C6E';
+        ctx.beginPath();
+        ctx.arc(irisX, irisY, irisRadius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Göz ışığı
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(irisX - 5, irisY - 5, 4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Öğrenci
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(irisX, irisY, pupilRadius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    document.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        drawEyes(mouseX, mouseY);
+    });
+    
+    // Touch desteği (mobil)
+    document.addEventListener('touchmove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        const mouseX = touch.clientX - rect.left;
+        const mouseY = touch.clientY - rect.top;
+        drawEyes(mouseX, mouseY);
+    });
+    
+    drawEyes(canvas.width / 2, canvas.height / 2);
+</script>
+"""
+
 # ─── ULTRA DARK THEME CSS ─────────────────────────────────────
 st.markdown("""
 <style>
@@ -617,6 +702,10 @@ defaults = {
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+# ─── ROBOT GÖZLERI KONTROL ────────────────────────────────────
+if 'robot_eyes_visible' not in st.session_state:
+    st.session_state.robot_eyes_visible = True
 
 # ─── API ──────────────────────────────────────────────────────
 API_KEYS = [
@@ -1765,7 +1854,7 @@ def login():
         st.markdown("""
         <div style="text-align:center; margin-top:20px; color:#7a96a4; font-size:0.72rem;
                     font-family:'JetBrains Mono',monospace; letter-spacing:0.05em;">
-            🔒 256-BIT AES · STINGA PRO FINANCE v17.0
+            🔒 256-BIT AES · ZERO-KNOWLEDGE AUTH · GEMINI AI
         </div>
         """, unsafe_allow_html=True)
 
@@ -2402,6 +2491,18 @@ else:
 
     # ── SIDEBAR ──────────────────────────────────────────────
     with st.sidebar:
+        # ── 🤖 ROBOT GÖZLERI KONTROL SEÇIMI ──────────────────
+        col_eye1, col_eye2 = st.columns(2)
+        with col_eye1:
+            if st.checkbox("🤖 Gözleri Göster", value=True, key="show_robot_eyes"):
+                st.session_state.robot_eyes_visible = True
+            else:
+                st.session_state.robot_eyes_visible = False
+        with col_eye2:
+            st.caption("Robot Asistan")
+        
+        st.divider()
+        
         logo_b64 = get_logo_b64()
         user_xp = data_store.get("xp", {}).get(user_name, 0)
         level = user_xp // 500 + 1
@@ -4459,3 +4560,26 @@ Somut rakamlar ve yüzdeler kullan. Profesyonel ama anlaşılır ol.
                 <div style="font-size:0.72rem; color:{color};">%30 artış riski</div>
             </div>
             """, unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════
+# 🤖 ROBOT GÖZLERI BÖLÜMÜ (KOŞULLU GÖSTERME)
+# ═══════════════════════════════════════════════════════════════
+if st.session_state.get('robot_eyes_visible', True):
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 20px 0;">
+        <h3 style="color: #11855B; margin-bottom: 10px;">🤖 Stinga Pro Robot Asistanı</h3>
+        <p style="color: #7a96a4; font-size: 0.9em;">Farenizi hareket ettirin - Gözler sizi takip edecek!</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown(ROBOT_EYES_HTML, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="text-align: center; padding: 15px; background: rgba(17,133,91,0.05); border-radius: 12px; margin-top: 15px;">
+        <small style="color: #7a96a4;">
+            💡 <strong>İpucu:</strong> Gözler Canvas teknolojisi ile gerçek zamanlı fare hareketini takip eder.
+            Mobil cihazlarda da dokunmatik takip desteği vardır.
+        </small>
+    </div>
+    """, unsafe_allow_html=True)
