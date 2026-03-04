@@ -201,7 +201,7 @@ SEVIYELER = [
 def load_data() -> dict:
     default = {
         "expenses": [],
-        "wallets":  {"Zeynep Özyaman": 50000, "Serkan Güzdemir": 25000, "Okan İlhan": 5000, "Şenol Özyaman": 30000},
+        "wallets":  {"Zeynep Özyaman": 0, "Serkan Güzdemir": 0, "Okan İlhan": 0, "Şenol Özyaman": 0},
         "budgets": {
             "Maden Sahası":   {"limit": 100000, "spent": 0},
             "Aktif Karbon":   {"limit": 80000,  "spent": 0},
@@ -1380,6 +1380,18 @@ def update_expense():
             return jsonify({"error": "Fiş bulunamadı", "ID": fis_id}), 404
         save_data(data)
         return jsonify({"ok": True, "ID": fis_id}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/reset-wallets", methods=["POST"])
+def reset_wallets():
+    """Tüm wallet bakiyelerini sıfırla. Bakiyeler bundan sonra sadece ledger transferleri ile oluşur."""
+    try:
+        data = load_data()
+        for user in data.get("wallets", {}):
+            data["wallets"][user] = 0
+        save_data(data)
+        return jsonify({"ok": True, "wallets": data["wallets"], "mesaj": "Tüm bakiyeler sıfırlandı. /transfer ile harcırah gönderin."}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
