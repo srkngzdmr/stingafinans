@@ -1403,7 +1403,7 @@ def update_expense():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/reset-wallets", methods=["POST"])
+@app.route("/reset-wallets", methods=["GET", "POST"])
 def reset_wallets():
     """Tüm wallet bakiyelerini sıfırla. Bakiyeler bundan sonra sadece ledger transferleri ile oluşur."""
     try:
@@ -1415,7 +1415,7 @@ def reset_wallets():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/clean-all-expenses", methods=["POST"])
+@app.route("/clean-all-expenses", methods=["GET", "POST"])
 def clean_all_expenses():
     """Tüm expense kayıtlarındaki metin alanlarından HTML kalıntılarını temizle."""
     try:
