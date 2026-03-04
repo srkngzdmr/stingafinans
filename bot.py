@@ -98,7 +98,7 @@ PHONE_DIRECTORY = {
         "ad": "Serkan Güzdemir", "rol": "İşletme Müdürü",      "limit": 50000,
         "emoji": "⚡",  "yetki": "admin", "dashboard_key": "serkan"
     },
-    "whatsapp:+905547858627": {
+    "whatsapp:+905447858627": {
         "ad": "Zeynep Özyaman", "rol": "Yönetim Kurulu Başkanı", "limit": 100000,
         "emoji": "👑",  "yetki": "admin", "dashboard_key": "zeynep"
     },
