@@ -961,6 +961,7 @@ def _ph(txt, st): return Paragraph(txt, st)
 def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_path=None):
     """Profesyonel muhasebe PDF raporu — KDV ayrıntılı, kategori kırılımlı."""
     try:
+        print(f"PDF EXPORT START: {len(df_raw)} rows, cols={list(df_raw.columns)}", flush=True)
         # Logo yoksa hata vermesin
         if logo_path and not os.path.exists(logo_path):
             logo_path = None
@@ -1215,6 +1216,7 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
 def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
     """Profesyonel muhasebe Excel raporu — 4 sayfalı, KDV kırılımlı."""
     try:
+        print(f"EXCEL EXPORT START: {len(df_raw)} rows, cols={list(df_raw.columns)}", flush=True)
         df = df_raw.copy()
         # Logo yoksa hata vermesin
         if logo_path and not os.path.exists(logo_path):
