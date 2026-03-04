@@ -167,12 +167,16 @@ ODEME_BEKLE_FLAG = "odeme_bekle"
 ODEME_BEKLE_DATA = "odeme_data"
 
 KATEGORILER = {
-    "yemek":     ["restoran", "kafe", "market", "manav", "kasap", "ekmek", "cafe", "burger", "pizza", "döner"],
-    "ulasim":    ["akaryakıt", "benzin", "otopark", "taksi", "uber", "servis", "shell", "bp", "opet", "petrol"],
+    "yemek":     ["restoran", "kafe", "lokanta", "manav", "kasap", "ekmek", "cafe", "burger", "pizza", "döner",
+                  "köfte", "balık", "kebap", "lahmacun", "pide", "çorba", "yemek", "mutfak", "bistro", "steak"],
+    "ulasim":    ["akaryakıt", "benzin", "motorin", "otopark", "taksi", "uber", "servis", "shell", "bp", "opet",
+                  "petrol", "total", "enerji akaryakıt", "lukoil", "po ", "aytemiz", "turkuaz", "alpet",
+                  "gas ", "yakıt", "mazot", "istasyon", "tüpraş", "moil"],
     "ofis":      ["kırtasiye", "toner", "bilgisayar", "telefon", "ekipman", "teknosa", "mediamarkt"],
-    "konaklama": ["otel", "apart", "hostel", "hilton", "marriott"],
+    "konaklama": ["otel", "apart", "hostel", "hilton", "marriott", "pansiyon", "konaklama", "hotel"],
     "eglence":   ["sinema", "konser", "etkinlik", "cinemaximum"],
     "saglik":    ["eczane", "hastane", "klinik", "doktor", "ilaç"],
+    "market":    ["market", "migros", "bim", "a101", "şok", "carrefour", "metro", "makro", "file"],
 }
 
 ROZETLER = {
@@ -365,10 +369,31 @@ def add_header(response):
 def gorsel_hash(b: bytes) -> str:
     return hashlib.md5(b).hexdigest()
 
-def kategori_tespit(firma: str) -> str:
+def kategori_tespit(firma: str, fis_turu: str = "") -> str:
+    """Firma adı + AI fis_turu ile kategori belirle. Yakıt istasyonları öncelikli."""
     f = firma.lower()
+    ft = fis_turu.lower().strip() if fis_turu else ""
+
+    # 1) AI fis_turu güvenilir bir değer verdiyse önce onu kullan
+    _fis_turu_map = {
+        "akaryakıt": "ulasim", "akaryakit": "ulasim", "benzin": "ulasim", "yakıt": "ulasim",
+        "restoran": "yemek", "yemek": "yemek", "lokanta": "yemek", "cafe": "yemek", "kafe": "yemek",
+        "otel": "konaklama", "konaklama": "konaklama", "hotel": "konaklama",
+        "market": "market", "süpermarket": "market",
+    }
+    if ft in _fis_turu_map:
+        return _fis_turu_map[ft]
+
+    # 2) Yakıt istasyonları öncelikli kontrol (OPET market, Shell market vb. yakıttır)
+    _yakit_firma = ["opet", "shell", "bp ", "total", "petrol", "akaryakıt", "lukoil",
+                    "aytemiz", "turkuaz", "alpet", "po ", "tüpraş", "moil", "enerji akaryakıt"]
+    if any(k in f for k in _yakit_firma):
+        return "ulasim"
+
+    # 3) Standart kategori eşleştirme
     for kat, kelimeler in KATEGORILER.items():
-        if any(k in f for k in kelimeler): return kat
+        if any(k in f for k in kelimeler):
+            return kat
     return "diger"
 
 def seviye_hesapla(fis_sayisi: int) -> str:
@@ -619,10 +644,16 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_od
             except:
                 sonuclar.append(f"❌ Fiş {i+1}: Geçersiz görsel"); continue
             bugun = datetime.now().strftime("%Y-%m-%d")
-            prompt = f"""Fişi analiz et. Sadece JSON döndür. Bugün: {bugun}
-{{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,
-"odeme_yontemi":"nakit|kredi_karti|havale","para_birimi":"TRY",
-"risk_skoru":0,"sahte_mi":false,"fis_turu":"diger","audit_notu":"kısa özet"}}"""
+            prompt = (
+                f"Fişi dikkatli analiz et. Sadece JSON döndür. Bugün: {bugun}\n"
+                'ÖNEMLİ: OPET, Shell, BP, Total gibi akaryakıt istasyonlari: fis_turu="akaryakit"\n'
+                "Sigara, çikolata, kola gibi kişisel ürünler varsa kisisel_giderler listesine ekle.\n"
+                '{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,'
+                '"odeme_yontemi":"nakit|kredi_karti|havale","para_birimi":"TRY",'
+                '"kisisel_giderler":[{"urun":"...","tutar":0.0}],'
+                '"risk_skoru":0,"sahte_mi":false,"fis_turu":"restoran|market|akaryakıt|otel|diger",'
+                '"audit_notu":"kısa özet, kişisel gider varsa belirt"}'
+            )
             ai_res = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
             raw_text = re.sub(r"```json?|```", "", ai_res.text).strip()
             _m = re.search(r'\{.*\}', raw_text, re.DOTALL)
@@ -635,9 +666,16 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_od
                     kur = r["rates"].get(para_birimi)
                     if kur: tutar_try = tutar_try / kur
                 except: pass
-            kategori = kategori_tespit(fis.get("firma", ""))
+            kategori = kategori_tespit(fis.get("firma", ""), fis.get("fis_turu", ""))
             risk = int(fis.get("risk_skoru", 0))
+            # Kişisel gider risk artışı
+            _ckg = fis.get("kisisel_giderler", [])
+            if _ckg:
+                risk = min(100, risk + len(_ckg) * 15)
             durum = "Sahte Şüphesi" if risk >= 70 or fis.get("sahte_mi") else "Onay Bekliyor"
+            # Şenol Bey otomatik onay
+            if user_name in ("Şenol Özyaman", "Şenol Faik Özyaman") and durum == "Onay Bekliyor":
+                durum = "Onaylandı"
             final_odeme = mesaj_odeme_turu if mesaj_odeme_turu else fis.get("odeme_yontemi", "bilinmiyor")
             new_expense = {
                 "ID": datetime.now().strftime("%Y%m%d%H%M%S") + str(i),
@@ -650,6 +688,7 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_od
                 "OdemeTipi": final_odeme, "Odeme_Turu": final_odeme,
                 "Kategori": kategori, "Durum": durum, "Risk_Skoru": risk,
                 "AI_Audit": re.sub(r'<[^>]+>', '', str(fis.get("audit_notu", ""))).strip(),
+                "Kisisel_Giderler": _ckg,
                 "Anomaliler": anomali_tespit(user_name, tutar_try, data),
                 "Hash": img_hash, "Proje": "Genel Merkez",
                 "Kaynak": "WhatsApp-Çoklu", "Gorsel_B64": "",
@@ -1061,14 +1100,36 @@ def whatsapp_webhook():
                             from_="whatsapp:+14155238886", to=sender_phone)
                         return
                     bugun = datetime.now().strftime("%Y-%m-%d")
-                    prompt = f"""Sen mali denetçi ve adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür.
-ÖNEMLİ: Bugün {bugun}. Fişte yazan tarihi oku (DD-MM-YYYY → YYYY-MM-DD).
-{{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,
-"odeme_yontemi":"nakit|kredi_karti|havale","kalemler":[{{"aciklama":"...","tutar":0.0}}],
-"para_birimi":"TRY","risk_skoru":0,"risk_nedenleri":["..."],
-"audit_notu":"1 cümle kısa mali özet — HTML TAG KULLANMA",
-"sahte_mi":false,"sahtelik_nedeni":"","gorsel_kalitesi":"iyi|orta|kotu",
-"fis_turu":"restoran|market|akaryakıt|otel|diger","ilginc_detay":"dikkat çeken şey"}}"""
+                    prompt = (
+                        f"Sen Stinga Enerji şirketinin mali denetçisisin. Fişi dikkatli analiz et ve SADECE JSON döndür.\n\n"
+                        f"ÖNEMLİ: Bugün {bugun}. Fişte yazan tarihi oku (DD-MM-YYYY formatini YYYY-MM-DD'ye çevir).\n\n"
+                        "=== KATEGORİ / FİŞ TÜRÜ BELİRLEME (ÇOK DİKKATLİ OL) ===\n"
+                        '- Benzin istasyonu, akaryakıt, OPET, Shell, BP, Total, motorin, benzin: fis_turu="akaryakıt"\n'
+                        '- Restoran, lokanta, kafe, yemek: fis_turu="restoran"\n'
+                        '- Market, süpermarket (Migros, BİM, A101): fis_turu="market"\n'
+                        '- Otel, konaklama: fis_turu="otel"\n'
+                        'DİKKAT: "OPET MARKET" bir AKARYAKIT istasyonudur, market DEĞİLDİR. Akaryakıt satan her yer fis_turu="akaryakıt" olmalıdır.\n\n'
+                        "=== KİŞİSEL GİDER TESPİTİ (ÇOK ÖNEMLİ) ===\n"
+                        "Fişte şu ürünler varsa bunları kisisel_giderler listesine ekle ve risk_skoru artır:\n"
+                        "- Sigara, tütün, elektronik sigara: +25 risk\n"
+                        "- Çikolata, şekerleme, cips, gofret: +10 risk\n"
+                        "- Kola, gazlı içecek, enerji içeceği, bira, alkol: +15 risk\n"
+                        "- Sakız, dondurma: +5 risk\n"
+                        "- Kişisel bakım (şampuan, deodorant, parfüm): +10 risk\n\n"
+                        "=== RİSK SKORU ===\n"
+                        "- Temel risk: yakıt/yemek fişi=2, diğer=5\n"
+                        "- Kişisel gider varsa: her biri için yukarıdaki risk eklensin\n"
+                        "- Fatura net okunmuyorsa: +15\n"
+                        "- Gece 22:00-06:00 arası fiş: +10\n"
+                        "- Gelecek tarihli fiş: +30\n\n"
+                        '{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,'
+                        '"odeme_yontemi":"nakit|kredi_karti|havale","kalemler":[{"aciklama":"...","tutar":0.0}],'
+                        '"kisisel_giderler":[{"urun":"sigara","tutar":25.0}],'
+                        '"para_birimi":"TRY","risk_skoru":0,"risk_nedenleri":["..."],'
+                        '"audit_notu":"1 cümle kısa mali özet, kişisel gider varsa mutlaka belirt",'
+                        '"sahte_mi":false,"sahtelik_nedeni":"","gorsel_kalitesi":"iyi|orta|kotu",'
+                        '"fis_turu":"restoran|market|akaryakıt|otel|diger","ilginc_detay":"dikkat çeken şey"}'
+                    )
 
                     ai_res = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
                     raw_text = ai_res.text
@@ -1106,10 +1167,26 @@ def whatsapp_webhook():
 
                     sahtelik = derin_sahtelik_analizi(fis, image)
                     anomaliler = anomali_tespit(user_name, tutar_try, data)
-                    kategori = kategori_tespit(fis.get("firma", ""))
+                    kategori = kategori_tespit(fis.get("firma", ""), fis.get("fis_turu", ""))
                     karakter = data.get("karakter_modu", {}).get(user_name, random.choice(["koc", "dedektif", "muhaseci"]))
                     fis["kategori"] = kategori
+
+                    # ── Kişisel gider tespiti ve risk artışı ──
+                    kisisel_giderler = fis.get("kisisel_giderler", [])
+                    kisisel_uyari = ""
+                    if kisisel_giderler:
+                        _kg_listesi = ", ".join([f"{kg.get('urun','?')} (₺{kg.get('tutar',0):.0f})" for kg in kisisel_giderler])
+                        kisisel_uyari = f"\n\n🚨 *KİŞİSEL GİDER TESPİTİ:*\n{_kg_listesi}\n⚠️ Bu ürünler şirket gideri olarak kabul edilmez!"
+                        # Risk skorunu artır
+                        _mevcut_risk = int(fis.get("risk_skoru", 0))
+                        _ek_risk = len(kisisel_giderler) * 15
+                        fis["risk_skoru"] = min(100, _mevcut_risk + _ek_risk)
+
                     yorum = yaratici_yorum(fis, user_name, karakter)
+
+                    # ── Şenol Bey otomatik onay + esprili mesaj ──
+                    _is_senol = user_name in ("Şenol Özyaman", "Şenol Faik Özyaman", "senol")
+                    _senol_mesaj = ""
 
                     data.setdefault("fis_sayaci", {})
                     data.setdefault("expenses", [])
@@ -1123,6 +1200,32 @@ def whatsapp_webhook():
                         durum = "Sahte Şüphesi"
                     else:
                         durum = "Onay Bekliyor"
+
+                    # ── Şenol Bey: Otomatik onay ──
+                    if _is_senol and durum == "Onay Bekliyor":
+                        durum = "Onaylandı"
+                        _senol_espri_listesi = [
+                            "Sizi sizden başka kim onaylayabilir Şenol Bey? 😄 Fişiniz direkt kaydedildi!",
+                            "Genel Müdür'ün fişi onay mı bekler? Tabii ki hayır! ✅ Otomatik onaylandı.",
+                            "Şenol Bey, fişiniz VIP muamelesi gördü — anında onay! 🎩",
+                            "Patron fişi yollamış, kim reddetmeye cesaret edebilir? 😎 Kayıt tamam!",
+                            "Şenol Bey bir fiş gönderdi, sistem saygıyla selam durdu ve onayladı! 🫡",
+                            "Bu fiş o kadar yetkiliydi ki kendini onayladı! 😁 Kayıtta Şenol Bey.",
+                            "Genel Müdür konuştu, sistem dinledi: ONAYLI! ✨",
+                            "Şenol Bey'in fişi geldi — kırmızı halı serildi, onay damgası basıldı! 🎖️",
+                        ]
+                        _senol_saglik_listesi = [
+                            "💚 Sağlık notu: Uzun süre oturarak çalışıyorsanız, her saat başı 5 dk yürüyüş yapmanız önerilir.",
+                            "💧 Hatırlatma: Günde en az 2 litre su içmeyi unutmayın Şenol Bey!",
+                            "🫀 Sağlık bilgisi: Düzenli kan basıncı kontrolü hayat kurtarır. Son ölçümünüz ne zaman?",
+                            "🥗 Beslenme önerisi: Öğle yemeğinde sebze ağırlıklı beslenme enerji verir.",
+                            "😴 Uyku kalitesi çok önemli — 7-8 saat uyku bağışıklığı %40 güçlendirir.",
+                            "🏃 Günde 30 dakika yürüyüş, kalp sağlığını önemli ölçüde iyileştirir.",
+                        ]
+                        _senol_mesaj = random.choice(_senol_espri_listesi)
+                        # %30 ihtimalle sağlık mesajı da ekle
+                        if random.random() < 0.3:
+                            _senol_mesaj += "\n\n" + random.choice(_senol_saglik_listesi)
 
                     # Thumbnail
                     import base64 as _b64mod
@@ -1154,10 +1257,11 @@ def whatsapp_webhook():
                         "OdemeTipi": final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor"),
                         "Odeme_Turu": final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor"),
                         "Kategori": kategori, "Durum": durum,
-                        "Risk_Skoru": sahtelik["guvensizlik_skoru"],
+                        "Risk_Skoru": max(int(fis.get("risk_skoru", 0)), sahtelik["guvensizlik_skoru"]),
                         "AI_Audit": re.sub(r'<[^>]+>', '', str(fis.get("audit_notu", ""))).strip(),
                         "AI_Anomali": fis.get("anomali", False),
                         "AI_Anomali_Aciklama": fis.get("anomali_aciklamasi", ""),
+                        "Kisisel_Giderler": kisisel_giderler,
                         "Anomaliler": anomaliler, "Hash": img_hash,
                         "Karakter": karakter,
                         "IlgincDetay": fis.get("ilginc_detay", ""),
@@ -1191,8 +1295,33 @@ def whatsapp_webhook():
                         data["user_states"][user_name][ODEME_BEKLE_FLAG] = True
                         data["user_states"][user_name][ODEME_BEKLE_DATA] = new_expense
                         save_data(data)
-                        risk = sahtelik["guvensizlik_skoru"]
+                        risk = max(int(fis.get("risk_skoru", 0)), sahtelik["guvensizlik_skoru"])
                         risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
+
+                        # Şenol Bey ödeme türü sormadan devam etsin
+                        if _is_senol:
+                            # Şenol Bey için default: şirket kartı
+                            new_expense["OdemeTipi"] = "sirket_karti"
+                            new_expense["Odeme_Turu"] = "sirket_karti"
+                            data["expenses"].append(new_expense)
+                            data["duplicate_hashes"].append(img_hash)
+                            data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
+                            add_xp(user_name, 50, "WhatsApp fiş tarama", data=data)
+                            save_data(data)
+                            _senol_odeme_msg = (
+                                f"✅ *FİŞ KAYDEDİLDİ — OTOMATİK ONAYLI* 🎩\n{'─'*22}\n"
+                                f"🏢 {fis.get('firma','?')}\n"
+                                f"💰 {tutar_try:,.2f} ₺\n"
+                                f"📅 {fis.get('tarih','—')}\n"
+                                f"🏷️ {kategori}\n"
+                                f"{risk_emoji} Risk: {risk}/100\n"
+                                f"💳 🏦 Şirket Kartı (otomatik)"
+                                + kisisel_uyari
+                                + f"\n\n🎩 _{random.choice(_senol_espri_listesi)}_"
+                            )
+                            twilio_client.messages.create(body=_senol_odeme_msg, from_="whatsapp:+14155238886", to=sender_phone)
+                            return
+
                         twilio_client.messages.create(
                             body=(
                                 f"📸 *Fiş Okundu!*\n{'─'*22}\n"
@@ -1200,8 +1329,9 @@ def whatsapp_webhook():
                                 f"💰 {tutar_try:,.2f} ₺\n"
                                 f"📅 {fis.get('tarih','—')}\n"
                                 f"🏷️ {kategori}\n"
-                                f"{risk_emoji} Risk: {risk}/100\n\n"
-                                f"💳 *Bu harcama nasıl ödendi?*\n\n"
+                                f"{risk_emoji} Risk: {risk}/100"
+                                + kisisel_uyari +
+                                f"\n\n💳 *Bu harcama nasıl ödendi?*\n\n"
                                 f"*1* veya *harcırah* yazın → 💵 Harcırahtan düşülsün\n"
                                 f"*2* veya *şirket* yazın → 🏦 Şirket kartından düşülsün"
                             ),
@@ -1264,7 +1394,8 @@ Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/1
                                 "info", data=data)
                     save_data(data)
 
-                    risk = sahtelik["guvensizlik_skoru"]
+                    # Risk skoru: AI risk + sahtelik risk'inden büyüğünü al
+                    risk = max(int(fis.get("risk_skoru", 0)), sahtelik["guvensizlik_skoru"])
                     risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
                     kalemler_str = ""
                     if fis.get("kalemler"):
@@ -1283,8 +1414,14 @@ Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/1
                     odeme_bilgi = odeme_turu_label(final_odeme)
                     odeme_aciklama = "💵 Harcırah kasanızdan düşülecek" if final_odeme == "harcirah" else "🏦 Genel merkezden düşülecek"
 
+                    # Şenol Bey için farklı başlık
+                    if _is_senol:
+                        _baslik = f"✅ *FİŞ KAYDEDİLDİ — OTOMATİK ONAYLI* 🎩\n{'─'*13}"
+                    else:
+                        _baslik = f"✅ *FİŞ KAYDEDİLDİ — ONAYA GÖNDERİLDİ*\n{'─'*13}"
+
                     yanit = (
-                        f"✅ *FİŞ KAYDEDİLDİ — ONAYA GÖNDERİLDİ*\n{'─'*13}\n"
+                        f"{_baslik}\n"
                         f"🏢 {fis.get('firma','?')}\n"
                         f"💰 {tutar_try:,.2f} ₺" + (f" ({fis['toplam_tutar']:.2f} {para_birimi})" if para_birimi != "TRY" else "") +
                         f"\n📅 {fis.get('tarih','—')}"
@@ -1293,11 +1430,13 @@ Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/1
                         f"\n🏷️ {kategori}"
                         f"\n{risk_emoji} Risk: {risk}/100"
                         + kalemler_str + ilginc_str
+                        + kisisel_uyari
                         + f"\n\n💬 _{ai_espri}_"
+                        + (f"\n\n🎩 _{_senol_mesaj}_" if _senol_mesaj else "")
                         + f"\n\n💳 Kasa: *{kasa_bakiye:,.0f} ₺*"
                         + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
                         + sahte_str + anomali_str
-                        + f"\n\n📨 Onay sonrası bildirim alacaksınız."
+                        + ("" if _is_senol else f"\n\n📨 Onay sonrası bildirim alacaksınız.")
                         + f"\n📍 Konum eklemek için konum pini gönder!"
                         + f"\n🔖 `{new_expense['ID']}`"
                     )
