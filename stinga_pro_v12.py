@@ -910,6 +910,7 @@ _R_ORN   = rl_colors.HexColor("#D97706")
 _R_GRN   = rl_colors.HexColor("#059669")
 
 _KDV_ORANLARI = {"yakıt":0.20,"yemek":0.10,"konaklama":0.20,"ulaşım":0.20,"kırtasiye":0.20}
+_last_export_error = {"pdf": "", "excel": ""}  # Son export hatasını sakla
 
 def _kdv_hesapla(tutar, kdv_field, kategori):
     try:
@@ -1190,16 +1191,21 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         doc.build(story)
         return buf.getvalue()
     except Exception as e:
-        print(f"PDF EXPORT HATASI: {e}", flush=True)
+        _last_export_error["pdf"] = str(e)
+        _err_msg = f"PDF EXPORT HATASI: {e}"
+        print(_err_msg, flush=True)
         import traceback; traceback.print_exc()
-        # Fallback: basit PDF oluştur
+        # Fallback: hatayı PDF içine yaz + basit rapor
         try:
             _fb_buf = io.BytesIO()
             _fb_doc = SimpleDocTemplate(_fb_buf, pagesize=A4)
             _fb_story = []
             _fb_style = ParagraphStyle("fb", fontName="Helvetica", fontSize=10)
             _fb_title = ParagraphStyle("fbt", fontName="Helvetica-Bold", fontSize=14)
+            _fb_err_style = ParagraphStyle("fbe", fontName="Helvetica", fontSize=8, textColor=rl_colors.HexColor("#DC2626"))
             _fb_story.append(Paragraph(title.translate(_TR_MAP), _fb_title))
+            _fb_story.append(Spacer(1, 0.3*cm))
+            _fb_story.append(Paragraph(f"HATA: {str(e).translate(_TR_MAP)}", _fb_err_style))
             _fb_story.append(Spacer(1, 0.5*cm))
             for _, row in df_raw.iterrows():
                 line = " | ".join([f"{c}: {str(row[c]).translate(_TR_MAP)}" for c in ["Tarih","Firma","Tutar","Kategori","Durum"] if c in df_raw.columns])
@@ -1394,6 +1400,7 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
 
         buf=io.BytesIO(); wb.save(buf); return buf.getvalue()
     except Exception as e:
+        _last_export_error["excel"] = str(e)
         print(f"EXCEL EXPORT HATASI: {e}", flush=True)
         import traceback; traceback.print_exc()
         # Fallback: basit Excel oluştur
@@ -4529,10 +4536,12 @@ Kısa ve net ol (max 300 kelime)."""
                     except Exception as _sk_perr:
                         _sk_pdf_data = b"%PDF-1.4\n"
                         st.error(f"PDF hatası: {_sk_perr}")
-                    if len(_sk_excel_data) < 100:
-                        st.warning(f"⚠️ Excel raporu oluşturulamadı ({len(_sk_excel_data)} byte). Sütunlar: {list(_skf_clean.columns)}")
-                    if len(_sk_pdf_data) < 100:
-                        st.warning(f"⚠️ PDF raporu oluşturulamadı ({len(_sk_pdf_data)} byte)")
+                    # Fallback kontrolü — boyut küçükse hata logla
+                    _expected_min = 5000  # Normal rapor en az 5KB olmalı
+                    if len(_sk_excel_data) < _expected_min:
+                        st.error(f"⚠️ Excel fallback: {_last_export_error.get('excel', 'Bilinmeyen hata')}")
+                    if len(_sk_pdf_data) < _expected_min:
+                        st.error(f"⚠️ PDF fallback: {_last_export_error.get('pdf', 'Bilinmeyen hata')}")
                     sd2.download_button("📊 Excel", _sk_excel_data,
                         f"SirketKK_{_sk_ay}.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
