@@ -569,6 +569,282 @@ def butce_durumu_str(user_name, data):
     bar = "█" * bar_dolu + "░" * (10 - bar_dolu)
     return f"[{bar}] %{oran:.1f} ({ay_top:.0f}/{butce:.0f} ₺)"
 
+# ─────────────────────────────────────────────
+#  📍 KONUM & ZAMAN ZEKASI — 3 YENİ ÖZELLİK
+# ─────────────────────────────────────────────
+
+def _koordinat_ara(adres: str) -> tuple:
+    """
+    Firma adresini (fişten AI tarafından çıkarılan) koordinata çevirir.
+    Nominatim OpenStreetMap API kullanır — ücretsiz, API key gerekmez.
+    Döner: (lat, lon) veya (None, None)
+    """
+    if not adres or len(adres) < 5:
+        return None, None
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {"q": adres, "format": "json", "limit": 1, "countrycodes": "tr"}
+        r = requests.get(url, params=params,
+                         headers={"User-Agent": "StingaProBot/1.0"}, timeout=6)
+        results = r.json()
+        if results:
+            return float(results[0]["lat"]), float(results[0]["lon"])
+    except Exception as e:
+        print(f"Geocode hatası ({adres}): {e}", flush=True)
+    return None, None
+
+def _mesafe_km(lat1, lon1, lat2, lon2) -> float:
+    """Haversine formülü ile iki koordinat arası mesafe (km)."""
+    import math
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    return R * 2 * math.asin(math.sqrt(a))
+
+def _min_sure_saat(mesafe_km: float) -> float:
+    """
+    İki nokta arası minimum ulaşım süresi (saat) tahmini.
+    Türkiye'de şehirlerarası ortalama 80 km/s, şehir içi 40 km/s varsayımı.
+    """
+    if mesafe_km < 50:
+        return mesafe_km / 40
+    return mesafe_km / 80
+
+def konum_celiskisi_kontrol(fis_adresi: str, fis_sehri: str, user_name: str,
+                             mesaj_zamani: datetime, fis_tarihi: str, data: dict) -> dict:
+    """
+    ÖZELLİK 1: Fişin adresi ile kullanıcının son bilinen konumunu karşılaştırır.
+    
+    Döner: {
+        "celiski": bool,
+        "risk_artisi": int,
+        "uyari_mesaji": str,
+        "fis_sehri": str,
+        "son_konum_sehri": str,
+        "mesafe_km": float
+    }
+    """
+    sonuc = {"celiski": False, "risk_artisi": 0, "uyari_mesaji": "", 
+             "fis_sehri": "", "son_konum_sehri": "", "mesafe_km": 0}
+    
+    if not fis_adresi and not fis_sehri:
+        return sonuc
+    
+    # Kullanıcının son bilinen konumunu bul (son 3 fişten şehir bilgisi)
+    kullanici_fisler = [e for e in data.get("expenses", [])
+                        if e.get("Kullanıcı") == user_name and e.get("Sehir")]
+    
+    if not kullanici_fisler:
+        return sonuc  # İlk fiş, karşılaştırılacak geçmiş yok
+    
+    # Son fişin şehri
+    son_fis_sehri = kullanici_fisler[-1].get("Sehir", "").strip()
+    
+    # Yeni fişin şehrini tespit et
+    yeni_fis_sehri = ""
+    if fis_sehri:
+        yeni_fis_sehri = fis_sehri.strip()
+    elif fis_adresi:
+        # Adresten şehir adını çıkar (kaba yöntem — virgülden sonrası genellikle şehirdir)
+        parcalar = [p.strip() for p in fis_adresi.split(",")]
+        if len(parcalar) >= 2:
+            yeni_fis_sehri = parcalar[-1]
+    
+    if not yeni_fis_sehri or not son_fis_sehri:
+        return sonuc
+    
+    sonuc["fis_sehri"] = yeni_fis_sehri
+    sonuc["son_konum_sehri"] = son_fis_sehri
+    
+    # Aynı şehirse sorun yok
+    if yeni_fis_sehri.lower().replace("i̇", "i") == son_fis_sehri.lower().replace("i̇", "i"):
+        return sonuc
+    
+    # Farklı şehir — koordinat alıp mesafe hesapla
+    lat1, lon1 = _koordinat_ara(son_fis_sehri + ", Türkiye")
+    lat2, lon2 = _koordinat_ara(yeni_fis_sehri + ", Türkiye")
+    
+    if not lat1 or not lat2:
+        # Koordinat bulunamadı ama şehir adları farklı — orta seviye uyarı
+        sonuc["celiski"] = True
+        sonuc["risk_artisi"] = 15
+        sonuc["uyari_mesaji"] = (
+            f"📍 *Konum Çelişkisi Tespit Edildi*\n"
+            f"Bu fiş *{yeni_fis_sehri}*'dan — ama son bilinen konumun *{son_fis_sehri}*.\n"
+            f"Seyahatteysen sorun değil, açıklama yazmak ister misin?"
+        )
+        return sonuc
+    
+    mesafe = _mesafe_km(lat1, lon1, lat2, lon2)
+    sonuc["mesafe_km"] = round(mesafe, 0)
+    
+    if mesafe < 80:
+        return sonuc  # Yakın şehirler, normal
+    
+    # Uzak şehirler — risk artır ve uyar
+    sonuc["celiski"] = True
+    
+    if mesafe > 500:
+        sonuc["risk_artisi"] = 35
+        emoji = "🚨"
+        yorum = "Bu mesafe uçak gerektirir."
+    elif mesafe > 200:
+        sonuc["risk_artisi"] = 25
+        emoji = "⚠️"
+        yorum = "Bu mesafeye gelmek birkaç saat sürer."
+    else:
+        sonuc["risk_artisi"] = 15
+        emoji = "📍"
+        yorum = "Kısa bir yolculuk yapmış olabilirsin."
+    
+    sonuc["uyari_mesaji"] = (
+        f"{emoji} *Konum Çelişkisi Tespit Edildi!*\n"
+        f"Bu fiş *{yeni_fis_sehri}*'dan alınmış.\n"
+        f"Son bilinen konumun: *{son_fis_sehri}* (~{mesafe:.0f} km uzak)\n"
+        f"_{yorum}_\n"
+        f"Seyahat fişiyse 'seyahat' yazarak onaylayabilirsin — risk puanın düşer."
+    )
+    return sonuc
+
+
+def zaman_mekan_imkansizlik_kontrol(fis_adresi: str, fis_sehri: str, fis_tarihi: str,
+                                     fis_saati_tahmini: str, user_name: str, data: dict) -> dict:
+    """
+    ÖZELLİK 2: Aynı gün farklı şehirlerden fiş gelip gelemeyeceğini hesaplar.
+    Google Maps gerekmez — Haversine + ortalama hız yeterli.
+    
+    Döner: {"imkansiz": bool, "risk_artisi": int, "uyari_mesaji": str}
+    """
+    sonuc = {"imkansiz": False, "risk_artisi": 0, "uyari_mesaji": ""}
+    
+    if not fis_tarihi or not fis_sehri:
+        return sonuc
+    
+    # Aynı güne ait, farklı şehirden fişleri bul
+    ayni_gun_fisler = [
+        e for e in data.get("expenses", [])
+        if e.get("Kullanıcı") == user_name
+        and e.get("Tarih", "") == fis_tarihi
+        and e.get("Sehir", "").strip()
+        and e.get("Sehir", "").strip().lower() != fis_sehri.lower()
+    ]
+    
+    if not ayni_gun_fisler:
+        return sonuc
+    
+    # Her önceki fiş için imkansızlık kontrolü
+    for onceki_fis in ayni_gun_fisler[-3:]:  # Son 3 tanesine bak
+        onceki_sehir = onceki_fis.get("Sehir", "").strip()
+        onceki_zaman_str = onceki_fis.get("Yukleme_Zamani", "")
+        
+        if not onceki_sehir or not onceki_zaman_str:
+            continue
+        
+        lat1, lon1 = _koordinat_ara(onceki_sehir + ", Türkiye")
+        lat2, lon2 = _koordinat_ara(fis_sehri + ", Türkiye")
+        
+        if not lat1 or not lat2:
+            continue
+        
+        mesafe = _mesafe_km(lat1, lon1, lat2, lon2)
+        
+        if mesafe < 80:
+            continue  # Yakın, sorun değil
+        
+        min_sure = _min_sure_saat(mesafe)
+        
+        # İki fişin zamanları arasındaki fark
+        try:
+            t1 = datetime.strptime(onceki_zaman_str[:16], "%Y-%m-%d %H:%M")
+            t2 = datetime.now()
+            fark_saat = abs((t2 - t1).total_seconds()) / 3600
+        except:
+            fark_saat = 999
+        
+        if fark_saat < min_sure * 0.85:  # %15 tolerans
+            sonuc["imkansiz"] = True
+            sonuc["risk_artisi"] = 40
+            sonuc["uyari_mesaji"] = (
+                f"⏱️ *Zaman-Mekan Tutarsızlığı!*\n"
+                f"Bugün saat {t1.strftime('%H:%M')}'de *{onceki_sehir}*'daydın.\n"
+                f"Bu fiş ise *{fis_sehri}*'dan — arası {mesafe:.0f} km.\n"
+                f"Bu mesafeyi en az *{min_sure:.1f} saatte* alabilirsin, ama aradan yalnızca *{fark_saat:.1f} saat* geçmiş.\n"
+                f"🚨 Risk puanı donduruldu. Açıklama yazar mısın?"
+            )
+            break  # İlk imkansızlık yeter
+    
+    return sonuc
+
+
+def fis_yasi_kontrol(raw_bytes: bytes, mesaj_zamani: datetime) -> dict:
+    """
+    ÖZELLİK 3: Fotoğrafın EXIF'inden çekilme tarihini okur,
+    yükleme zamanıyla karşılaştırır. WhatsApp bazen EXIF'i siliyor —
+    o zaman sessizce geçer, hata vermez.
+    
+    Döner: {"yasli": bool, "gun_farki": int, "risk_artisi": int, "uyari_mesaji": str, "cekme_zamani": str}
+    """
+    sonuc = {"yasli": False, "gun_farki": 0, "risk_artisi": 0, 
+             "uyari_mesaji": "", "cekme_zamani": ""}
+    try:
+        from PIL.ExifTags import TAGS
+        img = Image.open(BytesIO(raw_bytes))
+        exif_data = img._getexif()
+        if not exif_data:
+            return sonuc
+        
+        exif = {TAGS.get(k, k): v for k, v in exif_data.items()}
+        
+        # DateTimeOriginal önce, DateTime sonra
+        dt_str = exif.get("DateTimeOriginal") or exif.get("DateTime")
+        if not dt_str:
+            return sonuc
+        
+        cekme_dt = datetime.strptime(str(dt_str), "%Y:%m:%d %H:%M:%S")
+        sonuc["cekme_zamani"] = cekme_dt.strftime("%d.%m.%Y %H:%M")
+        
+        gun_farki = (mesaj_zamani - cekme_dt).days
+        sonuc["gun_farki"] = gun_farki
+        
+        if gun_farki < 0:
+            # Fotoğraf gelecekten gelmiş gibi görünüyor — saat ayarı bozuk olabilir
+            sonuc["yasli"] = True
+            sonuc["risk_artisi"] = 20
+            sonuc["uyari_mesaji"] = (
+                f"🕐 *Zaman Anomalisi!*\n"
+                f"Bu fotoğraf {abs(gun_farki)} gün *sonraki* bir tarih içeriyor.\n"
+                f"Telefon saat ayarın yanlış olabilir veya fiş manipüle edilmiş. +20 risk."
+            )
+        elif gun_farki >= 30:
+            sonuc["yasli"] = True
+            sonuc["risk_artisi"] = 30
+            sonuc["uyari_mesaji"] = (
+                f"🗓️ *Çok Eski Fiş!*\n"
+                f"Bu fotoğraf *{gun_farki} gün önce* ({cekme_dt.strftime('%d.%m.%Y')}) çekilmiş!\n"
+                f"Bu kadar eski bir fişi neden şimdi yüklüyorsun? Açıklama gerekiyor. +30 risk."
+            )
+        elif gun_farki >= 7:
+            sonuc["yasli"] = True
+            sonuc["risk_artisi"] = 20
+            sonuc["uyari_mesaji"] = (
+                f"🗓️ *Geç Yüklenen Fiş*\n"
+                f"Fotoğraf {gun_farki} gün önce ({cekme_dt.strftime('%d.%m.%Y')}) çekilmiş.\n"
+                f"Geç kalmışsın, anlıyoruz — ama yönetici de görecek. +20 risk."
+            )
+        elif gun_farki >= 3:
+            sonuc["yasli"] = True
+            sonuc["risk_artisi"] = 10
+            sonuc["uyari_mesaji"] = (
+                f"📅 Fişi {gun_farki} gün önce çekip bugün yükledin.\n"
+                f"Hızlı yüklemek risk puanını düşürür — bir dahaki sefere! +10 risk."
+            )
+    except Exception as e:
+        print(f"EXIF okuma hatası (sessiz geçildi): {e}", flush=True)
+    
+    return sonuc
+
+
 def nl_sorgu(soru, user_name, data):
     harcamalar = [e for e in data["expenses"] if e["Kullanıcı"] == user_name]
     if not harcamalar: return "Henüz kayıtlı harcamanız yok."
@@ -1128,9 +1404,15 @@ def whatsapp_webhook():
                         "- Fatura net okunmuyorsa: +15\n"
                         "- Gece 22:00-06:00 arası fiş: +10\n"
                         "- Gelecek tarihli fiş: +30\n\n"
+                        "=== ADRES & ŞEHİR (YENİ — ÇOK ÖNEMLİ) ===\n"
+                        "Fişte firma adresi, ilçe, il veya şehir bilgisi varsa mutlaka çıkar.\n"
+                        '- adres: fişte yazan tam adres (örn: "Atatürk Cad. No:5 Yenimahalle")\n'
+                        '- sehir: sadece il/şehir adı (örn: "Ankara", "İstanbul", "İzmir")\n'
+                        "Adres veya şehir bilgisi yoksa boş string bırak.\n\n"
                         '{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,'
                         '"odeme_yontemi":"nakit|kredi_karti|havale","kalemler":[{"aciklama":"...","tutar":0.0}],'
                         '"kisisel_giderler":[{"urun":"sigara","tutar":25.0}],'
+                        '"adres":"","sehir":"",'
                         '"para_birimi":"TRY","risk_skoru":0,"risk_nedenleri":["..."],'
                         '"audit_notu":"1 cümle kısa mali özet, kişisel gider varsa mutlaka belirt",'
                         '"sahte_mi":false,"sahtelik_nedeni":"","gorsel_kalitesi":"iyi|orta|kotu",'
@@ -1174,6 +1456,86 @@ def whatsapp_webhook():
                     sahtelik = derin_sahtelik_analizi(fis, image)
                     anomaliler = anomali_tespit(user_name, tutar_try, data)
                     kategori = kategori_tespit(fis.get("firma", ""), fis.get("fis_turu", ""))
+
+                    # ══════════════════════════════════════════════════
+                    # 🧠 YENİ: KONUM & ZAMAN ZEKASI (3 Özellik)
+                    # ══════════════════════════════════════════════════
+
+                    mesaj_zamani = datetime.now()
+
+                    # Fişin adres/şehir bilgisini AI'dan çıkarmaya çalış
+                    # AI prompt'unda adres yoksa firma adından tahmin et
+                    fis_adresi_ham = fis.get("adres", "") or fis.get("konum", "") or fis.get("firma", "")
+                    fis_sehri_ham  = fis.get("sehir", "") or fis.get("il", "")
+
+                    # Eğer AI'dan şehir gelmediyse, firma adresinden Nominatim ile bul
+                    if not fis_sehri_ham and fis_adresi_ham:
+                        try:
+                            geo_url = "https://nominatim.openstreetmap.org/search"
+                            geo_params = {"q": fis_adresi_ham + ", Türkiye", "format": "json", "limit": 1}
+                            geo_r = requests.get(geo_url, params=geo_params,
+                                                  headers={"User-Agent": "StingaProBot/1.0"}, timeout=5)
+                            geo_results = geo_r.json()
+                            if geo_results:
+                                display_name = geo_results[0].get("display_name", "")
+                                # display_name genellikle "Mahalle, İlçe, Şehir, Türkiye" formatında
+                                parcalar = [p.strip() for p in display_name.split(",")]
+                                # Türkiye'den önceki eleman il olur (son 2. eleman)
+                                if len(parcalar) >= 3:
+                                    fis_sehri_ham = parcalar[-2].strip()
+                        except Exception as _geo_err:
+                            print(f"Fis sehir geocode hatası: {_geo_err}", flush=True)
+
+                    # ── ÖZELLİK 1: Konum Çelişkisi ──────────────────
+                    konum_celiski = konum_celiskisi_kontrol(
+                        fis_adresi=fis_adresi_ham,
+                        fis_sehri=fis_sehri_ham,
+                        user_name=user_name,
+                        mesaj_zamani=mesaj_zamani,
+                        fis_tarihi=fis.get("tarih", ""),
+                        data=data
+                    )
+
+                    # ── ÖZELLİK 2: Zaman-Mekan İmkansızlığı ─────────
+                    zaman_celiski = zaman_mekan_imkansizlik_kontrol(
+                        fis_adresi=fis_adresi_ham,
+                        fis_sehri=fis_sehri_ham,
+                        fis_tarihi=fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
+                        fis_saati_tahmini="",
+                        user_name=user_name,
+                        data=data
+                    )
+
+                    # ── ÖZELLİK 3: Fiş Yaşı Sensörü ─────────────────
+                    yas_kontrol = fis_yasi_kontrol(raw_bytes, mesaj_zamani)
+
+                    # Risk puanına ekle
+                    _ek_risk = (
+                        konum_celiski.get("risk_artisi", 0) +
+                        zaman_celiski.get("risk_artisi", 0) +
+                        yas_kontrol.get("risk_artisi", 0)
+                    )
+                    if _ek_risk > 0:
+                        fis["risk_skoru"] = min(100, int(fis.get("risk_skoru", 0)) + _ek_risk)
+
+                    # Uyarı mesajlarını birleştir
+                    _zaman_konum_uyarilari = []
+                    if konum_celiski.get("celiski") and konum_celiski.get("uyari_mesaji"):
+                        _zaman_konum_uyarilari.append(konum_celiski["uyari_mesaji"])
+                    if zaman_celiski.get("imkansiz") and zaman_celiski.get("uyari_mesaji"):
+                        _zaman_konum_uyarilari.append(zaman_celiski["uyari_mesaji"])
+                    if yas_kontrol.get("yasli") and yas_kontrol.get("uyari_mesaji"):
+                        _zaman_konum_uyarilari.append(yas_kontrol["uyari_mesaji"])
+
+                    _zaman_konum_str = ("\n\n" + "\n\n".join(_zaman_konum_uyarilari)) if _zaman_konum_uyarilari else ""
+
+                    # Fişe metadata ekle (dashboard'da görünsün)
+                    if fis_sehri_ham:
+                        fis["_tespit_sehri"] = fis_sehri_ham
+                    if yas_kontrol.get("cekme_zamani"):
+                        fis["_cekme_zamani"] = yas_kontrol["cekme_zamani"]
+                        fis["_gun_farki"] = yas_kontrol.get("gun_farki", 0)
+                    # ══════════════════════════════════════════════════
                     karakter = data.get("karakter_modu", {}).get(user_name, random.choice(["koc", "dedektif", "muhaseci"]))
                     fis["kategori"] = kategori
 
@@ -1303,7 +1665,13 @@ def whatsapp_webhook():
                         "Proje": "Genel Merkez", "Oncelik": "Normal", "Notlar": "",
                         "Kaynak": "WhatsApp", "Dosya_Yolu": "",
                         "Gorsel_B64": gorsel_data_uri,
-                        "Konum": "", "Konum_Lat": None, "Konum_Lon": None, "Sehir": "",
+                        "Konum": "", "Konum_Lat": None, "Konum_Lon": None, "Sehir": fis_sehri_ham,
+                        # Yeni alanlar — konum & zaman zekası
+                        "Fis_Sehri": fis_sehri_ham,
+                        "Cekme_Zamani": yas_kontrol.get("cekme_zamani", ""),
+                        "Gun_Farki": yas_kontrol.get("gun_farki", 0),
+                        "Konum_Celiski": konum_celiski.get("celiski", False),
+                        "Zaman_Celiski": zaman_celiski.get("imkansiz", False),
                     }
 
                     # Mükerrer kontrolü (firma+tutar+tarih)
@@ -1361,6 +1729,7 @@ def whatsapp_webhook():
                                 f"💵 Harcırah kasanızdan düşüldü\n"
                                 f"💳 Kasa: *{_yeni_kasa:,.0f} ₺*"
                                 + kisisel_uyari
+                                + _zaman_konum_str
                                 + f"\n\n🎩 _{random.choice(_senol_espri_listesi)}_"
                                 + f"\n💚 _{random.choice(_senol_saglik_listesi)}_"
                                 + _diyaliz_uyari
@@ -1475,6 +1844,7 @@ Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/1
                         f"\n{risk_emoji} Risk: {risk}/100"
                         + kalemler_str + ilginc_str
                         + kisisel_uyari
+                        + _zaman_konum_str
                         + f"\n\n💬 _{ai_espri}_"
                         + (f"\n\n🎩 _{_senol_mesaj}_" if _senol_mesaj else "")
                         + f"\n\n💳 Kasa: *{kasa_bakiye:,.0f} ₺*"
