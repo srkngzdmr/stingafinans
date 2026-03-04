@@ -17,6 +17,15 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from collections import defaultdict
 
+# ── Google Drive Persistent Storage ──
+try:
+    from gdrive_sync import drive_save_async, drive_load
+    GDRIVE_ENABLED = True
+    print("GDrive sync modülü yüklendi.", flush=True)
+except ImportError:
+    GDRIVE_ENABLED = False
+    print("GDrive sync modülü bulunamadı — sadece lokal kayıt aktif.", flush=True)
+
 import requests
 from flask import Flask, request, jsonify
 from google import genai
@@ -233,6 +242,23 @@ def load_data() -> dict:
             print(f"DB okuma hatası ({try_file}): {e}", flush=True)
             continue
     print("UYARI: Geçerli DB bulunamadı, default döndürülüyor", flush=True)
+
+    # ── Lokal DB yoksa Google Drive'dan restore et ──
+    if GDRIVE_ENABLED:
+        print("GDrive'dan restore deneniyor...", flush=True)
+        try:
+            gdata = drive_load()
+            if gdata and "expenses" in gdata and len(gdata.get("expenses", [])) > 0:
+                for k, v in default.items():
+                    gdata.setdefault(k, v)
+                save_data(gdata)  # Lokal dosyaya da kaydet
+                print(f"GDrive'dan restore başarılı: {len(gdata.get('expenses',[]))} fiş", flush=True)
+                return gdata
+            else:
+                print("GDrive'da geçerli veri bulunamadı.", flush=True)
+        except Exception as e:
+            print(f"GDrive restore hatası: {e}", flush=True)
+
     return default
 
 import threading as _threading
@@ -264,6 +290,13 @@ def save_data(d: dict):
                     json.dump(d, f, ensure_ascii=False, indent=2)
             except Exception as e2:
                 print(f"FALLBACK KAYIT HATASI: {e2}", flush=True)
+
+    # ── Google Drive'a arka planda yedekle ──
+    if GDRIVE_ENABLED:
+        try:
+            drive_save_async(d)
+        except Exception as e:
+            print(f"GDrive async kayıt hatası: {e}", flush=True)
 
 def load_data_safe() -> dict:
     with _DB_LOCK:
