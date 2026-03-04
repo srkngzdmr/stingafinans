@@ -33,44 +33,42 @@ from PIL import Image
 
 app = Flask(__name__)
 
-# ── META CLOUD API — WhatsApp mesaj gönderici ──
+# ── TWILIO — WhatsApp mesaj gönderici ──
 def send_whatsapp(to: str, body: str) -> bool:
     """
-    Meta Cloud API ile WhatsApp mesajı gönderir.
+    Twilio API ile WhatsApp mesajı gönderir.
     Gerekli env değişkenleri:
-      META_PHONE_NUMBER_ID  → WhatsApp Business numaranızın Phone Number ID
-      META_ACCESS_TOKEN     → System User veya Page Access Token (kalıcı)
+      TWILIO_ACCOUNT_SID     → Twilio Account SID
+      TWILIO_AUTH_TOKEN      → Twilio Auth Token
+      TWILIO_WHATSAPP_NUMBER → Gönderen numara (örn: whatsapp:+14155238886)
     """
-    phone_number_id = os.getenv("META_PHONE_NUMBER_ID")
-    access_token    = os.getenv("META_ACCESS_TOKEN")
-    if not phone_number_id or not access_token:
-        print("❌ META_PHONE_NUMBER_ID veya META_ACCESS_TOKEN eksik!", flush=True)
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+
+    if not account_sid or not auth_token:
+        print("❌ TWILIO_ACCOUNT_SID veya TWILIO_AUTH_TOKEN eksik!", flush=True)
         return False
 
-    # "whatsapp:+905xxxxxxxxx" → "905xxxxxxxxx"
-    to_clean = to.replace("whatsapp:", "").replace("+", "").strip()
+    # "905xxxxxxxxx" → "whatsapp:+905xxxxxxxxx"
+    if not to.startswith("whatsapp:"):
+        to = "whatsapp:+" + to.lstrip("+")
 
-    url = f"https://graph.facebook.com/v20.0/{phone_number_id}/messages"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_clean,
-        "type": "text",
-        "text": {"body": body},
-    }
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=10)
-        if r.status_code == 200:
-            print(f"✅ Meta WA gönderildi → {to_clean}", flush=True)
+        r = requests.post(url, auth=(account_sid, auth_token), data={
+            "From": from_number,
+            "To": to,
+            "Body": body,
+        }, timeout=10)
+        if r.status_code in (200, 201):
+            print(f"✅ Twilio WA gönderildi → {to}", flush=True)
             return True
         else:
-            print(f"❌ Meta WA hata {r.status_code}: {r.text}", flush=True)
+            print(f"❌ Twilio WA hata {r.status_code}: {r.text}", flush=True)
             return False
     except Exception as e:
-        print(f"❌ Meta WA exception: {e}", flush=True)
+        print(f"❌ Twilio WA exception: {e}", flush=True)
         return False
 
 # ── STARTUP: DB_JSON env var'dan geri yükle (Railway restart sonrası) ──
@@ -632,18 +630,22 @@ def konum_isle(lat, lon, user_name, data):
     tutar = son_fis.get("Tutar", 0)
     return f"📍 *Konum bağlandı!*\n🏢 {firma} — {tutar:,.0f} ₺\n📌 _{adres}_\n🗺️ https://maps.google.com/?q={lat},{lon}"
 
-def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, meta_media_ids=None, mesaj_odeme_turu=None):
+def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, twilio_media_urls=None, meta_media_ids=None, mesaj_odeme_turu=None):
     """Birden fazla medya: tüm görselleri sırayla işler. mesaj_odeme_turu varsa her fişe uygulanır."""
     sonuclar = []
-    media_ids = meta_media_ids or []
-    for i, media_id in enumerate(media_ids[:5]):
+    media_urls = twilio_media_urls or []
+    for i, media_url_item in enumerate(media_urls[:5]):
         try:
-            # Meta Media ID'den görsel indir
+            # Twilio URL'den görsel indir
             raw_bytes = None
             try:
-                raw_bytes = _meta_download_media(media_id)
+                account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+                auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
+                r_dl = requests.get(media_url_item, auth=(account_sid, auth_token), timeout=30)
+                r_dl.raise_for_status()
+                raw_bytes = r_dl.content
             except Exception as _me:
-                print(f"Meta media indirme hatası (çoklu {i}): {_me}", flush=True)
+                print(f"Twilio media indirme hatası (çoklu {i}): {_me}", flush=True)
             if not raw_bytes or len(raw_bytes) < 500:
                 sonuclar.append(f"⚠️ Fiş {i+1}: Görsel indirilemedi"); continue
             img_hash = gorsel_hash(raw_bytes)
@@ -722,10 +724,11 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, meta_med
     return (f"📦 *{num_media} Fiş İşlendi*\n{'─'*22}\n" + "\n".join(sonuclar) +
             f"\n\n💰 Bugün eklenen: *{toplam_tutar:,.0f}₺*" + odeme_str + f"\n📨 Tümü yönetici onayına gönderildi. Harcaman Onay/Ret durumunda bilgilendirileceksin.")
 
+
 # ─────────────────────────────────────────────
 #  ANA WEBHOOK
 # ─────────────────────────────────────────────
-# ── META WEBHOOK DOĞRULAMA (GET) ──────────────────────────────
+
 @app.route("/whatsapp", methods=['GET'])
 def whatsapp_verify():
     """Meta, webhook URL'ini doğrulamak için bu endpoint'i çağırır."""
@@ -796,21 +799,23 @@ def _meta_download_media(media_id: str) -> bytes:
     return r2.content
 
 
-@app.route("/whatsapp", methods=['POST'])
+@app.route("/whatsapp", methods=['GET', 'POST'])
 def whatsapp_webhook():
-    # ── Meta payload parse ──────────────────────────────────────
-    body = request.get_json(silent=True) or {}
+    if request.method == 'GET':
+        return jsonify({"status": "ok"}), 200
+    # ── Twilio payload parse ──────────────────────────────────────
+    sender_phone = request.form.get("From", "")        # "whatsapp:+905xxxxxxxx"
+    incoming_msg = request.form.get("Body", "").strip()
+    num_media    = int(request.form.get("NumMedia", 0))
+    media_url    = request.form.get("MediaUrl0", None)
+    media_mime   = request.form.get("MediaContentType0", "")
+    wa_lat       = request.form.get("Latitude", "")
+    wa_lon       = request.form.get("Longitude", "")
 
-    # Meta bazen "statuses" (okundu/iletildi) bildirimleri gönderir → yoksay
-    try:
-        if "statuses" in body["entry"][0]["changes"][0]["value"]:
-            return jsonify({"status": "ok"}), 200
-    except Exception:
-        pass
-
-    sender_phone, incoming_msg, num_media, _meta_media_url, _meta_mime, wa_lat, wa_lon = _parse_meta_message(body)
     if not sender_phone:
         return jsonify({"status": "ignored"}), 200
+
+    print(f"📩 Gelen mesaj: {sender_phone} → {incoming_msg[:50] if incoming_msg else '[medya]'}", flush=True)
 
     is_location = bool(wa_lat and wa_lon)
 
@@ -1042,16 +1047,16 @@ def whatsapp_webhook():
     if num_media > 0:
         # ── ÇOKLU FİŞ
         if num_media >= 2:
-            # Meta'da birden fazla görsel ayrı ayrı mesaj olarak gelir; burada num_media=1 olur normalde.
-            # Eğer ileride birden fazla gönderilirse meta_media_ids listesi ile çalışır.
-            _meta_ids = []
-            if _meta_media_url and _meta_media_url.startswith("__meta_media_id__"):
-                _meta_ids.append(_meta_media_url.replace("__meta_media_id__", ""))
+            # Twilio'da birden fazla görsel MediaUrl0, MediaUrl1 ... şeklinde gelir
+            _twilio_urls = []
+            for _i in range(min(num_media, 5)):
+                _u = request.form.get(f"MediaUrl{_i}", "")
+                if _u: _twilio_urls.append(_u)
             def coklu_gonder():
                 _data = load_data()
                 _data.setdefault("user_states", {}).setdefault(user_name, {})
                 yanit = coklu_fis_isle(sender_phone, user_name, user_info, num_media, _data,
-                                       meta_media_ids=_meta_ids, mesaj_odeme_turu=mesaj_odeme_turu)
+                                       twilio_media_urls=_twilio_urls, mesaj_odeme_turu=mesaj_odeme_turu)
                 send_whatsapp(sender_phone, yanit)
             import threading as _t2
             _t2.Thread(target=coklu_gonder, daemon=True).start()
@@ -1060,25 +1065,27 @@ def whatsapp_webhook():
             return jsonify({"status": "ok"}), 200
 
         # ── TEKİL FİŞ ───────────────────────────────────────────────
-        # Meta'dan gelen media referansı _meta_media_url üzerinden gelir
-        media_url = _meta_media_url  # "__meta_media_id__<ID>" formatında
-        print(f"📸 Meta Media ref: {media_url}", flush=True)
+        # Twilio doğrudan MediaUrl0 ile gelir
+        print(f"📸 Twilio Media URL: {media_url}", flush=True)
 
         def analiz_et_gonder():
             try:
                     data = load_data()
-                    # ── Meta Media ID'den görsel indir ──
+                    # ── Twilio MediaUrl'den görsel indir ──
                     raw_bytes = None
                     try:
-                        if media_url and media_url.startswith("__meta_media_id__"):
-                            media_id = media_url.replace("__meta_media_id__", "")
-                            raw_bytes = _meta_download_media(media_id)
-                            print(f"✅ Meta media indirildi: {len(raw_bytes)} bytes", flush=True)
-                    except Exception as _meta_err:
-                        print(f"Meta media indirme hatası: {_meta_err}", flush=True)
+                        if media_url:
+                            account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+                            auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
+                            r = requests.get(media_url, auth=(account_sid, auth_token), timeout=30)
+                            r.raise_for_status()
+                            raw_bytes = r.content
+                            print(f"✅ Twilio media indirildi: {len(raw_bytes)} bytes", flush=True)
+                    except Exception as _tw_err:
+                        print(f"Twilio media indirme hatası: {_tw_err}", flush=True)
 
                     if not raw_bytes or len(raw_bytes) < 500:
-                        print(f"❌ TÜM STRATEJİLER BAŞARISIZ! URL: {media_url}", flush=True)
+                        print(f"❌ Görsel indirilemedi! URL: {media_url}", flush=True)
                         send_whatsapp(sender_phone, "❌ Fiş görseli indirilemedi. Lütfen tekrar deneyin veya farklı bir fotoğraf gönderin.")
                         return
 
