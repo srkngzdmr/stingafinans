@@ -30,10 +30,48 @@ import requests
 from flask import Flask, request, jsonify
 from google import genai
 from PIL import Image
-from twilio.twiml.messaging_response import MessagingResponse
-from twilio.rest import Client as TwilioClient
 
 app = Flask(__name__)
+
+# ── META CLOUD API — WhatsApp mesaj gönderici ──
+def send_whatsapp(to: str, body: str) -> bool:
+    """
+    Meta Cloud API ile WhatsApp mesajı gönderir.
+    Gerekli env değişkenleri:
+      META_PHONE_NUMBER_ID  → WhatsApp Business numaranızın Phone Number ID
+      META_ACCESS_TOKEN     → System User veya Page Access Token (kalıcı)
+    """
+    phone_number_id = os.getenv("META_PHONE_NUMBER_ID")
+    access_token    = os.getenv("META_ACCESS_TOKEN")
+    if not phone_number_id or not access_token:
+        print("❌ META_PHONE_NUMBER_ID veya META_ACCESS_TOKEN eksik!", flush=True)
+        return False
+
+    # "whatsapp:+905xxxxxxxxx" → "905xxxxxxxxx"
+    to_clean = to.replace("whatsapp:", "").replace("+", "").strip()
+
+    url = f"https://graph.facebook.com/v20.0/{phone_number_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_clean,
+        "type": "text",
+        "text": {"body": body},
+    }
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=10)
+        if r.status_code == 200:
+            print(f"✅ Meta WA gönderildi → {to_clean}", flush=True)
+            return True
+        else:
+            print(f"❌ Meta WA hata {r.status_code}: {r.text}", flush=True)
+            return False
+    except Exception as e:
+        print(f"❌ Meta WA exception: {e}", flush=True)
+        return False
 
 # ── STARTUP: DB_JSON env var'dan geri yükle (Railway restart sonrası) ──
 def _startup_restore():
@@ -61,13 +99,11 @@ def _startup_restore():
 client     = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODEL_NAME = "gemini-2.5-flash"
 
-TWILIO_SID   = os.getenv("TWILIO_SID")
-TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
-twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
-
-# Debug: credential kontrolü
-print(f"TWILIO_SID: {TWILIO_SID[:8]}...{TWILIO_SID[-4:] if TWILIO_SID else 'YOK'}", flush=True)
-print(f"TWILIO_TOKEN: {'set (' + str(len(TWILIO_TOKEN)) + ' chars)' if TWILIO_TOKEN else 'YOK!'}", flush=True)
+# Debug: Meta credential kontrolü
+_META_PID   = os.getenv("META_PHONE_NUMBER_ID", "")
+_META_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
+print(f"META_PHONE_NUMBER_ID: {'SET (' + _META_PID[:6] + '...)' if _META_PID else 'YOK!'}", flush=True)
+print(f"META_ACCESS_TOKEN: {'SET (' + str(len(_META_TOKEN)) + ' chars)' if _META_TOKEN else 'YOK!'}", flush=True)
 
 def _find_writable_dir():
     candidates = [
@@ -596,42 +632,18 @@ def konum_isle(lat, lon, user_name, data):
     tutar = son_fis.get("Tutar", 0)
     return f"📍 *Konum bağlandı!*\n🏢 {firma} — {tutar:,.0f} ₺\n📌 _{adres}_\n🗺️ https://maps.google.com/?q={lat},{lon}"
 
-def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_odeme_turu=None):
+def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, meta_media_ids=None, mesaj_odeme_turu=None):
     """Birden fazla medya: tüm görselleri sırayla işler. mesaj_odeme_turu varsa her fişe uygulanır."""
-    import re as _re_c
     sonuclar = []
-    for i in range(min(num_media, 5)):
-        media_url_raw = request.values.get(f'MediaUrl{i}')
-        if not media_url_raw: continue
-        # URL'deki Account SID'i kendi SID'imizle değiştir
-        media_url = _re_c.sub(r'/Accounts/AC[a-f0-9]+/', f'/Accounts/{TWILIO_SID}/', media_url_raw)
+    media_ids = meta_media_ids or []
+    for i, media_id in enumerate(media_ids[:5]):
         try:
-            # Birden fazla indirme stratejisi dene
+            # Meta Media ID'den görsel indir
             raw_bytes = None
-            # Strateji A: auth + redirect=False, sonra Location takip
             try:
-                _r0 = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=20)
-                if _r0.status_code in [301, 302, 303, 307, 308]:
-                    _loc = _r0.headers.get('Location', '')
-                    if _loc:
-                        _r0 = requests.get(_loc, timeout=20)
-                if len(_r0.content) > 500:
-                    _ct0 = _r0.headers.get('Content-Type','').lower()
-                    if 'xml' not in _ct0 and 'html' not in _ct0:
-                        raw_bytes = _r0.content
-            except: pass
-            # Strateji B: fallback'ler
-            if not raw_bytes:
-                for _strat in [
-                    lambda: requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=True, timeout=20),
-                    lambda: requests.get(media_url, allow_redirects=True, timeout=20),
-                ]:
-                    try:
-                        _r = _strat()
-                        _ct = _r.headers.get('Content-Type','').lower()
-                        if len(_r.content) > 500 and 'xml' not in _ct and 'html' not in _ct:
-                            raw_bytes = _r.content; break
-                    except: continue
+                raw_bytes = _meta_download_media(media_id)
+            except Exception as _me:
+                print(f"Meta media indirme hatası (çoklu {i}): {_me}", flush=True)
             if not raw_bytes or len(raw_bytes) < 500:
                 sonuclar.append(f"⚠️ Fiş {i+1}: Görsel indirilemedi"); continue
             img_hash = gorsel_hash(raw_bytes)
@@ -713,21 +725,111 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_od
 # ─────────────────────────────────────────────
 #  ANA WEBHOOK
 # ─────────────────────────────────────────────
+# ── META WEBHOOK DOĞRULAMA (GET) ──────────────────────────────
+@app.route("/whatsapp", methods=['GET'])
+def whatsapp_verify():
+    """Meta, webhook URL'ini doğrulamak için bu endpoint'i çağırır."""
+    verify_token = os.getenv("META_VERIFY_TOKEN", "stinga_verify")
+    mode      = request.args.get("hub.mode")
+    token     = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+    if mode == "subscribe" and token == verify_token:
+        print("✅ Meta webhook doğrulandı!", flush=True)
+        return challenge, 200
+    print(f"❌ Meta webhook doğrulama başarısız. token={token}", flush=True)
+    return "Forbidden", 403
+
+
+def _parse_meta_message(body: dict):
+    """Meta webhook payload'ından mesaj bilgilerini çıkarır."""
+    try:
+        entry   = body["entry"][0]
+        changes = entry["changes"][0]["value"]
+        msg_obj = changes["messages"][0]
+        sender_phone = "whatsapp:+" + msg_obj["from"]
+
+        msg_type = msg_obj.get("type", "text")
+        incoming_msg = ""
+        num_media    = 0
+        media_url    = None
+        media_mime   = None
+        wa_lat = wa_lon = ""
+
+        if msg_type == "text":
+            incoming_msg = msg_obj["text"]["body"]
+        elif msg_type in ("image", "document"):
+            num_media = 1
+            media_id  = msg_obj[msg_type]["id"]
+            # Görseli Media ID → URL → bayt olarak çekeceğiz
+            media_url = f"__meta_media_id__{media_id}"  # işaret değeri
+            media_mime = msg_obj[msg_type].get("mime_type", "image/jpeg")
+            # Bazen altyazı da gelir
+            incoming_msg = msg_obj[msg_type].get("caption", "")
+        elif msg_type == "location":
+            wa_lat = str(msg_obj["location"]["latitude"])
+            wa_lon = str(msg_obj["location"]["longitude"])
+
+        return sender_phone, incoming_msg, num_media, media_url, media_mime, wa_lat, wa_lon
+    except Exception as e:
+        print(f"Meta payload parse hatası: {e}", flush=True)
+        return None, "", 0, None, None, "", ""
+
+
+def _meta_download_media(media_id: str) -> bytes:
+    """Meta Media ID'den binary görsel indirir."""
+    token = os.getenv("META_ACCESS_TOKEN", "")
+    # Adım 1: media_id → gerçek URL al
+    r = requests.get(
+        f"https://graph.facebook.com/v20.0/{media_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    r.raise_for_status()
+    dl_url = r.json()["url"]
+    # Adım 2: URL'den içeriği indir
+    r2 = requests.get(
+        dl_url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+    r2.raise_for_status()
+    return r2.content
+
+
 @app.route("/whatsapp", methods=['POST'])
 def whatsapp_webhook():
-    incoming_msg  = request.values.get('Body', '').strip()
-    sender_phone  = request.values.get('From', '')
-    num_media     = int(request.values.get('NumMedia', 0))
-    wa_lat        = request.values.get('Latitude', '')
-    wa_lon        = request.values.get('Longitude', '')
-    is_location   = bool(wa_lat and wa_lon)
+    # ── Meta payload parse ──────────────────────────────────────
+    body = request.get_json(silent=True) or {}
 
-    user_info     = PHONE_DIRECTORY.get(sender_phone, {"ad": "Bilinmeyen", "rol": "—", "limit": 0, "emoji": "👤", "yetki": "user"})
-    user_name     = user_info["ad"]
-    is_admin      = user_info.get("yetki") == "admin"
+    # Meta bazen "statuses" (okundu/iletildi) bildirimleri gönderir → yoksay
+    try:
+        if "statuses" in body["entry"][0]["changes"][0]["value"]:
+            return jsonify({"status": "ok"}), 200
+    except Exception:
+        pass
 
-    resp = MessagingResponse()
-    msg  = resp.message()
+    sender_phone, incoming_msg, num_media, _meta_media_url, _meta_mime, wa_lat, wa_lon = _parse_meta_message(body)
+    if not sender_phone:
+        return jsonify({"status": "ignored"}), 200
+
+    is_location = bool(wa_lat and wa_lon)
+
+    # ── Yanıt yardımcısı: msg.body() yerine send_whatsapp() ──
+    class _MsgProxy:
+        def __init__(self): self._text = ""
+        def body(self, t): self._text = t
+
+    msg = _MsgProxy()
+    def _reply(text=None):
+        t = text or msg._text
+        if t:
+            send_whatsapp(sender_phone, t)
+        return jsonify({"status": "ok"}), 200
+
+    user_info = PHONE_DIRECTORY.get(sender_phone, {"ad": "Bilinmeyen", "rol": "—", "limit": 0, "emoji": "👤", "yetki": "user"})
+    user_name = user_info["ad"]
+    is_admin  = user_info.get("yetki") == "admin"
+
     data = load_data()
     data.setdefault("user_states", {})
     us = data["user_states"].setdefault(user_name, {})
@@ -775,10 +877,10 @@ def whatsapp_webhook():
             else:
                 save_data(data)
                 msg.body("⚠️ Bekleyen fiş verisi bulunamadı. Lütfen fişi tekrar gönderin.")
-            return str(resp)
+            return _reply()
         else:
             msg.body("⚠️ Lütfen ödeme türünü belirtin:\n\n*1* veya *harcırah* → Harcırahtan düşülsün\n*2* veya *şirket* → Şirket kartından düşülsün")
-            return str(resp)
+            return _reply()
 
     # ══════════════════════════════════════════
     # 📍 KONUM MESAJI
@@ -790,7 +892,8 @@ def whatsapp_webhook():
             us.pop(KONUM_BEKLE_FLAG, None); save_data(data)
         except Exception as _ke:
             yanit = f"📍 Konum alındı ama işlenemedi: {_ke}"
-        msg.body(yanit); return str(resp)
+        msg.body(yanit)
+        return _reply()
 
     # ══════════════════════════════════════════
     # 🤖 KONUŞMALI AI MODU
@@ -799,9 +902,10 @@ def whatsapp_webhook():
         if mesaj_lower in AI_CHAT_EXIT:
             us.pop(AI_CHAT_FLAG, None); us.pop(AI_CHAT_HISTORY, None); save_data(data)
             msg.body("👋 Sohbet modu kapatıldı. İstediğin zaman tekrar *sohbet* yaz!")
-            return str(resp)
+            return _reply()
         yanit = konusmali_ai_yanit(user_name, incoming_msg, data, us)
-        save_data(data); msg.body(f"🤖 {yanit}"); return str(resp)
+        save_data(data); msg.body(f"🤖 {yanit}")
+        return _reply()
 
     # ── KOMUTLAR ────────────────────────────────────────────────
 
@@ -827,7 +931,7 @@ def whatsapp_webhook():
             f"💱 *döviz [miktar] [KOD]* | 🏅 *rozetler*\n"
             f"🎭 *karakter [dedektif/koc/muhaseci/yoda]*"
         )
-        return str(resp)
+        return _reply()
 
     if mesaj_lower == "özet":
         bu_ay = datetime.now().strftime("%Y-%m")
@@ -848,20 +952,21 @@ def whatsapp_webhook():
             f"💳 *Ödeme Dağılımı:*\n  💵 Harcırah: {harcirah_top:,.0f} ₺\n  🏦 Şirket Kartı: {sirket_top:,.0f} ₺\n\n"
             f"📉 Bütçe: {butce_durumu_str(user_name, data)}\n\n" + (kehane if kehane else "")
         )
-        return str(resp)
+        return _reply()
 
     if mesaj_lower == "sıralama":
-        msg.body(f"🏆 *Ekip Harcama Sıralaması*\n{'─'*28}\n{ekip_siralaması(data)}"); return str(resp)
+        msg.body(f"🏆 *Ekip Harcama Sıralaması*\n{'─'*28}\n{ekip_siralaması(data)}")
+        return _reply()
 
     if mesaj_lower in ["kehane", "kehanet", "tahmin"]:
         kehane = harcama_kehaneti(user_name, data)
         msg.body(f"🔮 *Harcama Kehaneti*\n{'─'*28}\n{kehane}" if kehane else "🔮 Bütçen güvende! 💚")
-        return str(resp)
+        return _reply()
 
     if mesaj_lower == "profil":
         profil = psikolojik_profil(user_name, data)
         msg.body(f"🧠 *Harcama Psikolojin*\n{'─'*28}\n{profil}" if profil else "🧠 Profil için en az 3 fiş gerekiyor!")
-        return str(resp)
+        return _reply()
 
     if mesaj_lower.startswith("karakter "):
         mod = incoming_msg[9:].strip().lower()
@@ -871,7 +976,7 @@ def whatsapp_webhook():
             mod_emoji = {"dedektif": "🕵️", "koc": "💪", "muhaseci": "📒", "yoda": "🌟", "hemsire": "💚"}
             msg.body(f"{mod_emoji.get(mod,'🎭')} Karakter modu *{mod}* aktif!")
         else: msg.body(f"❌ Geçersiz mod. Seçenekler: dedektif / koc / muhaseci / yoda / hemsire")
-        return str(resp)
+        return _reply()
 
     if mesaj_lower == "rozetler":
         kazanilan = data["rozetler"].get(user_name, [])
@@ -879,12 +984,13 @@ def whatsapp_webhook():
         else:
             satirlar = [f"{ROZETLER[r]['emoji']} *{ROZETLER[r]['ad']}*\n   {ROZETLER[r]['aciklama']}" for r in kazanilan if r in ROZETLER]
             msg.body(f"🏅 *Rozetlerin*\n{'─'*28}\n" + "\n".join(satirlar))
-        return str(resp)
+        return _reply()
 
     if mesaj_lower == "bakiye":
         bakiye = data["wallets"].get(user_name, 0)
         limit = data.get("user_limits", {}).get(user_name, user_info.get("limit", 0))
-        msg.body(f"💳 *Cüzdan*\nBakiye: *{bakiye:,.0f} ₺*\nLimit: {limit:,.0f} ₺"); return str(resp)
+        msg.body(f"💳 *Cüzdan*\nBakiye: *{bakiye:,.0f} ₺*\nLimit: {limit:,.0f} ₺")
+        return _reply()
 
     if mesaj_lower == "son5":
         son5 = [e for e in data["expenses"] if e["Kullanıcı"] == user_name][-5:]
@@ -892,7 +998,7 @@ def whatsapp_webhook():
         else:
             satirlar = [f"🏢 {e['Firma']} — {e['Tutar']:,.0f} ₺ ({e['Tarih']}) [{e.get('Durum','?')}] {odeme_turu_label(e.get('Odeme_Turu',''))}" for e in reversed(son5)]
             msg.body("📋 *Son 5 Harcama:*\n" + "\n".join(satirlar))
-        return str(resp)
+        return _reply()
 
     doviz_match = re.match(r"döviz\s+([\d.,]+)\s+([a-zA-Z]{3})", incoming_msg, re.IGNORECASE)
     if doviz_match:
@@ -902,15 +1008,16 @@ def whatsapp_webhook():
             if kur: msg.body(f"💱 {miktar:,.2f} {kod} = *{miktar/kur:,.2f} ₺*\n(1 {kod} = {1/kur:.4f} ₺)")
             else: msg.body(f"❌ '{kod}' bulunamadı.")
         except Exception as e: msg.body(f"❌ Döviz hatası: {e}")
-        return str(resp)
+        return _reply()
 
     if mesaj_lower.startswith("soru "):
-        msg.body(f"🧠 *AI Yanıtı:*\n{nl_sorgu(incoming_msg[5:].strip(), user_name, data)}"); return str(resp)
+        msg.body(f"🧠 *AI Yanıtı:*\n{nl_sorgu(incoming_msg[5:].strip(), user_name, data)}")
+        return _reply()
 
     if mesaj_lower in AI_CHAT_TRIGGER:
         us[AI_CHAT_FLAG] = True; us[AI_CHAT_HISTORY] = []; save_data(data)
         msg.body(f"🤖 *Stinga AI Sohbet Modu Aktif!*\n{'─'*28}\nHarcamaların hakkında her şeyi sorabilirsin.\n_Çıkmak için: çıkış_")
-        return str(resp)
+        return _reply()
 
     if mesaj_lower in ["konum", "konum ekle", "📍"]:
         son_fisler = [e for e in data["expenses"] if e["Kullanıcı"] == user_name and not e.get("Konum")]
@@ -918,7 +1025,7 @@ def whatsapp_webhook():
         else:
             son = son_fisler[-1]; us[KONUM_BEKLE_FLAG] = True; save_data(data)
             msg.body(f"📍 *Konum Bağlama*\nSon fişin: *{son.get('Firma','?')}* — {son.get('Tutar',0):,.0f}₺\n\nWhatsApp'tan konum pini gönder!")
-        return str(resp)
+        return _reply()
 
     if mesaj_lower.startswith("ara "):
         kelime = incoming_msg[4:].strip().lower()
@@ -929,163 +1036,57 @@ def whatsapp_webhook():
             toplam = sum(e["Tutar"] for e in sonuclar)
             satirlar = [f"• {e['Firma']} — {e['Tutar']:,.0f} ₺ ({e['Tarih']})" for e in sonuclar[-10:]]
             msg.body(f"🔍 *'{kelime}'* → {len(sonuclar)} fiş | {toplam:,.0f} ₺\n\n" + "\n".join(satirlar))
-        return str(resp)
+        return _reply()
 
     # ── FİŞ ANALİZİ ─────────────────────────────────────────────
     if num_media > 0:
         # ── ÇOKLU FİŞ
         if num_media >= 2:
+            # Meta'da birden fazla görsel ayrı ayrı mesaj olarak gelir; burada num_media=1 olur normalde.
+            # Eğer ileride birden fazla gönderilirse meta_media_ids listesi ile çalışır.
+            _meta_ids = []
+            if _meta_media_url and _meta_media_url.startswith("__meta_media_id__"):
+                _meta_ids.append(_meta_media_url.replace("__meta_media_id__", ""))
             def coklu_gonder():
                 _data = load_data()
                 _data.setdefault("user_states", {}).setdefault(user_name, {})
-                yanit = coklu_fis_isle(sender_phone, user_name, user_info, num_media, _data, mesaj_odeme_turu)
-                twilio_client.messages.create(body=yanit, from_="whatsapp:+14155238886", to=sender_phone)
+                yanit = coklu_fis_isle(sender_phone, user_name, user_info, num_media, _data,
+                                       meta_media_ids=_meta_ids, mesaj_odeme_turu=mesaj_odeme_turu)
+                send_whatsapp(sender_phone, yanit)
             import threading as _t2
             _t2.Thread(target=coklu_gonder, daemon=True).start()
             odeme_str = f"\n💳 Ödeme türü: *{odeme_turu_label(mesaj_odeme_turu)}*" if mesaj_odeme_turu else "\n⚠️ _Ödeme türü belirtilmedi — AI'dan tespit edilecek_"
-            msg.body(f"📦 *{num_media} fiş fotoğrafı alındı!*\n⚙️ Tümü işleniyor...{odeme_str}\n⌛ Sonuçlar birkaç saniye içinde gelecek.")
-            return str(resp)
+            send_whatsapp(sender_phone, f"📦 *{num_media} fiş fotoğrafı alındı!*\n⚙️ Tümü işleniyor...{odeme_str}\n⌛ Sonuçlar birkaç saniye içinde gelecek.")
+            return jsonify({"status": "ok"}), 200
 
         # ── TEKİL FİŞ ───────────────────────────────────────────────
-        media_url_raw = request.values.get('MediaUrl0')
-        media_content_type = request.values.get('MediaContentType0', '')
-        print(f"📸 Media URL (raw): {media_url_raw}", flush=True)
-        print(f"📸 Media ContentType: {media_content_type}", flush=True)
-
-        # ── URL'deki Account SID'i kendi SID'imizle değiştir
-        # (Twilio Sandbox bazen farklı/eski Account SID ile URL üretir)
-        import re as _re_url
-        media_url = _re_url.sub(
-            r'/Accounts/AC[a-f0-9]+/',
-            f'/Accounts/{TWILIO_SID}/',
-            media_url_raw
-        )
-        if media_url != media_url_raw:
-            print(f"📸 Media URL (SID düzeltildi): {media_url}", flush=True)
+        # Meta'dan gelen media referansı _meta_media_url üzerinden gelir
+        media_url = _meta_media_url  # "__meta_media_id__<ID>" formatında
+        print(f"📸 Meta Media ref: {media_url}", flush=True)
 
         def analiz_et_gonder():
             try:
                     data = load_data()
-                    # ── Görsel indirme ──
+                    # ── Meta Media ID'den görsel indir ──
                     raw_bytes = None
-
-                    # ═══ YENİ: Twilio HTTP client kullan (mesaj gönderme ile aynı auth) ═══
-                    # twilio_client zaten mesaj atabiliyor → aynı session ile media indir
                     try:
-                        print(f"Twilio HTTP client ile indirme...", flush=True)
-                        # Twilio Python SDK'nın internal HTTP client'ını kullan
-                        twilio_http = twilio_client.http_client
-                        tw_response = twilio_http.request(
-                            "GET", media_url,
-                            auth=(TWILIO_SID, TWILIO_TOKEN),
-                            allow_redirects=False,
-                            timeout=(10, 30)
-                        )
-                        print(f"  Twilio HTTP status: {tw_response.status_code}", flush=True)
-                        print(f"  Headers: {dict(list(tw_response.headers.items())[:5])}", flush=True)
-
-                        if tw_response.status_code in [301, 302, 303, 307, 308]:
-                            real_url = tw_response.headers.get('Location') or tw_response.headers.get('location', '')
-                            print(f"  Redirect → {real_url[:150]}", flush=True)
-                            if real_url:
-                                final_res = requests.get(real_url, timeout=30)
-                                if len(final_res.content) > 500:
-                                    raw_bytes = final_res.content
-                                    print(f"✅ Twilio HTTP redirect başarılı: {len(raw_bytes)} bytes", flush=True)
-                        elif tw_response.status_code == 200 and len(tw_response.content) > 500:
-                            raw_bytes = tw_response.content
-                            print(f"✅ Twilio HTTP direct başarılı: {len(raw_bytes)} bytes", flush=True)
-                        else:
-                            print(f"  Twilio HTTP başarısız: {tw_response.status_code}, {len(tw_response.content)} bytes", flush=True)
-                            # Yanıt içeriğini logla (hata mesajı görmek için)
-                            try:
-                                print(f"  Yanıt: {tw_response.content[:300]}", flush=True)
-                            except: pass
-                    except Exception as _tw_err:
-                        print(f"Twilio HTTP client hatası: {_tw_err}", flush=True)
-
-                    # ═══ FALLBACK 1: requests ile auth + redirect ═══
-                    if not raw_bytes:
-                        try:
-                            print(f"Fallback 1: requests auth+redirect...", flush=True)
-                            res = requests.get(media_url,
-                                               auth=(TWILIO_SID, TWILIO_TOKEN),
-                                               allow_redirects=False, timeout=20)
-                            print(f"  Status: {res.status_code}, Size: {len(res.content)}", flush=True)
-                            if res.status_code in [301, 302, 303, 307, 308]:
-                                loc = res.headers.get('Location', '')
-                                if loc:
-                                    res2 = requests.get(loc, timeout=20)
-                                    if len(res2.content) > 500:
-                                        raw_bytes = res2.content
-                                        print(f"✅ Fallback 1 başarılı: {len(raw_bytes)} bytes", flush=True)
-                            elif res.status_code == 200 and len(res.content) > 500:
-                                ct = res.headers.get('Content-Type', '').lower()
-                                if 'xml' not in ct:
-                                    raw_bytes = res.content
-                                    print(f"✅ Fallback 1 direct: {len(raw_bytes)} bytes", flush=True)
-                        except Exception as _f1:
-                            print(f"Fallback 1 hatası: {_f1}", flush=True)
-
-                    # ═══ FALLBACK 2: Auth'suz ═══
-                    if not raw_bytes:
-                        try:
-                            print(f"Fallback 2: auth'suz...", flush=True)
-                            res = requests.get(media_url, allow_redirects=True, timeout=20)
-                            if len(res.content) > 500:
-                                ct = res.headers.get('Content-Type', '').lower()
-                                if 'xml' not in ct and 'html' not in ct:
-                                    raw_bytes = res.content
-                                    print(f"✅ Fallback 2 başarılı: {len(raw_bytes)} bytes", flush=True)
-                        except Exception as _f2:
-                            print(f"Fallback 2 hatası: {_f2}", flush=True)
-
-                    # ═══ FALLBACK 3: Twilio REST API message media ═══
-                    if not raw_bytes:
-                        try:
-                            print(f"Fallback 3: Twilio REST API media fetch...", flush=True)
-                            import re as _re
-                            msg_match = _re.search(r'/Messages/(MM[a-f0-9]+)/Media/(ME[a-f0-9]+)', media_url)
-                            if msg_match:
-                                msg_sid = msg_match.group(1)
-                                media_sid = msg_match.group(2)
-                                print(f"  MSG={msg_sid}, MEDIA={media_sid}", flush=True)
-                                # Twilio SDK ile media'ya eriş
-                                try:
-                                    media_instance = twilio_client.api.accounts(TWILIO_SID).messages(msg_sid).media(media_sid).fetch()
-                                    media_uri = media_instance.uri.replace('.json', '')
-                                    full_url = f"https://api.twilio.com{media_uri}"
-                                    print(f"  SDK URI: {full_url}", flush=True)
-                                    r3 = requests.get(full_url, auth=(TWILIO_SID, TWILIO_TOKEN),
-                                                      allow_redirects=False, timeout=15)
-                                    if r3.status_code in [301, 302, 303, 307, 308]:
-                                        loc = r3.headers.get('Location', '')
-                                        if loc:
-                                            r3 = requests.get(loc, timeout=15)
-                                    if len(r3.content) > 500:
-                                        ct3 = r3.headers.get('Content-Type', '').lower()
-                                        if 'xml' not in ct3:
-                                            raw_bytes = r3.content
-                                            print(f"✅ Fallback 3 başarılı: {len(raw_bytes)} bytes", flush=True)
-                                except Exception as _sdk_err:
-                                    print(f"  SDK hatası: {_sdk_err}", flush=True)
-                        except Exception as _f3:
-                            print(f"Fallback 3 hatası: {_f3}", flush=True)
+                        if media_url and media_url.startswith("__meta_media_id__"):
+                            media_id = media_url.replace("__meta_media_id__", "")
+                            raw_bytes = _meta_download_media(media_id)
+                            print(f"✅ Meta media indirildi: {len(raw_bytes)} bytes", flush=True)
+                    except Exception as _meta_err:
+                        print(f"Meta media indirme hatası: {_meta_err}", flush=True)
 
                     if not raw_bytes or len(raw_bytes) < 500:
                         print(f"❌ TÜM STRATEJİLER BAŞARISIZ! URL: {media_url}", flush=True)
-                        twilio_client.messages.create(
-                            body="❌ Fiş görseli sunucudan indirilemedi. Lütfen tekrar deneyin veya farklı bir fotoğraf gönderin.",
-                            from_="whatsapp:+14155238886", to=sender_phone)
+                        send_whatsapp(sender_phone, "❌ Fiş görseli indirilemedi. Lütfen tekrar deneyin veya farklı bir fotoğraf gönderin.")
                         return
 
                     print(f"📸 İndirme başarılı: {len(raw_bytes)} bytes", flush=True)
 
                     img_hash = gorsel_hash(raw_bytes)
                     if img_hash in data["duplicate_hashes"]:
-                        twilio_client.messages.create(
-                            body="⚠️ *Mükerrer Fiş!* Bu fişi daha önce sisteme girdiniz.",
-                            from_="whatsapp:+14155238886", to=sender_phone)
+                        send_whatsapp(sender_phone, "⚠️ *Mükerrer Fiş!* Bu fişi daha önce sisteme girdiniz.")
                         return
 
                     # PIL ile aç — hata verirse kullanıcıya bildir
@@ -1095,9 +1096,7 @@ def whatsapp_webhook():
                         image = Image.open(BytesIO(raw_bytes))  # verify sonrası tekrar aç
                     except Exception as _img_err:
                         print(f"PIL görsel açma hatası: {_img_err}", flush=True)
-                        twilio_client.messages.create(
-                            body="❌ Gönderilen dosya geçerli bir görsel değil. Lütfen fiş *fotoğrafı* gönderin (PDF, video vb. desteklenmez).",
-                            from_="whatsapp:+14155238886", to=sender_phone)
+                        send_whatsapp(sender_phone, "❌ Gönderilen dosya geçerli bir görsel değil. Lütfen fiş *fotoğrafı* gönderin (PDF, video vb. desteklenmez).")
                         return
                     bugun = datetime.now().strftime("%Y-%m-%d")
                     prompt = (
@@ -1282,9 +1281,7 @@ def whatsapp_webhook():
                                 str(e.get("Tarih","")) == tarih_yeni):
                             mukerrer_fis = e; break
                     if mukerrer_fis:
-                        twilio_client.messages.create(
-                            body=f"⚠️ *Mükerrer Fiş!*\n{mukerrer_fis.get('Firma','?')} ₺{float(mukerrer_fis.get('Tutar',0)):,.2f} ({mukerrer_fis.get('Tarih','?')}) — {mukerrer_fis.get('Kullanıcı','?')} tarafından girilmiş.",
-                            from_="whatsapp:+14155238886", to=sender_phone)
+                        send_whatsapp(sender_phone, f"⚠️ *Mükerrer Fiş!*\n{mukerrer_fis.get('Firma','?')} ₺{float(mukerrer_fis.get('Tutar',0)):,.2f} ({mukerrer_fis.get('Tarih','?')}) — {mukerrer_fis.get('Kullanıcı','?')} tarafından girilmiş.")
                         return
 
                     # ══ ÖDEME TÜRÜ BELİRTİLMEMİŞSE → KULLANICIYA SOR ══
@@ -1319,11 +1316,10 @@ def whatsapp_webhook():
                                 + kisisel_uyari
                                 + f"\n\n🎩 _{random.choice(_senol_espri_listesi)}_"
                             )
-                            twilio_client.messages.create(body=_senol_odeme_msg, from_="whatsapp:+14155238886", to=sender_phone)
+                            send_whatsapp(sender_phone, _senol_odeme_msg)
                             return
 
-                        twilio_client.messages.create(
-                            body=(
+                        send_whatsapp(sender_phone,
                                 f"📸 *Fiş Okundu!*\n{'─'*22}\n"
                                 f"🏢 {fis.get('firma','?')}\n"
                                 f"💰 {tutar_try:,.2f} ₺\n"
@@ -1334,8 +1330,7 @@ def whatsapp_webhook():
                                 f"\n\n💳 *Bu harcama nasıl ödendi?*\n\n"
                                 f"*1* veya *harcırah* yazın → 💵 Harcırahtan düşülsün\n"
                                 f"*2* veya *şirket* yazın → 🏦 Şirket kartından düşülsün"
-                            ),
-                            from_="whatsapp:+14155238886", to=sender_phone)
+                            )
                         return
 
                     # ══ ÖDEME TÜRÜ BELLİ — DOĞRUDAN KAYDET ══
@@ -1440,15 +1435,14 @@ Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/1
                         + f"\n📍 Konum eklemek için konum pini gönder!"
                         + f"\n🔖 `{new_expense['ID']}`"
                     )
-                    twilio_client.messages.create(body=yanit, from_="whatsapp:+14155238886", to=sender_phone)
+                    send_whatsapp(sender_phone, yanit)
 
             except json.JSONDecodeError as e:
                 print(f"JSON HATA: {e}", flush=True)
-                twilio_client.messages.create(body="❌ Fiş okunamadı. Net fotoğraf çekip tekrar deneyin.",
-                    from_="whatsapp:+14155238886", to=sender_phone)
+                send_whatsapp(sender_phone, "❌ Fiş okunamadı. Net fotoğraf çekip tekrar deneyin.")
             except Exception as e:
                 import traceback; print(f"GENEL HATA: {traceback.format_exc()}", flush=True)
-                twilio_client.messages.create(body=f"❌ Hata: {str(e)}", from_="whatsapp:+14155238886", to=sender_phone)
+                send_whatsapp(sender_phone, f"❌ Hata: {str(e)}")
 
         import threading
         t = threading.Thread(target=analiz_et_gonder, daemon=True)
@@ -1457,13 +1451,13 @@ Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/1
             "📡 **STİNGA YAPAY ZEKA** fişi analiz merkezine gönderdi. Lütfen bekleyin.⌛"                
         ]
         msg.body(random.choice(beklemeler))
-        return str(resp)
+        return _reply()
 
     # ── VARSAYILAN
     fis_sayisi = data["fis_sayaci"].get(user_name, 0)
     seviye = seviye_hesapla(fis_sayisi)
     msg.body(f"{user_info['emoji']} Merhaba *{user_name}*!\n{seviye}\nFiş fotoğrafı gönder veya *yardım* yaz.\n\n💡 _Fişle birlikte *harcırah* veya *şirket* yazarak ödeme türünü belirtebilirsin!_")
-    return str(resp)
+    return _reply()
 
 # ─────────────────────────────────────────────
 #  ENDPOINTLER
@@ -1620,9 +1614,7 @@ def haftalik_ozet():
         butce = data.get("user_limits", {}).get(user, info.get("limit", 0))
         oran = (toplam / butce * 100) if butce > 0 else 0
         try:
-            twilio_client.messages.create(
-                body=f"📊 *Haftalık Özet — {user}*\n{'─'*28}\n💰 Bu ay: {toplam:,.0f} ₺\n📉 Bütçe: %{oran:.1f}\n🧾 Fiş: {len(ay_fis)}\n{butce_durumu_str(user, data)}",
-                from_="whatsapp:+14155238886", to=phone)
+            send_whatsapp(phone, f"📊 *Haftalık Özet — {user}*\n{'─'*28}\n💰 Bu ay: {toplam:,.0f} ₺\n📉 Bütçe: %{oran:.1f}\n🧾 Fiş: {len(ay_fis)}\n{butce_durumu_str(user, data)}")
         except Exception as e: print(f"Haftalık özet hatası ({user}): {e}", flush=True)
     return jsonify({"status": "ok", "gonderilen": len(PHONE_DIRECTORY)}), 200
 
@@ -1698,7 +1690,7 @@ Onay bildirimi yaz: ismiyle hitap et, ödeme türünü belirt (harcırah mı şi
                         mesaj = ai_call(red_prompt)
                     except:
                         mesaj = f"❌ *{kullanici}*, {firma} ({tutar:,.0f} ₺) reddedildi. {approver} ile iletişime geçin."
-                twilio_client.messages.create(body=mesaj, from_="whatsapp:+14155238886", to=target_phone)
+                send_whatsapp(target_phone, mesaj)
         except Exception as e: print(f"WhatsApp bildirimi hatası: {e}", flush=True)
 
         save_data(data)
