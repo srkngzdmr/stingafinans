@@ -61,12 +61,21 @@ def _startup_restore():
 client     = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODEL_NAME = "gemini-2.5-flash"
 
-TWILIO_SID   = os.getenv("TWILIO_SID")
-TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
-twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
+TWILIO_SID   = os.getenv("TWILIO_SID") or os.getenv("TWILIO_ACCOUNT_SID") or ""
+TWILIO_TOKEN = os.getenv("TWILIO_TOKEN") or os.getenv("TWILIO_AUTH_TOKEN") or ""
+
+class _DummyTwilio:
+    """TWILIO_SID/TOKEN eksik olduğunda uygulamanın crash etmemesi için."""
+    class messages:
+        @staticmethod
+        def create(**kwargs):
+            print(f"[TWILIO DUMMY] Mesaj gönderilemedi — credentials eksik. to={kwargs.get('to')}", flush=True)
+    def __bool__(self): return False
+
+twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN) if (TWILIO_SID and TWILIO_TOKEN) else _DummyTwilio()
 
 # Debug: credential kontrolü
-print(f"TWILIO_SID: {TWILIO_SID[:8]}...{TWILIO_SID[-4:] if TWILIO_SID else 'YOK'}", flush=True)
+print(f"TWILIO_SID: {TWILIO_SID[:8] + '...' + TWILIO_SID[-4:] if TWILIO_SID else 'YOK'}", flush=True)
 print(f"TWILIO_TOKEN: {'set (' + str(len(TWILIO_TOKEN)) + ' chars)' if TWILIO_TOKEN else 'YOK!'}", flush=True)
 
 def _find_writable_dir():
