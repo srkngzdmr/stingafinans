@@ -1238,6 +1238,51 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
     """
     Premium fiş arşivi — 4 fiş/sayfa, KDV kırılımlı, kategori ikonlu.
     """
+    try:
+        # ── Gerekli import'lar (fonksiyon içinde — Streamlit Cloud uyumlu) ──
+        import io as _io_local, os as _os_local, base64 as _b64_local
+        from reportlab.pdfgen import canvas as _rc
+        from reportlab.lib.pagesizes import A4 as _A4
+        from reportlab.lib.units import cm as _cm_local, mm as _mm_local
+        from reportlab.pdfbase import pdfmetrics as _pm
+        from reportlab.pdfbase.ttfonts import TTFont as _TTF
+        from PIL import Image as _PIL_local, ImageFilter as _IFilt
+        import numpy as _np_local
+        from collections import defaultdict
+
+        # Kısaltma alias'ları (geri kalan kod bunları kullanıyor)
+        io        = _io_local
+        os        = _os_local
+        base64    = _b64_local
+        np        = _np_local
+        _PIL      = _PIL_local
+        ImageFilter = _IFilt
+        pdfmetrics  = _pm
+        TTFont      = _TTF
+        A4          = _A4
+        cm          = _cm_local
+
+        # Font kayıt
+        _FONTS_L = {
+            "DJ":   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "DJ-B": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "DJ-M": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        }
+        for _alias, _path in _FONTS_L.items():
+            if os.path.exists(_path):
+                try: pdfmetrics.registerFont(TTFont(_alias, _path))
+                except: pass
+
+        def _f(bold=False, mono=False):
+            reg = pdfmetrics.getRegisteredFontNames()
+            if mono and "DJ-M" in reg: return "DJ-M"
+            if bold and "DJ-B" in reg: return "DJ-B"
+            if "DJ" in reg: return "DJ"
+            return "Helvetica-Bold" if bold else "Helvetica"
+
+    except Exception as _imp_err:
+        import traceback; traceback.print_exc()
+        return b"%PDF-1.4\n"
 
     # ── Renk paleti ─────────────────────────────────────────
     G     = (0.067, 0.522, 0.361)   # Stinga yeşil
@@ -1786,8 +1831,12 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
 
         draw_summary()
 
-    c.save()
-    return buf.getvalue()
+    try:
+        c.save()
+        return buf.getvalue()
+    except Exception:
+        import traceback; traceback.print_exc()
+        return b"%PDF-1.4\n"
 
 
 def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
