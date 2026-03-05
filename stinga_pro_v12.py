@@ -652,7 +652,18 @@ def load_data():
     try:
         r = _req.get(f"{RAILWAY_URL}/all-data", timeout=_API_TIMEOUT)
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        # ── Expense verilerindeki HTML kalıntılarını temizle ──
+        _html_fields = ("AI_Audit", "Notlar", "AI_Anomali_Aciklama", "IlgincDetay", "Firma")
+        for exp in data.get("expenses", []):
+            for _fld in _html_fields:
+                val = exp.get(_fld)
+                if val and isinstance(val, str) and ('<' in val or '&nbsp' in val):
+                    exp[_fld] = _re.sub(r'<[^>]+>', '', val)
+                    exp[_fld] = _re.sub(r'&nbsp;?', ' ', exp[_fld])
+                    exp[_fld] = _re.sub(r'&[a-z]+;', ' ', exp[_fld])
+                    exp[_fld] = _re.sub(r'\s+', ' ', exp[_fld]).strip()
+        return data
     except Exception as e:
         st.error(f"⚠️ Railway bağlantı hatası: {e}")
         return {
@@ -899,6 +910,7 @@ _R_ORN   = rl_colors.HexColor("#D97706")
 _R_GRN   = rl_colors.HexColor("#059669")
 
 _KDV_ORANLARI = {"yakıt":0.20,"yemek":0.10,"konaklama":0.20,"ulaşım":0.20,"kırtasiye":0.20}
+_last_export_error = {"pdf": "", "excel": ""}  # Son export hatasını sakla
 
 def _kdv_hesapla(tutar, kdv_field, kategori):
     try:
@@ -950,6 +962,23 @@ def _ph(txt, st): return Paragraph(txt, st)
 def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_path=None):
     """Profesyonel muhasebe PDF raporu — KDV ayrıntılı, kategori kırılımlı."""
     try:
+        print(f"PDF EXPORT START: {len(df_raw)} rows, cols={list(df_raw.columns)}", flush=True)
+        # Logo yoksa hata vermesin
+        if logo_path and not os.path.exists(logo_path):
+            logo_path = None
+        # ── Sorunlu sütunları kaldır ──
+        df_raw = df_raw.copy()
+        _drop_cols = ['Kalemler','Kisisel_Giderler','Gorsel_B64','Dosya_Yolu',
+                      'Anomaliler','Hash','Konum','Konum_Lat','Konum_Lon',
+                      'ParaBirimi','Sehir','Karakter','IlgincDetay','OdemeTipi',
+                      '_Tarih_DT','_Ay_Yil']
+        df_raw = df_raw.drop(columns=[c for c in _drop_cols if c in df_raw.columns], errors='ignore')
+        # ── List/dict değerleri string'e çevir ──
+        for _c in df_raw.columns:
+            try:
+                if df_raw[_c].apply(lambda x: isinstance(x, (list, dict))).any():
+                    df_raw[_c] = df_raw[_c].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
+            except: pass
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4,
             leftMargin=1.8*cm, rightMargin=1.8*cm,
@@ -967,8 +996,8 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         df["_t"] = pd.to_numeric(df.get("Tutar", 0), errors="coerce").fillna(0)
         df["_n"] = 0.0; df["_k"] = 0.0
         for i, row in df.iterrows():
-            kv = df.get("KDV", pd.Series([None]*len(df))).iloc[i] if "KDV" in df.columns else None
-            kt = df.get("Kategori", pd.Series([""]*len(df))).iloc[i] if "Kategori" in df.columns else ""
+            kv = row["KDV"] if "KDV" in df.columns else None
+            kt = row["Kategori"] if "Kategori" in df.columns else ""
             n, k = _kdv_hesapla(row["_t"], kv, kt)
             df.at[i,"_n"] = n; df.at[i,"_k"] = k
 
@@ -1162,165 +1191,373 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
         doc.build(story)
         return buf.getvalue()
     except Exception as e:
-        return b"%PDF-1.4\n"
+        _last_export_error["pdf"] = str(e)
+        _err_msg = f"PDF EXPORT HATASI: {e}"
+        print(_err_msg, flush=True)
+        import traceback; traceback.print_exc()
+        # Fallback: hatayı PDF içine yaz + basit rapor
+        try:
+            _fb_buf = io.BytesIO()
+            _fb_doc = SimpleDocTemplate(_fb_buf, pagesize=A4)
+            _fb_story = []
+            _fb_style = ParagraphStyle("fb", fontName="Helvetica", fontSize=10)
+            _fb_title = ParagraphStyle("fbt", fontName="Helvetica-Bold", fontSize=14)
+            _fb_err_style = ParagraphStyle("fbe", fontName="Helvetica", fontSize=8, textColor=rl_colors.HexColor("#DC2626"))
+            _fb_story.append(Paragraph(title.translate(_TR_MAP), _fb_title))
+            _fb_story.append(Spacer(1, 0.3*cm))
+            _fb_story.append(Paragraph(f"HATA: {str(e).translate(_TR_MAP)}", _fb_err_style))
+            _fb_story.append(Spacer(1, 0.5*cm))
+            for _, row in df_raw.iterrows():
+                line = " | ".join([f"{c}: {str(row[c]).translate(_TR_MAP)}" for c in ["Tarih","Firma","Tutar","Kategori","Durum"] if c in df_raw.columns])
+                _fb_story.append(Paragraph(line, _fb_style))
+                _fb_story.append(Spacer(1, 0.2*cm))
+            _fb_doc.build(_fb_story)
+            print("PDF FALLBACK BAŞARILI", flush=True)
+            return _fb_buf.getvalue()
+        except Exception as e2:
+            print(f"PDF FALLBACK HATASI: {e2}", flush=True)
+            return b"%PDF-1.4\n"
 
 
 def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
     """
-    Seçili dönemdeki harcamaların orijinal fiş görsellerini A4 sayfasına
-    grid şeklinde yerleştirir (sayfa başına 4 fiş: 2 sütun × 2 satır).
-    Her fişin altında ID, firma, tarih ve tutar bilgisi gösterilir.
+    Seçili dönemdeki fiş görsellerini profesyonel A4 PDF'e dönüştürür.
+    - Türkçe karakter desteği (DejaVu Sans TTF)
+    - Sayfa başına 2×2 = 4 fiş, her biri çerçeveli kart tasarımında
+    - Başlık bandı, fiş bilgi şeridi, sayfa numarası, footer
+    - Görsel yoksa zarif placeholder
     """
     try:
+        import io, os, base64
+        from reportlab.pdfgen import canvas as rl_canvas
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.units import cm, mm
-        from reportlab.lib import colors as rl_colors
-        from reportlab.platypus import SimpleDocTemplate, Image as RLImage, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib.styles import ParagraphStyle
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
-        import base64
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
         from PIL import Image as PILImage
-        import io
 
-        buf = io.BytesIO()
+        # ── Türkçe font kaydı ──────────────────────────────────
+        FONT_PATHS = {
+            "DJ":     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "DJ-B":   "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "DJ-M":   "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        }
+        for alias, path in FONT_PATHS.items():
+            if os.path.exists(path):
+                try:
+                    pdfmetrics.registerFont(TTFont(alias, path))
+                except Exception:
+                    pass
 
-        PAGE_W, PAGE_H = A4          # 595.27 x 841.89 pt
-        MARGIN = 1.5 * cm
-        COLS = 2
-        ROWS = 2
-        PER_PAGE = COLS * ROWS
+        def _font(bold=False, mono=False):
+            if mono and "DJ-M" in pdfmetrics.getRegisteredFontNames():   return "DJ-M"
+            if bold and "DJ-B" in pdfmetrics.getRegisteredFontNames():   return "DJ-B"
+            if "DJ"  in pdfmetrics.getRegisteredFontNames():             return "DJ"
+            return "Helvetica-Bold" if bold else "Helvetica"
 
-        # Hücre boyutları
-        cell_w = (PAGE_W - 2 * MARGIN - (COLS - 1) * 0.5 * cm) / COLS
-        caption_h = 1.0 * cm
-        cell_h = (PAGE_H - 2 * MARGIN - 1.5 * cm - (ROWS - 1) * 0.4 * cm) / ROWS - caption_h
+        # ── Sabitler ───────────────────────────────────────────
+        PAGE_W, PAGE_H = A4
+        MARGIN_X  = 1.4 * cm
+        MARGIN_TOP = 2.2 * cm
+        MARGIN_BOT = 1.4 * cm
+        COLS, ROWS = 2, 2
+        PER_PAGE   = COLS * ROWS
+        GAP_X = 0.45 * cm
+        GAP_Y = 0.55 * cm
+        CAPTION_H = 1.1 * cm
+        HEADER_H  = 1.2 * cm
 
-        from reportlab.pdfgen import canvas as rl_canvas
+        CELL_W = (PAGE_W - 2 * MARGIN_X - (COLS - 1) * GAP_X) / COLS
+        AVAIL_H = PAGE_H - MARGIN_TOP - MARGIN_BOT - HEADER_H
+        CELL_H  = (AVAIL_H - (ROWS - 1) * GAP_Y) / ROWS - CAPTION_H
 
-        c = rl_canvas.Canvas(buf, pagesize=A4)
+        # Renk paleti — Stinga teması
+        C_GREEN  = (0.067, 0.518, 0.357)    # #11855B
+        C_NAVY   = (0.184, 0.235, 0.431)    # #2F3C6E
+        C_CARD   = (0.980, 0.992, 0.988)    # kart arka planı
+        C_BORDER = (0.800, 0.875, 0.847)
+        C_CAPTION= (0.953, 0.976, 0.965)
+        C_MUTED  = (0.480, 0.588, 0.627)
+        C_TEXT   = (0.059, 0.098, 0.137)
+        C_WHITE  = (1, 1, 1)
+        C_BADGE  = (0.235, 0.729, 0.533)
 
-        # Görseli olan satırları filtrele
-        df = df_raw.copy()
+        def rgb(t): return t  # alias
+
+        # ── Görselleri topla ───────────────────────────────────
         records = []
-        for _, row in df.iterrows():
-            b64_uri = row.get("Gorsel_B64", "")
-            dosya   = row.get("Dosya_Yolu", "")
+        for _, row in df_raw.iterrows():
+            b64_uri = str(row.get("Gorsel_B64", "") or "")
+            dosya   = str(row.get("Dosya_Yolu", "") or "")
             img_bytes = None
-
-            if dosya and os.path.exists(str(dosya)):
+            if dosya and os.path.exists(dosya):
                 with open(dosya, "rb") as f:
                     img_bytes = f.read()
-            elif b64_uri:
+            elif len(b64_uri) > 80:
                 try:
                     data = b64_uri.split(",", 1)[1] if "," in b64_uri else b64_uri
                     img_bytes = base64.b64decode(data)
                 except Exception:
                     pass
+            records.append({
+                "id":    str(row.get("ID", "")),
+                "firma": str(row.get("Firma", "—")),
+                "tarih": str(row.get("Tarih", "")),
+                "tutar": float(row.get("Tutar", 0) or 0),
+                "durum": str(row.get("Durum", "")),
+                "bytes": img_bytes,
+            })
 
-            if img_bytes:
-                records.append({
-                    "id":    str(row.get("ID", "")),
-                    "firma": str(row.get("Firma", "—")),
-                    "tarih": str(row.get("Tarih", "")),
-                    "tutar": float(row.get("Tutar", 0)),
-                    "bytes": img_bytes,
-                })
+        buf = io.BytesIO()
+        c = rl_canvas.Canvas(buf, pagesize=A4)
+        total_pages = max(1, (len(records) + PER_PAGE - 1) // PER_PAGE)
 
-        if not records:
-            # Görsel yoksa bilgi sayfası
-            c.setFont("Helvetica-Bold", 14)
-            c.drawCentredString(PAGE_W / 2, PAGE_H / 2, "Seçili dönemde görsel içeren fiş bulunamadı.")
-            c.save()
-            return buf.getvalue()
+        # ── Yardımcılar ────────────────────────────────────────
+        def draw_rect_filled(canvas, x, y, w, h, fill_rgb, stroke_rgb=None, radius=4, lw=0.5):
+            canvas.saveState()
+            canvas.setFillColorRGB(*fill_rgb)
+            if stroke_rgb:
+                canvas.setStrokeColorRGB(*stroke_rgb)
+                canvas.setLineWidth(lw)
+                canvas.roundRect(x, y, w, h, radius, stroke=1, fill=1)
+            else:
+                canvas.roundRect(x, y, w, h, radius, stroke=0, fill=1)
+            canvas.restoreState()
 
-        def draw_header(canvas_obj, donem_str):
-            canvas_obj.setFont("Helvetica-Bold", 9)
-            canvas_obj.setFillColorRGB(0.07, 0.52, 0.36)  # --sg
-            canvas_obj.drawString(MARGIN, PAGE_H - MARGIN + 4 * mm,
-                                  f"STİNGA ENERJİ A.Ş.  —  ORİJİNAL FİŞ ARŞİVİ  |  Dönem: {donem_str}")
-            canvas_obj.setStrokeColorRGB(0.07, 0.52, 0.36)
-            canvas_obj.setLineWidth(0.5)
-            canvas_obj.line(MARGIN, PAGE_H - MARGIN + 2 * mm,
-                            PAGE_W - MARGIN, PAGE_H - MARGIN + 2 * mm)
+        def draw_header(canvas, page_no, total):
+            # Yeşil gradient başlık bandı
+            canvas.saveState()
+            canvas.setFillColorRGB(*C_GREEN)
+            canvas.rect(0, PAGE_H - HEADER_H, PAGE_W, HEADER_H, stroke=0, fill=1)
 
-        def draw_footer(canvas_obj, page_no, total_pages):
-            canvas_obj.setFont("Helvetica", 7)
-            canvas_obj.setFillColorRGB(0.48, 0.59, 0.64)
-            canvas_obj.drawCentredString(PAGE_W / 2, MARGIN - 6 * mm,
-                                         f"Sayfa {page_no} / {total_pages}  —  Stinga Pro v17.0")
+            # Sol: logo alanı + başlık
+            canvas.setFillColorRGB(*C_WHITE)
+            canvas.setFont(_font(bold=True), 10)
+            canvas.drawString(MARGIN_X, PAGE_H - HEADER_H + 0.42 * cm, "STİNGA ENERJİ A.Ş.")
+            canvas.setFont(_font(), 7.5)
+            canvas.setFillColorRGB(0.78, 0.95, 0.87)
+            canvas.drawString(MARGIN_X, PAGE_H - HEADER_H + 0.12 * cm, "ORİJİNAL FİŞ ARŞİVİ  ·  Dönem: " + donem)
 
-        total_pages = (len(records) + PER_PAGE - 1) // PER_PAGE
+            # Sağ: sayfa badge
+            badge_txt = f"Sayfa {page_no} / {total}"
+            canvas.setFillColorRGB(1, 1, 1, 0.18)
+            canvas.roundRect(PAGE_W - MARGIN_X - 2.8 * cm, PAGE_H - HEADER_H + 0.1 * cm,
+                             2.8 * cm, 0.8 * cm, 6, stroke=0, fill=1)
+            canvas.setFillColorRGB(*C_WHITE)
+            canvas.setFont(_font(bold=True), 8)
+            canvas.drawRightString(PAGE_W - MARGIN_X - 0.18 * cm,
+                                   PAGE_H - HEADER_H + 0.33 * cm, badge_txt)
+            canvas.restoreState()
 
-        for page_idx in range(total_pages):
-            page_records = records[page_idx * PER_PAGE: (page_idx + 1) * PER_PAGE]
-            draw_header(c, donem)
-            draw_footer(c, page_idx + 1, total_pages)
+        def draw_footer(canvas):
+            canvas.saveState()
+            canvas.setFillColorRGB(*C_MUTED)
+            canvas.setFont(_font(), 6.5)
+            canvas.drawCentredString(PAGE_W / 2, MARGIN_BOT - 5 * mm,
+                "Stinga Pro Finance v17.0  ·  Bu belge otomatik olarak üretilmiştir.")
+            # İnce çizgi
+            canvas.setStrokeColorRGB(*C_BORDER)
+            canvas.setLineWidth(0.3)
+            canvas.line(MARGIN_X, MARGIN_BOT - 1 * mm, PAGE_W - MARGIN_X, MARGIN_BOT - 1 * mm)
+            canvas.restoreState()
 
-            for slot, rec in enumerate(page_records):
-                col = slot % COLS
-                row_idx = slot // COLS
+        def draw_card(canvas, x, y, rec, idx):
+            """Tek bir fiş kartı çiz."""
+            CW, CH = CELL_W, CELL_H
 
-                x = MARGIN + col * (cell_w + 0.5 * cm)
-                y = PAGE_H - MARGIN - 1.2 * cm - row_idx * (cell_h + caption_h + 0.4 * cm) - cell_h
+            # Kart arka planı + gölge efekti (offset rect)
+            canvas.saveState()
+            canvas.setFillColorRGB(0.78, 0.82, 0.80, 0.25)
+            canvas.roundRect(x + 2, y - CAPTION_H - 2, CW, CH + CAPTION_H, 7, stroke=0, fill=1)
+            canvas.restoreState()
 
-                # Fiş çerçevesi
-                c.setStrokeColorRGB(0.87, 0.89, 0.91)
-                c.setLineWidth(0.6)
-                c.roundRect(x, y - caption_h, cell_w, cell_h + caption_h, 4, stroke=1, fill=0)
+            # Ana kart çerçevesi
+            draw_rect_filled(canvas, x, y - CAPTION_H, CW, CH + CAPTION_H,
+                             fill_rgb=C_CARD, stroke_rgb=C_BORDER, radius=7, lw=0.8)
 
-                # Görseli yerleştir (oranı koruyarak hücreye sığdır)
+            # Sol kenar aksanı (yeşil şerit)
+            canvas.saveState()
+            canvas.setFillColorRGB(*C_GREEN)
+            canvas.roundRect(x, y - CAPTION_H, 3, CH + CAPTION_H, 3, stroke=0, fill=1)
+            canvas.restoreState()
+
+            # ── Görsel alanı ──
+            img_pad = 6
+            img_x = x + img_pad + 3
+            img_y = y + img_pad
+            img_w = CW - img_pad * 2 - 3
+            img_h = CH - img_pad * 2
+
+            if rec["bytes"]:
                 try:
-                    pil_img = PILImage.open(io.BytesIO(rec["bytes"]))
-                    pil_img = pil_img.convert("RGB")
-                    img_w_px, img_h_px = pil_img.size
-                    ratio = img_w_px / img_h_px
-                    draw_w = cell_w - 4
-                    draw_h = draw_w / ratio
-                    if draw_h > cell_h - 4:
-                        draw_h = cell_h - 4
-                        draw_w = draw_h * ratio
-                    img_x = x + (cell_w - draw_w) / 2
-                    img_y = y + (cell_h - draw_h) / 2
-
+                    pil = PILImage.open(io.BytesIO(rec["bytes"])).convert("RGB")
+                    iw, ih = pil.size
+                    ratio = iw / ih
+                    dw = img_w
+                    dh = dw / ratio
+                    if dh > img_h:
+                        dh = img_h
+                        dw = dh * ratio
+                    cx = img_x + (img_w - dw) / 2
+                    cy = img_y + (img_h - dh) / 2
                     tmp = io.BytesIO()
-                    pil_img.save(tmp, format="JPEG", quality=85)
+                    pil.save(tmp, format="JPEG", quality=88)
                     tmp.seek(0)
-                    c.drawImage(
-                        rl_canvas.ImageReader(tmp),
-                        img_x, img_y, draw_w, draw_h,
-                        preserveAspectRatio=True, mask="auto"
-                    )
+                    # Hafif yuvarlak köşe için clip path
+                    canvas.saveState()
+                    path = canvas.beginPath()
+                    path.roundRect(img_x, img_y, img_w, img_h, 4)
+                    canvas.clipPath(path, stroke=0)
+                    canvas.drawImage(rl_canvas.ImageReader(tmp), cx, cy, dw, dh,
+                                     preserveAspectRatio=True, mask="auto")
+                    canvas.restoreState()
+                    # Görsel çerçevesi
+                    canvas.saveState()
+                    canvas.setStrokeColorRGB(*C_BORDER)
+                    canvas.setLineWidth(0.4)
+                    canvas.roundRect(img_x, img_y, img_w, img_h, 4, stroke=1, fill=0)
+                    canvas.restoreState()
                 except Exception:
-                    c.setFont("Helvetica", 8)
-                    c.setFillColorRGB(0.6, 0.6, 0.6)
-                    c.drawCentredString(x + cell_w / 2, y + cell_h / 2, "Görsel yüklenemedi")
+                    _draw_no_img(canvas, img_x, img_y, img_w, img_h)
+            else:
+                _draw_no_img(canvas, img_x, img_y, img_w, img_h)
 
-                # Alt bilgi şeridi
-                c.setFillColorRGB(0.97, 0.98, 0.97)
-                c.rect(x, y - caption_h, cell_w, caption_h, stroke=0, fill=1)
-                c.setFillColorRGB(0.07, 0.52, 0.36)
-                c.setFont("Helvetica-Bold", 7)
-                c.drawString(x + 4, y - caption_h + 6,
-                             f"{rec['id']}  |  {rec['firma'][:22]}  |  {rec['tarih']}  |  ₺{rec['tutar']:,.0f}")
+            # ── Caption şeridi ──
+            cap_y = y - CAPTION_H
+            draw_rect_filled(canvas, x, cap_y, CW, CAPTION_H,
+                             fill_rgb=C_CAPTION, radius=0)
+            # Alt yuvarlak köşeleri yeniden çiz
+            canvas.saveState()
+            canvas.setFillColorRGB(*C_CAPTION)
+            canvas.roundRect(x, cap_y, CW, CAPTION_H + 6, 7, stroke=0, fill=1)
+            canvas.setFillColorRGB(*C_CAPTION)
+            canvas.rect(x, cap_y + 6, CW, CAPTION_H - 6, stroke=0, fill=1)
+            canvas.restoreState()
 
+            # Caption çizgisi
+            canvas.saveState()
+            canvas.setStrokeColorRGB(*C_GREEN)
+            canvas.setLineWidth(0.4)
+            canvas.line(x + 3, y, x + CW - 3, y)
+            canvas.restoreState()
+
+            # Durum badge
+            durum = rec.get("durum", "")
+            if durum == "Onaylandı":
+                bd_color = (0.067, 0.518, 0.357)
+                bd_txt   = "✓ ONAYLANDI"
+            elif durum == "Bekliyor":
+                bd_color = (0.855, 0.467, 0.016)
+                bd_txt   = "⏳ BEKLİYOR"
+            elif durum == "Reddedildi":
+                bd_color = (0.863, 0.149, 0.149)
+                bd_txt   = "✗ REDDEDİLDİ"
+            else:
+                bd_color = C_MUTED
+                bd_txt   = durum[:12] if durum else ""
+
+            if bd_txt:
+                canvas.saveState()
+                canvas.setFillColorRGB(*bd_color)
+                bw = 1.9 * cm
+                canvas.roundRect(x + CW - bw - 4, cap_y + 0.28 * cm, bw, 0.48 * cm, 3, stroke=0, fill=1)
+                canvas.setFillColorRGB(*C_WHITE)
+                canvas.setFont(_font(bold=True), 5.2)
+                canvas.drawCentredString(x + CW - bw / 2 - 4, cap_y + 0.35 * cm, bd_txt)
+                canvas.restoreState()
+
+            # Caption metin: ID + firma + tarih + tutar
+            canvas.saveState()
+            canvas.setFillColorRGB(*C_GREEN)
+            canvas.setFont(_font(bold=True), 6.8)
+            canvas.drawString(x + 10, cap_y + 0.67 * cm, rec["id"][:20])
+            canvas.setFillColorRGB(*C_TEXT)
+            canvas.setFont(_font(bold=True), 7.2)
+            canvas.drawString(x + 10, cap_y + 0.40 * cm, rec["firma"][:26])
+            canvas.setFillColorRGB(*C_MUTED)
+            canvas.setFont(_font(), 6.5)
+            canvas.drawString(x + 10, cap_y + 0.15 * cm, rec["tarih"])
+            canvas.setFillColorRGB(*C_NAVY)
+            canvas.setFont(_font(bold=True), 8)
+            canvas.drawRightString(x + CW - 2.2 * cm, cap_y + 0.15 * cm,
+                                   f"₺{rec['tutar']:,.0f}")
+            canvas.restoreState()
+
+        def _draw_no_img(canvas, ix, iy, iw, ih):
+            canvas.saveState()
+            canvas.setFillColorRGB(0.94, 0.96, 0.95)
+            canvas.roundRect(ix, iy, iw, ih, 4, stroke=0, fill=1)
+            canvas.setStrokeColorRGB(*C_BORDER)
+            canvas.setLineWidth(0.5)
+            canvas.setDash(3, 3)
+            canvas.roundRect(ix, iy, iw, ih, 4, stroke=1, fill=0)
+            canvas.setFillColorRGB(*C_MUTED)
+            canvas.setFont(_font(), 8)
+            canvas.drawCentredString(ix + iw / 2, iy + ih / 2 + 6, "📷")
+            canvas.setFont(_font(), 7)
+            canvas.drawCentredString(ix + iw / 2, iy + ih / 2 - 8, "Görsel bulunamadı")
+            canvas.restoreState()
+
+        # ── Sayfaları oluştur ──────────────────────────────────
+        if not records:
+            draw_header(c, 1, 1)
+            draw_footer(c)
+            c.setFont(_font(), 11)
+            c.setFillColorRGB(*C_MUTED)
+            c.drawCentredString(PAGE_W / 2, PAGE_H / 2,
+                                "Seçili dönemde görsel içeren fiş bulunamadı.")
             c.showPage()
+        else:
+            for page_idx in range(total_pages):
+                page_recs = records[page_idx * PER_PAGE: (page_idx + 1) * PER_PAGE]
+                draw_header(c, page_idx + 1, total_pages)
+                draw_footer(c)
+
+                for slot, rec in enumerate(page_recs):
+                    col     = slot % COLS
+                    row_idx = slot // COLS
+                    cx = MARGIN_X + col * (CELL_W + GAP_X)
+                    cy = (PAGE_H - MARGIN_TOP - HEADER_H
+                          - row_idx * (CELL_H + CAPTION_H + GAP_Y)
+                          - CELL_H)
+                    draw_card(c, cx, cy, rec, slot)
+
+                c.showPage()
 
         c.save()
         return buf.getvalue()
 
     except Exception as e:
-        return b"%PDF-1.4\n"
+        import traceback
+        print("FISLER PDF HATA:", traceback.format_exc(), flush=True)
+        return b"%PDF-1.4\\n"
 
 
 def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
     """Profesyonel muhasebe Excel raporu — 4 sayfalı, KDV kırılımlı."""
     try:
+        print(f"EXCEL EXPORT START: {len(df_raw)} rows, cols={list(df_raw.columns)}", flush=True)
         df = df_raw.copy()
+        # Logo yoksa hata vermesin
+        if logo_path and not os.path.exists(logo_path):
+            logo_path = None
+        # ── Sorunlu sütunları kaldır ──
+        _drop_cols = ['Kalemler','Kisisel_Giderler','Gorsel_B64','Dosya_Yolu',
+                      'Anomaliler','Hash','Konum','Konum_Lat','Konum_Lon',
+                      'ParaBirimi','Sehir','Karakter','IlgincDetay','OdemeTipi',
+                      '_Tarih_DT','_Ay_Yil']
+        df = df.drop(columns=[c for c in _drop_cols if c in df.columns], errors='ignore')
+        # ── List/dict değerleri string'e çevir ──
+        for _c in df.columns:
+            try:
+                if df[_c].apply(lambda x: isinstance(x, (list, dict))).any():
+                    df[_c] = df[_c].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
+            except: pass
         df["_t"] = pd.to_numeric(df.get("Tutar",0), errors="coerce").fillna(0)
         df["_n"] = 0.0; df["_k"] = 0.0
         for i, row in df.iterrows():
-            kv = df["KDV"].iloc[i] if "KDV" in df.columns else None
-            kt = df["Kategori"].iloc[i] if "Kategori" in df.columns else ""
+            kv = row["KDV"] if "KDV" in df.columns else None
+            kt = row["Kategori"] if "Kategori" in df.columns else ""
             n, k = _kdv_hesapla(row["_t"], kv, kt)
             df.at[i,"_n"] = n; df.at[i,"_k"] = k
 
@@ -1477,7 +1714,34 @@ def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
 
         buf=io.BytesIO(); wb.save(buf); return buf.getvalue()
     except Exception as e:
-        return b""
+        _last_export_error["excel"] = str(e)
+        print(f"EXCEL EXPORT HATASI: {e}", flush=True)
+        import traceback; traceback.print_exc()
+        # Fallback: basit Excel oluştur
+        try:
+            _fb_buf = io.BytesIO()
+            _fb_wb = Workbook()
+            _fb_ws = _fb_wb.active
+            _fb_ws.title = "Rapor"
+            # Başlıkları yaz
+            for ci, col_name in enumerate(df_raw.columns, 1):
+                _fb_ws.cell(row=1, column=ci, value=str(col_name))
+            # Verileri yaz
+            for ri, (_, row) in enumerate(df_raw.iterrows(), 2):
+                for ci, col_name in enumerate(df_raw.columns, 1):
+                    val = row[col_name]
+                    if isinstance(val, (list, dict)):
+                        val = str(val)
+                    try:
+                        _fb_ws.cell(row=ri, column=ci, value=val)
+                    except:
+                        _fb_ws.cell(row=ri, column=ci, value=str(val))
+            _fb_wb.save(_fb_buf)
+            print("EXCEL FALLBACK BAŞARILI", flush=True)
+            return _fb_buf.getvalue()
+        except Exception as e2:
+            print(f"EXCEL FALLBACK HATASI: {e2}", flush=True)
+            return b""
 
 # ─── AI FONKSİYONLARI ─────────────────────────────────────────
 def analyze_receipt_pro(image, model):
@@ -1664,6 +1928,8 @@ def clean_audit(text: str) -> str:
     if not text:
         return "Analiz tamamlandı."
     text = str(text)
+    # Önce HTML-escaped tag'leri geri çevir (örn: &lt;div&gt; → <div>)
+    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", '"')
     # Tüm <div ...>...</div> bloklarını kaldır (multi-line dahil)
     text = _re.sub(r'<div[^>]*>.*?</div>', ' ', text, flags=_re.DOTALL | _re.IGNORECASE)
     # Tüm HTML tag'larını kaldır (<tag> veya </tag>)
@@ -1674,11 +1940,31 @@ def clean_audit(text: str) -> str:
     text = _re.sub(r'\{[^}]{0,300}\}', '', text)
     # "Proje: ... · Öncelik: ... · Ödeme: ..." satırlarını kaldır (div kalıntısı)
     text = _re.sub(r'Proje\s*:.*?Ödeme\s*:[^\n]*', '', text, flags=_re.IGNORECASE)
+    # "ŞİRKET KREDİ KARTI — ..." veya "HARCIRAHTAN DÜŞÜLECEK ..." satırlarını kaldır
+    text = _re.sub(r'(ŞİRKET KREDİ KARTI|HARCIRAHTAN DÜŞÜLECEK|Genel merkezden düşülecek|Personel şahsi)[^\n]*', '', text, flags=_re.IGNORECASE)
+    # "Kaynak: WhatsApp" veya "Kaynak: Dashboard" kalıntıları
+    text = _re.sub(r'Kaynak\s*:\s*\w+', '', text, flags=_re.IGNORECASE)
+    # &nbsp; ve HTML entity temizle
+    text = _re.sub(r'&nbsp;?', ' ', text)
+    text = _re.sub(r'&[a-z]+;', ' ', text)
     # Birden fazla boşluk/newline temizle
     text = _re.sub(r'\s+', ' ', text).strip()
-    # HTML escape
-    text = _html.escape(text, quote=False)
+    # · (separator) kalıntılarını temizle
+    text = _re.sub(r'[·•]+\s*', '', text).strip()
+    # HTML escape YAPMA — bu metin zaten unsafe_allow_html=True ile render ediliyor
     return text if text else "Analiz tamamlandı."
+
+
+def strip_html(text) -> str:
+    """Herhangi bir metin alanından HTML tag'lerini ve entity'leri kaldır."""
+    if not text:
+        return ""
+    text = str(text)
+    text = _re.sub(r'<[^>]+>', '', text, flags=_re.DOTALL)
+    text = _re.sub(r'&nbsp;?', ' ', text)
+    text = _re.sub(r'&[a-z]+;', ' ', text)
+    text = _re.sub(r'\s+', ' ', text).strip()
+    return text
 
 
 def odeme_label(raw: str) -> str:
@@ -1692,6 +1978,44 @@ def odeme_label(raw: str) -> str:
     elif v:
         return raw  # bilinmeyen değerleri olduğu gibi göster
     return "—"
+
+
+def detect_odeme_turu_from_whatsapp(message_text: str) -> str:
+    """
+    WhatsApp mesaj metninden ödeme türünü tespit eder.
+    Kullanıcı 'harcırah', 'harcirah', 'HARCIRAH' vb. yazarsa → harcirah
+    Kullanıcı 'şirket', 'sirket', 'ŞİRKET', 'SİRKET' vb. yazarsa → sirket_karti
+    Hiçbiri eşleşmezse → None (mevcut davranış korunur)
+
+    NOT: Bu fonksiyon Railway bot tarafında (bot.py) da kullanılmalıdır.
+    Bot tarafında fiş gönderilirken mesaj metni parse edilip Odeme_Turu alanı
+    buna göre set edilmelidir. Örnek bot.py entegrasyonu:
+
+        # bot.py (Railway) — fiş kaydetme kısmında:
+        msg_lower = user_message.lower().replace('ı','i').replace('ş','s')
+        if 'harcirah' in msg_lower or 'harcırah' in msg_lower:
+            expense['Odeme_Turu'] = 'harcirah'
+        elif 'sirket' in msg_lower or 'şirket' in msg_lower:
+            expense['Odeme_Turu'] = 'sirket_karti'
+    """
+    if not message_text:
+        return None
+    txt = str(message_text).lower().strip()
+    # Türkçe karakter normalize
+    txt_n = txt.replace("ı", "i").replace("ş", "s").replace("İ", "i").replace("Ş", "s")
+
+    harcirah_kws = ["harcirah", "harcırah", "harcırahtan", "harcirahtan"]
+    sirket_kws = ["sirket", "şirket", "şirket kartı", "sirket karti"]
+
+    for kw in harcirah_kws:
+        kw_n = kw.replace("ı", "i").replace("ş", "s")
+        if kw in txt or kw_n in txt_n:
+            return "harcirah"
+    for kw in sirket_kws:
+        kw_n = kw.replace("ı", "i").replace("ş", "s")
+        if kw in txt or kw_n in txt_n:
+            return "sirket_karti"
+    return None
 
 
 def detect_anomalies(df, model=None):
@@ -2719,8 +3043,9 @@ tick();setInterval(tick,1000);
             pages_keys = [
                 "🏠 Dashboard", "📑 Fiş Tarama", "💰 Finans & Kasa",
                 "⚖️ Onay Merkezi", "🔬 Anomali Dedektörü", "📊 Analitik Merkezi",
-                "🤖 AI Asistan", "🏆 Leaderboard", "🗄️ Arşiv & Rapor",
-                "🧠 AI Bütçe Koçu", "🔮 Gider Tahmincisi"
+                "🤖 AI Asistan", "🏆 Leaderboard",
+                "🧠 AI Bütçe Koçu", "🔮 Gider Tahmincisi",
+                "📂 Gider Kategorileri", "🗄️ Arşiv & Rapor",
             ]
         else:
             # Personel: Dashboard, Fiş Tarama + 2 yeni AI özellik
@@ -3298,6 +3623,7 @@ tick();setInterval(tick,1000);
                     with st.expander(f"{'🔴' if risk > 70 else '🟡'} {kaynak_icon} {row.get('Kullanıcı','?')} · {row.get('Firma','?')} · ₺{float(row.get('Tutar',0)):,.0f} · {row.get('Proje','?')}"):
                         ca, cb = st.columns([2, 1])
                         with ca:
+                            # ── Üst kısım: Firma, Tutar, Risk, Durum ──
                             st.markdown(f"""
                             <div class="ultra-card">
                                 <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
@@ -3312,16 +3638,30 @@ tick();setInterval(tick,1000);
                                     </div>
                                 </div>
                                 <div class="ai-bubble">🤖 {clean_audit(row.get('AI_Audit',''))}</div>
-                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
-                                <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    📁 Proje: <strong>{row.get('Proje','?')}</strong> &nbsp;·&nbsp;
-                                    ⚡ Öncelik: <strong>{row.get('Oncelik','Normal')}</strong> &nbsp;·&nbsp;
-                                    💳 Ödeme: <strong>{odeme_label(row.get('Odeme_Turu', row.get('OdemeTipi','—')))}</strong>
-                                </div>
-                                {_harcirah_html}
-                                {f"<div style='margin-top:6px; font-size:0.75rem;'>📝 {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
                             </div>
                             """, unsafe_allow_html=True)
+                            # ── Anomali uyarısı ──
+                            if row.get('AI_Anomali'):
+                                st.markdown(f"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ {strip_html(row.get('AI_Anomali_Aciklama',''))}</div>", unsafe_allow_html=True)
+                            # ── Proje / Öncelik / Ödeme / Kaynak bilgileri ──
+                            _proje_str = strip_html(row.get('Proje','?'))
+                            _oncelik_str = strip_html(row.get('Oncelik','Normal'))
+                            _odeme_str = odeme_label(row.get('Odeme_Turu', row.get('OdemeTipi','—')))
+                            _kaynak_str = strip_html(row.get('Kaynak','Dashboard'))
+                            st.markdown(f"📁 **Proje:** {_proje_str}  ·  ⚡ **Öncelik:** {_oncelik_str}  ·  💳 **Ödeme:** {_odeme_str}  ·  📱 **Kaynak:** {_kaynak_str}")
+                            # ── Ödeme türü badge ──
+                            _odeme_raw = str(row.get('Odeme_Turu', row.get('OdemeTipi',''))).lower().strip()
+                            _is_harcirah_odeme = _odeme_raw in ('harcirah','harcırah','harcirahtan dus','harcırahtan düş','harcırahtan düş (nakit / kişisel kart)','nakit','kisisel')
+                            if _is_harcirah_odeme:
+                                st.warning("💵 HARCIRAHTAN DÜŞÜLECEK — Personel şahsi ödeme yapmıştır")
+                            else:
+                                st.info("🏦 ŞİRKET KREDİ KARTI — Genel merkezden düşülecek")
+                            # ── Harcırah bakiye bilgisi ──
+                            if _harcirah_html:
+                                st.markdown(_harcirah_html, unsafe_allow_html=True)
+                            # ── Notlar ──
+                            if row.get('Notlar'):
+                                st.markdown(f"📝 {strip_html(row.get('Notlar',''))}")
 
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"omcent_on_{row['ID']}", use_container_width=True):
@@ -3546,6 +3886,7 @@ tick();setInterval(tick,1000);
                         ca, cb = st.columns([2, 1])
                         
                         with ca:
+                            # ── Üst kısım: Firma, Tutar, Risk ──
                             st.markdown(f"""
                             <div class="ultra-card">
                                 <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
@@ -3561,16 +3902,22 @@ tick();setInterval(tick,1000);
                                 <div class="ai-bubble">
                                     🤖 {clean_audit(row.get('AI_Audit',''))}
                                 </div>
-                                {"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: " + str(row.get('AI_Anomali_Aciklama','')) + "</div>" if row.get('AI_Anomali') else ""}
-                                <div style="margin-top:8px; font-size:0.75rem; color:var(--text-muted);">
-                                    📁 Proje: <strong>{row.get('Proje','?')}</strong> &nbsp;·&nbsp;
-                                    ⚡ Öncelik: <strong>{row.get('Oncelik','Normal')}</strong> &nbsp;·&nbsp;
-                                    💳 Ödeme: <strong>{odeme_label(row.get('Odeme_Turu','—'))}</strong>
-                                </div>
-                                {_harcirah_html2}
-                                {f"<div style='margin-top:6px; font-size:0.75rem; color:var(--text-secondary);'>📝 Not: {row.get('Notlar','')}</div>" if row.get('Notlar') else ""}
                             </div>
                             """, unsafe_allow_html=True)
+                            # ── Anomali uyarısı ──
+                            if row.get('AI_Anomali'):
+                                st.markdown(f"<div class='anomaly-alert' style='margin-top:8px;'>⚠️ AI Anomali Tespiti: {strip_html(row.get('AI_Anomali_Aciklama',''))}</div>", unsafe_allow_html=True)
+                            # ── Proje / Öncelik / Ödeme bilgileri ──
+                            _proje_str2 = strip_html(row.get('Proje','?'))
+                            _oncelik_str2 = strip_html(row.get('Oncelik','Normal'))
+                            _odeme_str2 = odeme_label(row.get('Odeme_Turu','—'))
+                            st.markdown(f"📁 **Proje:** {_proje_str2}  ·  ⚡ **Öncelik:** {_oncelik_str2}  ·  💳 **Ödeme:** {_odeme_str2}")
+                            # ── Harcırah bakiye bilgisi ──
+                            if _harcirah_html2:
+                                st.markdown(_harcirah_html2, unsafe_allow_html=True)
+                            # ── Notlar ──
+                            if row.get('Notlar'):
+                                st.markdown(f"📝 Not: {strip_html(row.get('Notlar',''))}")
                             
                             btn1, btn2 = st.columns(2)
                             if btn1.button("✅ Onayla", key=f"on_{row['ID']}", use_container_width=True):
@@ -3698,14 +4045,43 @@ tick();setInterval(tick,1000);
             
             if st.button("🔍 Kapsamlı AI Denetimi Başlat"):
                 with st.spinner("Gemini AI tüm verileri tarıyor..."):
-                    prompt = f"""Sen bir adli mali denetçisin. Bu harcama verilerini incele ve şüpheli durumları rapor et:
-                    {df.to_dict(orient='records')}
-                    
-                    Türkçe olarak şunu belirt:
-                    1. En riskli 3 işlem ve neden
-                    2. Tespit ettiğin olağandışı patternler  
-                    3. Önerilen aksiyonlar
-                    Kısa ve net ol."""
+                    # Token taşmasını önlemek için özet istatistikler gönder
+                    _df_s = df.copy()
+                    _tutar_col = next((c for c in ["Tutar","tutar","Amount","amount"] if c in _df_s.columns), None)
+                    _kat_col   = next((c for c in ["Kategori","kategori","Category"] if c in _df_s.columns), None)
+                    _kul_col   = next((c for c in ["Kullanici","kullanici","Kullanıcı","User","user_name"] if c in _df_s.columns), None)
+                    _tip_col   = next((c for c in ["Odeme_Tipi","odeme_tipi","Ödeme Tipi"] if c in _df_s.columns), None)
+                    _stat_col  = next((c for c in ["Durum","durum","Status"] if c in _df_s.columns), None)
+
+                    ozet_satirlar = []
+                    ozet_satirlar.append(f"Toplam fiş sayısı: {len(_df_s)}")
+                    if _tutar_col:
+                        ozet_satirlar.append(f"Toplam tutar: {_df_s[_tutar_col].sum():,.0f} ₺")
+                        ozet_satirlar.append(f"Ortalama tutar: {_df_s[_tutar_col].mean():,.0f} ₺")
+                        ozet_satirlar.append(f"Maks tutar: {_df_s[_tutar_col].max():,.0f} ₺")
+                        # En yüksek 10 işlem
+                        top10 = _df_s.nlargest(10, _tutar_col)[[c for c in [_tutar_col, _kat_col, _kul_col, _tip_col, _stat_col] if c]].to_dict(orient="records")
+                        ozet_satirlar.append(f"En yüksek 10 işlem: {top10}")
+                    if _kat_col and _tutar_col:
+                        kat_ozet = _df_s.groupby(_kat_col)[_tutar_col].agg(["sum","count","mean"]).round(0).to_dict()
+                        ozet_satirlar.append(f"Kategori bazlı özet: {kat_ozet}")
+                    if _kul_col and _tutar_col:
+                        kul_ozet = _df_s.groupby(_kul_col)[_tutar_col].agg(["sum","count","mean"]).round(0).to_dict()
+                        ozet_satirlar.append(f"Kullanıcı bazlı özet: {kul_ozet}")
+                    if _stat_col:
+                        ozet_satirlar.append(f"Durum dağılımı: {_df_s[_stat_col].value_counts().to_dict()}")
+
+                    veri_ozeti = "\n".join(ozet_satirlar)
+
+                    prompt = f"""Sen bir adli mali denetçisin. Aşağıdaki harcama istatistiklerini incele ve şüpheli durumları rapor et:
+
+{veri_ozeti}
+
+Türkçe olarak şunu belirt:
+1. En riskli 3 işlem veya pattern ve nedeni
+2. Tespit ettiğin olağandışı durumlar
+3. Önerilen aksiyonlar
+Kısa ve net ol (max 300 kelime)."""
                     
                     try:
                         response = model.generate_content(prompt)
@@ -4065,7 +4441,10 @@ tick();setInterval(tick,1000);
     elif selected == "🗄️ Arşiv & Rapor":
         st.markdown('<div class="page-header"><div class="page-title">ARŞİV & RAPORLAMA</div></div>', unsafe_allow_html=True)
         
-        tab_r, tab_a, tab_h = st.tabs(["📑 Raporlama", "🔍 Arşiv", "📜 Geçmiş AI Analizleri"])
+        tab_r, tab_a, tab_h, tab_harc, tab_zk, tab_sk = st.tabs([
+            "📑 Raporlama", "🔍 Arşiv", "📜 Geçmiş AI Analizleri",
+            "💵 Harcırah Harcamaları", "💳 Zeynep Özyaman K.K.", "🏦 Şirket Kredi Kartı"
+        ])
         
         with tab_r:
             if not df.empty:
@@ -4095,7 +4474,11 @@ tick();setInterval(tick,1000);
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                clean_df = filtered.drop(columns=['Tarih_DT','Ay_Yil'], errors='ignore')
+                clean_df = filtered.drop(columns=['Tarih_DT','Ay_Yil', 'Kalemler', 'Kisisel_Giderler', 'Gorsel_B64', 'Dosya_Yolu'], errors='ignore')
+                # List/dict sütunlarını string'e çevir
+                for _col in clean_df.columns:
+                    if clean_df[_col].apply(lambda x: isinstance(x, (list, dict))).any():
+                        clean_df[_col] = clean_df[_col].apply(str)
                 
                 d1, d2, d3 = st.columns(3)
                 d1.download_button(
@@ -4120,30 +4503,31 @@ tick();setInterval(tick,1000);
 
                 # ── Orijinal Fiş PDF ──────────────────────────────────
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("""
-                <div style="background:linear-gradient(135deg,rgba(17,133,91,0.07),rgba(47,60,110,0.07));
-                            border:1px solid rgba(17,133,91,0.2); border-radius:14px; padding:14px 18px; margin-bottom:6px;">
-                    <div style="font-size:0.8rem; font-weight:700; color:#11855B; margin-bottom:4px;">
-                        📷 Orijinal Fiş Görselleri
-                    </div>
-                    <div style="font-size:0.72rem; color:#5a7a6a;">
-                        Seçili dönemdeki tüm fiş görselleri tek bir PDF dosyasına eklenir
-                        (sayfa başına 4 fiş, A4 formatında).
+                gorsel_sayisi = sum(
+                    1 for _, r in clean_df.iterrows()
+                    if (str(r.get("Dosya_Yolu","")) and os.path.exists(str(r.get("Dosya_Yolu",""))))
+                    or len(str(r.get("Gorsel_B64","") or "")) > 80
+                )
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,rgba(17,133,91,0.06) 0%,rgba(47,60,110,0.06) 100%);
+                            border:1px solid rgba(17,133,91,0.22); border-radius:14px;
+                            padding:14px 18px; display:flex; align-items:center; gap:14px; margin-bottom:8px;">
+                    <div style="font-size:2rem;">🧾</div>
+                    <div>
+                        <div style="font-size:0.82rem; font-weight:700; color:#11855B;">Orijinal Fiş Görselleri PDF</div>
+                        <div style="font-size:0.72rem; color:#5a7a6a; margin-top:2px;">
+                            Seçili dönemdeki <strong>{gorsel_sayisi}</strong> fiş görseli A4 formatında, 
+                            sayfa başına 4 fiş olarak profesyonel PDF'e aktarılır.
+                        </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
-                gorsel_sayisi = 0
-                for _, row in clean_df.iterrows():
-                    b64 = str(row.get("Gorsel_B64", ""))
-                    dosya = str(row.get("Dosya_Yolu", ""))
-                    if (dosya and os.path.exists(dosya)) or len(b64) > 50:
-                        gorsel_sayisi += 1
-
                 if gorsel_sayisi > 0:
-                    fisler_pdf_bytes = export_fisler_pdf(clean_df, secilen_ay)
+                    with st.spinner("Fiş görselleri PDF'e aktarılıyor..."):
+                        fisler_pdf_bytes = export_fisler_pdf(clean_df, secilen_ay)
                     st.download_button(
-                        label=f"🧾 Orijinal Fişleri PDF İndir  ({gorsel_sayisi} fiş görsel)",
+                        label=f"📥 Orijinal Fişleri PDF İndir  ({gorsel_sayisi} fiş · {(len(fisler_pdf_bytes)/1024):.0f} KB)",
                         data=fisler_pdf_bytes,
                         file_name=f"Stinga_Fisler_{secilen_ay}_{secilen_proje}.pdf",
                         mime="application/pdf",
@@ -4151,7 +4535,7 @@ tick();setInterval(tick,1000);
                         type="primary",
                     )
                 else:
-                    st.info("ℹ️ Seçili dönemde görsel içeren fiş bulunamadı.", icon="📷")
+                    st.caption("ℹ️ Seçili dönemde görsel içeren fiş bulunamadı.")
 
                 st.dataframe(clean_df.sort_values('Tarih', ascending=False), 
                             use_container_width=True, hide_index=True)
@@ -4254,6 +4638,274 @@ tick();setInterval(tick,1000);
                     <div style="font-size:0.8rem; margin-top:8px;">Anomali Dedektörü'nden derin analiz başlat!</div>
                 </div>
                 """, unsafe_allow_html=True)
+
+        # ── TAB: HARCIRAH HARCAMALARI ─────────────────────────
+        with tab_harc:
+            st.markdown("### 💵 Harcırah Harcamaları")
+            st.markdown("""
+            <div style="background:rgba(17,133,91,0.07); border:1px solid rgba(17,133,91,0.18);
+                        border-radius:12px; padding:14px 18px; margin-bottom:16px; font-size:0.85rem; color:#3d5260;">
+                Personel harcırah hesabından (nakit / şahsi kart) yapılan tüm harcamalar.
+            </div>
+            """, unsafe_allow_html=True)
+
+            _harc_odeme_keys = ("harcirah", "harcırah", "harcirahtan dus", "harcırahtan düş",
+                                "harcırahtan düş (nakit / kişisel kart)", "nakit", "kisisel")
+            if not df_full.empty and 'Odeme_Turu' in df_full.columns:
+                harc_df = df_full[df_full['Odeme_Turu'].str.lower().str.strip().isin(_harc_odeme_keys)].copy()
+            else:
+                harc_df = pd.DataFrame()
+
+            if not harc_df.empty:
+                hc1, hc2, hc3 = st.columns(3)
+                with hc1:
+                    _harc_personel = st.selectbox("Personel", ["Tümü"] + sorted(harc_df['Kullanıcı'].unique().tolist()), key="harc_per")
+                with hc2:
+                    harc_df['_Tarih_DT'] = pd.to_datetime(harc_df['Tarih'], errors='coerce')
+                    harc_df['_Ay_Yil'] = harc_df['_Tarih_DT'].dt.strftime('%Y-%m')
+                    _harc_aylar = ["Tüm Zamanlar"] + sorted(harc_df['_Ay_Yil'].dropna().unique().tolist(), reverse=True)
+                    _harc_ay = st.selectbox("Dönem", _harc_aylar, key="harc_ay")
+                with hc3:
+                    _harc_durum = st.selectbox("Durum", ["Tümü", "Onaylandı", "Onay Bekliyor", "Reddedildi"], key="harc_dur")
+
+                _hf = harc_df.copy()
+                if _harc_personel != "Tümü":
+                    _hf = _hf[_hf['Kullanıcı'] == _harc_personel]
+                if _harc_ay != "Tüm Zamanlar":
+                    _hf = _hf[_hf['_Ay_Yil'] == _harc_ay]
+                if _harc_durum != "Tümü":
+                    _hf = _hf[_hf['Durum'] == _harc_durum]
+
+                if not _hf.empty:
+                    hm1, hm2, hm3, hm4 = st.columns(4)
+                    hm1.metric("Toplam İşlem", len(_hf))
+                    hm2.metric("Toplam Tutar", f"₺{_hf['Tutar'].sum():,.0f}")
+                    _hf_onay = _hf[_hf['Durum'] == 'Onaylandı']
+                    hm3.metric("Onaylı Tutar", f"₺{_hf_onay['Tutar'].sum():,.0f}")
+                    hm4.metric("Bekleyen", f"₺{_hf[_hf['Durum']=='Onay Bekliyor']['Tutar'].sum():,.0f}")
+
+                    # Personel bazlı bakiye özeti
+                    if _harc_personel == "Tümü":
+                        st.markdown("#### 👥 Personel Harcırah Bakiyeleri")
+                        for _ukey, _uinfo in USERS.items():
+                            _p_name = _uinfo["name"]
+                            _p_bal = get_user_wallet_balance(_p_name, data_store)
+                            _p_harc = _hf[_hf['Kullanıcı'] == _p_name]['Tutar'].sum() if not _hf[_hf['Kullanıcı'] == _p_name].empty else 0
+                            if _p_harc > 0 or _p_bal != 0:
+                                st.markdown(f"""
+                                <div style="display:flex; justify-content:space-between; align-items:center;
+                                            padding:10px 16px; background:#fff; border:1px solid rgba(0,0,0,0.07);
+                                            border-radius:10px; margin:4px 0;">
+                                    <div><strong>{_uinfo['avatar']} {_p_name}</strong></div>
+                                    <div style="display:flex; gap:20px; font-size:0.85rem;">
+                                        <span>Harcama: <strong>₺{_p_harc:,.0f}</strong></span>
+                                        <span>Bakiye: <strong style="color:{'#dc2626' if _p_bal < 0 else '#007850'}">
+                                            {'−' if _p_bal < 0 else ''}₺{abs(_p_bal):,.0f}</strong></span>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    _hf_clean = _hf.drop(columns=['_Tarih_DT', '_Ay_Yil', 'Kalemler', 'Kisisel_Giderler', 'Gorsel_B64', 'Dosya_Yolu'], errors='ignore')
+                    # List/dict sütunlarını string'e çevir
+                    for _col in _hf_clean.columns:
+                        if _hf_clean[_col].apply(lambda x: isinstance(x, (list, dict))).any():
+                            _hf_clean[_col] = _hf_clean[_col].apply(str)
+                    hd1, hd2, hd3 = st.columns(3)
+                    hd1.download_button("📥 CSV İndir", _hf_clean.to_csv(index=False).encode('utf-8-sig'),
+                        f"Harcirah_{_harc_ay}.csv", "text/csv", use_container_width=True, key="harc_csv")
+                    hd2.download_button("📊 Excel İndir",
+                        export_excel_muhasebe(_hf_clean, f"Harcırah — {_harc_ay}", logo_path="logo.png"),
+                        f"Harcirah_{_harc_ay}.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True, key="harc_xlsx")
+                    hd3.download_button("📄 PDF İndir",
+                        export_pdf_muhasebe(_hf_clean, "Harcırah Raporu", f"Harcırah — {_harc_ay}", logo_path="logo.png"),
+                        f"Harcirah_{_harc_ay}.pdf", "application/pdf", use_container_width=True, key="harc_pdf")
+
+                    st.dataframe(_hf_clean.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Seçili filtrelere uygun harcırah harcaması bulunamadı.")
+            else:
+                st.markdown("""
+                <div class="empty-state"><div class="empty-icon">💵</div>
+                <div>Harcırah kaydı bulunamadı.</div></div>""", unsafe_allow_html=True)
+
+        # ── TAB: ZEYNEP ÖZYAMAN ŞAHSİ KREDİ KARTI ───────────
+        with tab_zk:
+            st.markdown("### 💳 Zeynep Özyaman — Şahsi Kredi Kartı Harcamaları")
+            st.markdown("""
+            <div style="background:rgba(47,60,110,0.07); border:1px solid rgba(47,60,110,0.18);
+                        border-radius:12px; padding:14px 18px; margin-bottom:16px; font-size:0.85rem; color:#3d5260;">
+                Zeynep Özyaman'ın şahsi kredi kartından yapılan şirket harcamaları.
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Zeynep'in harcırah ile yaptığı ödemeler — şahsi kart
+            if not df_full.empty and 'Kullanıcı' in df_full.columns and 'Odeme_Turu' in df_full.columns:
+                _zk_mask = (
+                    df_full['Kullanıcı'].str.contains('Zeynep', case=False, na=False) &
+                    df_full['Odeme_Turu'].str.lower().str.strip().isin(_harc_odeme_keys)
+                )
+                zk_df = df_full[_zk_mask].copy()
+            else:
+                zk_df = pd.DataFrame()
+
+            if not zk_df.empty:
+                zk_df['_Tarih_DT'] = pd.to_datetime(zk_df['Tarih'], errors='coerce')
+                zk_df['_Ay_Yil'] = zk_df['_Tarih_DT'].dt.strftime('%Y-%m')
+                zc1, zc2 = st.columns(2)
+                with zc1:
+                    _zk_aylar = ["Tüm Zamanlar"] + sorted(zk_df['_Ay_Yil'].dropna().unique().tolist(), reverse=True)
+                    _zk_ay = st.selectbox("Dönem", _zk_aylar, key="zk_ay")
+                with zc2:
+                    _zk_durum = st.selectbox("Durum", ["Tümü", "Onaylandı", "Onay Bekliyor", "Reddedildi"], key="zk_dur")
+
+                _zkf = zk_df.copy()
+                if _zk_ay != "Tüm Zamanlar":
+                    _zkf = _zkf[_zkf['_Ay_Yil'] == _zk_ay]
+                if _zk_durum != "Tümü":
+                    _zkf = _zkf[_zkf['Durum'] == _zk_durum]
+
+                if not _zkf.empty:
+                    zm1, zm2, zm3 = st.columns(3)
+                    zm1.metric("Toplam İşlem", len(_zkf))
+                    zm2.metric("Toplam Tutar", f"₺{_zkf['Tutar'].sum():,.0f}")
+                    zm3.metric("Onaylı Tutar", f"₺{_zkf[_zkf['Durum']=='Onaylandı']['Tutar'].sum():,.0f}")
+
+                    # Kategori kırılımı
+                    if 'Kategori' in _zkf.columns:
+                        _zk_kat = _zkf.groupby('Kategori')['Tutar'].agg(['sum','count']).sort_values('sum', ascending=False)
+                        st.markdown("#### 📂 Kategori Kırılımı")
+                        for kat, row in _zk_kat.iterrows():
+                            st.markdown(f"- **{kat}**: ₺{row['sum']:,.0f} ({int(row['count'])} fiş)")
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    _zkf_clean = _zkf.drop(columns=['_Tarih_DT', '_Ay_Yil', 'Kalemler', 'Kisisel_Giderler', 'Gorsel_B64', 'Dosya_Yolu'], errors='ignore')
+                    # List/dict sütunlarını string'e çevir
+                    for _col in _zkf_clean.columns:
+                        if _zkf_clean[_col].apply(lambda x: isinstance(x, (list, dict))).any():
+                            _zkf_clean[_col] = _zkf_clean[_col].apply(str)
+                    zd1, zd2, zd3 = st.columns(3)
+                    zd1.download_button("📥 CSV", _zkf_clean.to_csv(index=False).encode('utf-8-sig'),
+                        f"ZeynepKK_{_zk_ay}.csv", "text/csv", use_container_width=True, key="zk_csv")
+                    zd2.download_button("📊 Excel",
+                        export_excel_muhasebe(_zkf_clean, f"Zeynep Özyaman K.K. — {_zk_ay}", logo_path="logo.png"),
+                        f"ZeynepKK_{_zk_ay}.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True, key="zk_xlsx")
+                    zd3.download_button("📄 PDF",
+                        export_pdf_muhasebe(_zkf_clean, "Zeynep Özyaman Şahsi K.K. Raporu", f"Zeynep K.K. — {_zk_ay}", logo_path="logo.png"),
+                        f"ZeynepKK_{_zk_ay}.pdf", "application/pdf", use_container_width=True, key="zk_pdf")
+
+                    st.dataframe(_zkf_clean.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Seçili filtrelere uygun kayıt bulunamadı.")
+            else:
+                st.markdown("""
+                <div class="empty-state"><div class="empty-icon">💳</div>
+                <div>Zeynep Özyaman şahsi kart kaydı bulunamadı.</div></div>""", unsafe_allow_html=True)
+
+        # ── TAB: ŞİRKET KREDİ KARTI ─────────────────────────
+        with tab_sk:
+            st.markdown("### 🏦 Şirket Kredi Kartı Harcamaları")
+            st.markdown("""
+            <div style="background:rgba(8,145,178,0.07); border:1px solid rgba(8,145,178,0.18);
+                        border-radius:12px; padding:14px 18px; margin-bottom:16px; font-size:0.85rem; color:#3d5260;">
+                Stinga Enerji şirket kredi kartından yapılan tüm harcamalar.
+            </div>
+            """, unsafe_allow_html=True)
+
+            _sirket_odeme_keys = ("sirket_karti", "sirket karti", "kredi_karti", "kredi kartı",
+                                   "şirket", "sirket", "şirket kredi kartı", "sirket kredi karti")
+            if not df_full.empty and 'Odeme_Turu' in df_full.columns:
+                sk_df = df_full[df_full['Odeme_Turu'].str.lower().str.strip().isin(_sirket_odeme_keys)].copy()
+            else:
+                sk_df = pd.DataFrame()
+
+            if not sk_df.empty:
+                sk_df['_Tarih_DT'] = pd.to_datetime(sk_df['Tarih'], errors='coerce')
+                sk_df['_Ay_Yil'] = sk_df['_Tarih_DT'].dt.strftime('%Y-%m')
+                sc_c1, sc_c2, sc_c3 = st.columns(3)
+                with sc_c1:
+                    _sk_aylar = ["Tüm Zamanlar"] + sorted(sk_df['_Ay_Yil'].dropna().unique().tolist(), reverse=True)
+                    _sk_ay = st.selectbox("Dönem", _sk_aylar, key="sk_ay")
+                with sc_c2:
+                    _sk_personel = st.selectbox("Personel", ["Tümü"] + sorted(sk_df['Kullanıcı'].unique().tolist()), key="sk_per")
+                with sc_c3:
+                    _sk_durum = st.selectbox("Durum", ["Tümü", "Onaylandı", "Onay Bekliyor", "Reddedildi"], key="sk_dur")
+
+                _skf = sk_df.copy()
+                if _sk_ay != "Tüm Zamanlar":
+                    _skf = _skf[_skf['_Ay_Yil'] == _sk_ay]
+                if _sk_personel != "Tümü":
+                    _skf = _skf[_skf['Kullanıcı'] == _sk_personel]
+                if _sk_durum != "Tümü":
+                    _skf = _skf[_skf['Durum'] == _sk_durum]
+
+                if not _skf.empty:
+                    sm1, sm2, sm3, sm4 = st.columns(4)
+                    sm1.metric("Toplam İşlem", len(_skf))
+                    sm2.metric("Toplam Tutar", f"₺{_skf['Tutar'].sum():,.0f}")
+                    sm3.metric("Onaylı Tutar", f"₺{_skf[_skf['Durum']=='Onaylandı']['Tutar'].sum():,.0f}")
+                    sm4.metric("KDV Toplamı", f"₺{_skf['KDV'].sum():,.0f}" if 'KDV' in _skf.columns else "N/A")
+
+                    # Kategori kırılımı
+                    if 'Kategori' in _skf.columns:
+                        _sk_kat = _skf.groupby('Kategori')['Tutar'].agg(['sum','count']).sort_values('sum', ascending=False)
+                        fig_sk = go.Figure(go.Bar(
+                            x=_sk_kat['sum'].values, y=_sk_kat.index,
+                            orientation='h',
+                            marker=dict(color='#0891b2'),
+                            text=[f"₺{v:,.0f}" for v in _sk_kat['sum'].values],
+                            textposition='outside'
+                        ))
+                        fig_sk.update_layout(title='Şirket Kartı — Kategori Bazlı Harcama',
+                            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                            font=dict(color='#4a5568'), height=280,
+                            xaxis=dict(showgrid=False), yaxis=dict(showgrid=False))
+                        st.plotly_chart(fig_sk, use_container_width=True)
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    _skf_clean = _skf.drop(columns=['_Tarih_DT', '_Ay_Yil', 'Kalemler', 'Kisisel_Giderler', 'Gorsel_B64', 'Dosya_Yolu'], errors='ignore')
+                    # List/dict sütunlarını string'e çevir
+                    for _col in _skf_clean.columns:
+                        if _skf_clean[_col].apply(lambda x: isinstance(x, (list, dict))).any():
+                            _skf_clean[_col] = _skf_clean[_col].apply(str)
+                    sd1, sd2, sd3 = st.columns(3)
+                    sd1.download_button("📥 CSV", _skf_clean.to_csv(index=False).encode('utf-8-sig'),
+                        f"SirketKK_{_sk_ay}.csv", "text/csv", use_container_width=True, key="sk_csv")
+                    # Debug: export sonucunu kontrol et ve hatayı göster
+                    try:
+                        _sk_excel_data = export_excel_muhasebe(_skf_clean, f"Şirket K.K. — {_sk_ay}", logo_path="logo.png")
+                    except Exception as _sk_err:
+                        _sk_excel_data = b""
+                        st.error(f"Excel hatası: {_sk_err}")
+                    try:
+                        _sk_pdf_data = export_pdf_muhasebe(_skf_clean, "Şirket Kredi Kartı Raporu", f"Şirket K.K. — {_sk_ay}", logo_path="logo.png")
+                    except Exception as _sk_perr:
+                        _sk_pdf_data = b"%PDF-1.4\n"
+                        st.error(f"PDF hatası: {_sk_perr}")
+                    # Fallback kontrolü — boyut küçükse hata logla
+                    _expected_min = 5000  # Normal rapor en az 5KB olmalı
+                    if len(_sk_excel_data) < _expected_min:
+                        st.error(f"⚠️ Excel fallback: {_last_export_error.get('excel', 'Bilinmeyen hata')}")
+                    if len(_sk_pdf_data) < _expected_min:
+                        st.error(f"⚠️ PDF fallback: {_last_export_error.get('pdf', 'Bilinmeyen hata')}")
+                    sd2.download_button("📊 Excel", _sk_excel_data,
+                        f"SirketKK_{_sk_ay}.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True, key="sk_xlsx")
+                    sd3.download_button("📄 PDF", _sk_pdf_data,
+                        f"SirketKK_{_sk_ay}.pdf", "application/pdf", use_container_width=True, key="sk_pdf")
+
+                    st.dataframe(_skf_clean.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Seçili filtrelere uygun kayıt bulunamadı.")
+            else:
+                st.markdown("""
+                <div class="empty-state"><div class="empty-icon">🏦</div>
+                <div>Şirket kredi kartı kaydı bulunamadı.</div></div>""", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
     # SAYFA: AI BÜTÇE KOÇU
@@ -4612,3 +5264,203 @@ Somut rakamlar ve yüzdeler kullan. Profesyonel ama anlaşılır ol.
                 <div style="font-size:0.72rem; color:{color};">%30 artış riski</div>
             </div>
             """, unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: GİDER KATEGORİLERİ (Ödeme Tipi + Kategori Bazlı Raporlar)
+    # ══════════════════════════════════════════════════════════
+    elif selected == "📂 Gider Kategorileri":
+        st.markdown('<div class="page-header"><div class="page-title">📂 GİDER KATEGORİLERİ & ÖDEME TİPİ RAPORLARI</div></div>', unsafe_allow_html=True)
+
+        _harc_odeme_keys_gk = ("harcirah", "harcırah", "harcirahtan dus", "harcırahtan düş",
+                            "harcırahtan düş (nakit / kişisel kart)", "nakit", "kisisel")
+        _sirket_odeme_keys_gk = ("sirket_karti", "sirket karti", "kredi_karti", "kredi kartı",
+                               "şirket", "sirket", "şirket kredi kartı", "sirket kredi karti")
+
+        tab_gk_harc, tab_gk_zeynep, tab_gk_sirket = st.tabs([
+            "💵 Harcırah Harcamaları", "💳 Zeynep Özyaman Şahsi K.K.", "🏦 Şirket Kredi Kartı"
+        ])
+
+        # ── Kategori tanımları — her bir kategorinin hangi tipe ait olduğu
+        _GIDER_KATEGORILERI = {
+            "ECZANE GİDERLERİ (ŞAHSİ)":      {"tip": "sahsi",  "keywords": ["eczane", "ilaç", "ilac", "pharmacy", "sağlık", "saglik"]},
+            "KIRTASİYE GİDERLERİ (ŞİRKET)":  {"tip": "sirket", "keywords": ["kırtasiye", "kirtasiye", "kalem", "kağıt", "kagit", "toner", "ofis"]},
+            "HIRDAVAT GİDERLERİ (ŞİRKET)":   {"tip": "sirket", "keywords": ["hırdavat", "hirdavat", "nalbur", "vida", "çivi", "boya", "donanım"]},
+            "YAKIT GİDERLERİ (ŞİRKET)":      {"tip": "sirket", "keywords": ["yakıt", "yakit", "akaryakıt", "benzin", "motorin", "shell", "bp", "total", "opet"]},
+            "YEMEK GİDERLERİ (ŞİRKET)":      {"tip": "sirket", "keywords": ["yemek", "restoran", "lokanta", "kafe", "cafe", "kebab", "köfte"]},
+            "PATENT GİDERLERİ (ŞİRKET)":     {"tip": "sirket", "keywords": ["patent", "marka", "tescil", "lisans"]},
+            "ŞENOL BEY SAĞLIK GİDERLERİ (ŞAHSİ)": {"tip": "sahsi", "keywords": ["sağlık", "saglik", "hastane", "doktor", "eczane", "ilaç", "ilac", "muayene"]},
+        }
+
+        def _categorize_expense(row):
+            """Fişin firma, kategori ve kalemlerinden gider kategorisini tespit et."""
+            _text = " ".join([
+                str(row.get("Firma", "")).lower(),
+                str(row.get("Kategori", "")).lower(),
+                str(row.get("Notlar", "")).lower(),
+                " ".join([str(k) for k in row.get("Kalemler", [])]).lower() if isinstance(row.get("Kalemler"), list) else str(row.get("Kalemler","")).lower(),
+            ])
+            for cat_name, cat_info in _GIDER_KATEGORILERI.items():
+                for kw in cat_info["keywords"]:
+                    if kw in _text:
+                        # Şenol Bey Sağlık — sadece Şenol'un fişleri
+                        if "ŞENOL" in cat_name.upper():
+                            if "şenol" in str(row.get("Kullanıcı","")).lower() or "senol" in str(row.get("Kullanıcı","")).lower():
+                                return cat_name
+                        else:
+                            return cat_name
+            return "DİĞER GİDERLER"
+
+        def _render_gider_kategori_tab(source_df, tab_title):
+            """Ödeme tipine ait fişleri kategori bazlı raporla."""
+            if source_df.empty:
+                st.markdown(f"""
+                <div class="empty-state"><div class="empty-icon">📂</div>
+                <div>{tab_title} kaydı bulunamadı.</div></div>""", unsafe_allow_html=True)
+                return
+
+            source_df = source_df.copy()
+            source_df['_Gider_Kategori'] = source_df.apply(_categorize_expense, axis=1)
+            source_df['_Tarih_DT'] = pd.to_datetime(source_df['Tarih'], errors='coerce')
+            source_df['_Ay_Yil'] = source_df['_Tarih_DT'].dt.strftime('%Y-%m')
+
+            # Filtreler
+            gkc1, gkc2 = st.columns(2)
+            with gkc1:
+                _gk_aylar = ["Tüm Zamanlar"] + sorted(source_df['_Ay_Yil'].dropna().unique().tolist(), reverse=True)
+                _gk_ay = st.selectbox("Dönem", _gk_aylar, key=f"gk_{tab_title}_ay")
+            with gkc2:
+                _gk_cats = ["Tümü"] + sorted(source_df['_Gider_Kategori'].unique().tolist())
+                _gk_cat = st.selectbox("Gider Kategorisi", _gk_cats, key=f"gk_{tab_title}_cat")
+
+            _gkf = source_df.copy()
+            if _gk_ay != "Tüm Zamanlar":
+                _gkf = _gkf[_gkf['_Ay_Yil'] == _gk_ay]
+            if _gk_cat != "Tümü":
+                _gkf = _gkf[_gkf['_Gider_Kategori'] == _gk_cat]
+
+            if _gkf.empty:
+                st.info("Seçili filtrelere uygun kayıt yok.")
+                return
+
+            # Genel metrikler
+            gm1, gm2, gm3 = st.columns(3)
+            gm1.metric("Toplam İşlem", len(_gkf))
+            gm2.metric("Toplam Tutar", f"₺{_gkf['Tutar'].sum():,.0f}")
+            gm3.metric("Onaylı Tutar", f"₺{_gkf[_gkf['Durum']=='Onaylandı']['Tutar'].sum():,.0f}" if 'Durum' in _gkf.columns else "N/A")
+
+            # Kategori bazlı rakamsal rapor kartları
+            st.markdown("#### 📊 Kategori Bazlı Rakamsal Rapor")
+            _kat_grp = _gkf.groupby('_Gider_Kategori')['Tutar'].agg(['sum', 'count', 'mean']).sort_values('sum', ascending=False)
+            _kat_total = _gkf['Tutar'].sum()
+
+            _kat_colors = {
+                "ECZANE": "#dc2626", "KIRTASİYE": "#2F3C6E", "HIRDAVAT": "#d97706",
+                "YAKIT": "#0891b2", "YEMEK": "#11855B", "PATENT": "#7c3aed",
+                "ŞENOL": "#059669", "DİĞER": "#64748b"
+            }
+            _kat_icons = {
+                "ECZANE": "💊", "KIRTASİYE": "📎", "HIRDAVAT": "🔩",
+                "YAKIT": "⛽", "YEMEK": "🍽️", "PATENT": "📜",
+                "ŞENOL": "🏥", "DİĞER": "📦"
+            }
+
+            cols_per_row = 3
+            items = list(_kat_grp.iterrows())
+            for row_start in range(0, len(items), cols_per_row):
+                row_items = items[row_start:row_start + cols_per_row]
+                cols = st.columns(cols_per_row)
+                for ci, (kat, row) in enumerate(row_items):
+                    pct = (row['sum'] / _kat_total * 100) if _kat_total > 0 else 0
+                    _c = "#64748b"
+                    _ic = "📦"
+                    for _k, _v in _kat_colors.items():
+                        if _k in kat.upper():
+                            _c = _v; break
+                    for _k, _v in _kat_icons.items():
+                        if _k in kat.upper():
+                            _ic = _v; break
+                    with cols[ci]:
+                        st.markdown(f"""
+                        <div style="background:#fff; border:1px solid {_c}33; border-radius:14px;
+                                    padding:18px; text-align:center; border-top:3px solid {_c};">
+                            <div style="font-size:1.6rem; margin-bottom:6px;">{_ic}</div>
+                            <div style="font-size:0.72rem; font-weight:700; color:{_c};
+                                        letter-spacing:0.05em; margin-bottom:8px;">{kat}</div>
+                            <div style="font-size:1.4rem; font-weight:900; color:#0f1923;">₺{row['sum']:,.0f}</div>
+                            <div style="display:flex; justify-content:center; gap:16px; margin-top:8px; font-size:0.72rem; color:#7a96a4;">
+                                <span>{int(row['count'])} fiş</span>
+                                <span>ort. ₺{row['mean']:,.0f}</span>
+                                <span style="font-weight:700; color:{_c};">%{pct:.1f}</span>
+                            </div>
+                            <div style="margin-top:8px; height:4px; background:rgba(0,0,0,0.06); border-radius:99px;">
+                                <div style="height:100%; width:{min(pct,100):.0f}%; background:{_c}; border-radius:99px;"></div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+            # Grafik
+            if len(_kat_grp) > 1:
+                st.markdown("<br>", unsafe_allow_html=True)
+                fig_gk = go.Figure(go.Pie(
+                    labels=_kat_grp.index.tolist(),
+                    values=_kat_grp['sum'].values.tolist(),
+                    hole=0.55,
+                    textinfo='label+percent',
+                    textfont=dict(size=11)
+                ))
+                fig_gk.update_layout(
+                    title=f'{tab_title} — Kategori Dağılımı',
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#4a5568'), height=350,
+                    legend=dict(bgcolor='rgba(0,0,0,0)')
+                )
+                st.plotly_chart(fig_gk, use_container_width=True)
+
+            # Export + tablo
+            st.markdown("<br>", unsafe_allow_html=True)
+            _gkf_clean = _gkf.drop(columns=['_Tarih_DT', '_Ay_Yil'], errors='ignore')
+            _gkf_clean = _gkf_clean.rename(columns={'_Gider_Kategori': 'Gider Kategorisi'})
+            gd1, gd2, gd3 = st.columns(3)
+            _safe_title = tab_title.replace(" ","_").replace("/","")
+            gd1.download_button("📥 CSV", _gkf_clean.to_csv(index=False).encode('utf-8-sig'),
+                f"Gider_{_safe_title}_{_gk_ay}.csv", "text/csv", use_container_width=True, key=f"gk_{tab_title}_csv")
+            gd2.download_button("📊 Excel",
+                export_excel_muhasebe(_gkf_clean.drop(columns=['Gider Kategorisi'], errors='ignore'), f"{tab_title} — {_gk_ay}", logo_path="logo.png"),
+                f"Gider_{_safe_title}_{_gk_ay}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True, key=f"gk_{tab_title}_xlsx")
+            gd3.download_button("📄 PDF",
+                export_pdf_muhasebe(_gkf_clean.drop(columns=['Gider Kategorisi'], errors='ignore'), f"{tab_title} Raporu", f"{tab_title} — {_gk_ay}", logo_path="logo.png"),
+                f"Gider_{_safe_title}_{_gk_ay}.pdf", "application/pdf", use_container_width=True, key=f"gk_{tab_title}_pdf")
+
+            st.dataframe(_gkf_clean.sort_values('Tarih', ascending=False), use_container_width=True, hide_index=True)
+
+        # ── TAB: Harcırah
+        with tab_gk_harc:
+            st.markdown("### 💵 Harcırah Harcamaları — Kategori Bazlı")
+            if not df_full.empty and 'Odeme_Turu' in df_full.columns:
+                _harc_gk = df_full[df_full['Odeme_Turu'].str.lower().str.strip().isin(_harc_odeme_keys_gk)].copy()
+            else:
+                _harc_gk = pd.DataFrame()
+            _render_gider_kategori_tab(_harc_gk, "Harcırah")
+
+        # ── TAB: Zeynep Özyaman Şahsi K.K.
+        with tab_gk_zeynep:
+            st.markdown("### 💳 Zeynep Özyaman Şahsi K.K. — Kategori Bazlı")
+            if not df_full.empty and 'Kullanıcı' in df_full.columns and 'Odeme_Turu' in df_full.columns:
+                _zk_gk = df_full[
+                    df_full['Kullanıcı'].str.contains('Zeynep', case=False, na=False) &
+                    df_full['Odeme_Turu'].str.lower().str.strip().isin(_harc_odeme_keys_gk)
+                ].copy()
+            else:
+                _zk_gk = pd.DataFrame()
+            _render_gider_kategori_tab(_zk_gk, "Zeynep Özyaman K.K.")
+
+        # ── TAB: Şirket Kredi Kartı
+        with tab_gk_sirket:
+            st.markdown("### 🏦 Şirket Kredi Kartı — Kategori Bazlı")
+            if not df_full.empty and 'Odeme_Turu' in df_full.columns:
+                _sk_gk = df_full[df_full['Odeme_Turu'].str.lower().str.strip().isin(_sirket_odeme_keys_gk)].copy()
+            else:
+                _sk_gk = pd.DataFrame()
+            _render_gider_kategori_tab(_sk_gk, "Şirket Kredi Kartı")
