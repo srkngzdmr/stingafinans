@@ -5626,7 +5626,7 @@ Somut rakamlar ve yüzdeler kullan. Profesyonel ama anlaşılır ol.
                                         else:
                                             _silindi = api_delete_expense(
                                                 fis_id=_fis_id,
-                                                silen_admin=username,
+                                                silen_admin=user_name,
                                                 silme_neden=_silme_neden.strip()
                                             )
                                             if _silindi:
