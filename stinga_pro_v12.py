@@ -1236,327 +1236,558 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
 
 def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
     """
-    Seçili dönemdeki fiş görsellerini profesyonel A4 PDF'e aktarır.
-    Logo, Türkçe font, 2×2 grid kart düzeni.
+    Premium fiş arşivi — 4 fiş/sayfa, KDV kırılımlı, kategori ikonlu.
     """
-    try:
-        import io as _io, os as _os, base64 as _b64
-        from reportlab.pdfgen import canvas as _rc
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.units import cm, mm
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        from PIL import Image as _PIL
-        import numpy as _np
 
-        # ── Türkçe font ────────────────────────────────────────
-        _FONTS = {
-            "DJ":   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "DJ-B": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "DJ-M": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-        }
-        for alias, path in _FONTS.items():
-            if _os.path.exists(path):
-                try: pdfmetrics.registerFont(TTFont(alias, path))
-                except Exception: pass
+    # ── Renk paleti ─────────────────────────────────────────
+    G     = (0.067, 0.522, 0.361)   # Stinga yeşil
+    GD    = (0.047, 0.380, 0.259)   # koyu yeşil
+    N     = (0.184, 0.235, 0.431)   # lacivert
+    ND    = (0.094, 0.122, 0.243)   # koyu lacivert
+    W     = (1.0,   1.0,   1.0  )
+    OF    = (0.976, 0.980, 0.988)   # off-white zemin
+    LG    = (0.941, 0.945, 0.953)   # açık gri
+    MG    = (0.596, 0.631, 0.682)   # orta gri
+    DT    = (0.086, 0.106, 0.149)   # koyu metin
+    AMB   = (0.851, 0.467, 0.016)   # amber
 
-        def _f(bold=False, mono=False):
-            reg = pdfmetrics.getRegisteredFontNames()
-            if mono and "DJ-M" in reg: return "DJ-M"
-            if bold and "DJ-B" in reg: return "DJ-B"
-            if "DJ"   in reg:          return "DJ"
-            return "Helvetica-Bold" if bold else "Helvetica"
+    # ── Logo yükle ───────────────────────────────────────────
+    logo_buf = None
+    _paths = [logo_path, "logo.png",
+              "/mnt/user-data/uploads/logo.png",
+              os.path.join(os.path.dirname(__file__), "logo.png")]
+    for lp in _paths:
+        if lp and os.path.exists(str(lp)):
+            try:
+                pil = _PIL.open(lp).convert("RGBA")
+                # Kareye al
+                w, h = pil.size; s = min(w, h)
+                pil = pil.crop(((w-s)//2,(h-s)//2,(w+s)//2,(h+s)//2))
+                pil = pil.resize((360, 360), _PIL.LANCZOS)
+                arr = np.array(pil)
+                S = 360; cx = cy = S // 2
+                Y_idx, X_idx = np.ogrid[:S, :S]
+                dist = np.sqrt((X_idx - cx)**2 + (Y_idx - cy)**2)
+                R = 176  # daire yarıçapı (kenarda boşluk bırak)
+                # Daire dışını şeffaf yap
+                arr[dist > R, 3] = 0
+                # Daire içindeki siyah arka planı şeffaf yap
+                inside = dist <= R
+                dark_inside = inside & (arr[:,:,0]<40) & (arr[:,:,1]<40) & (arr[:,:,2]<40)
+                arr[dark_inside, 3] = 0
+                pil = _PIL.fromarray(arr, "RGBA")
+                logo_buf = io.BytesIO()
+                pil.save(logo_buf, "PNG"); logo_buf.seek(0)
+                break
+            except: logo_buf = None
 
-        # ── Logo yükle ─────────────────────────────────────────
-        logo_img_buf = None
-        _logo_paths = [logo_path, "logo.png", "/mnt/user-data/uploads/logo.png"]
-        for _lp in _logo_paths:
-            if _lp and _os.path.exists(str(_lp)):
-                try:
-                    _pil = _PIL.open(_lp).convert("RGBA")
-                    # Siyah arka planı şeffaf yap
-                    _arr = _np.array(_pil)
-                    _arr[(_arr[:,:,0]<50)&(_arr[:,:,1]<50)&(_arr[:,:,2]<50), 3] = 0
-                    _pil = _PIL.fromarray(_arr, "RGBA")
-                    _w, _h = _pil.size; _s = min(_w, _h)
-                    _pil = _pil.crop(((_w-_s)//2, (_h-_s)//2, (_w+_s)//2, (_h+_s)//2))
-                    _pil = _pil.resize((300, 300), _PIL.LANCZOS)
-                    logo_img_buf = _io.BytesIO()
-                    _pil.save(logo_img_buf, format="PNG")
-                    logo_img_buf.seek(0)
-                    break
-                except Exception:
-                    logo_img_buf = None
+    # ── Kayıtları hazırla ────────────────────────────────────
+    records = []
+    for _, row in df_raw.iterrows():
+        b64 = str(row.get("Gorsel_B64", "") or "")
+        dosya = str(row.get("Dosya_Yolu", "") or "")
+        img_bytes = None
+        if dosya and os.path.exists(dosya):
+            with open(dosya, "rb") as fh: img_bytes = fh.read()
+        elif len(b64) > 80:
+            try:
+                data = b64.split(",",1)[1] if "," in b64 else b64
+                img_bytes = base64.b64decode(data)
+            except: pass
 
-        # ── Sayfa boyutları ────────────────────────────────────
-        PW, PH       = A4
-        MX           = 1.4 * cm
-        HEADER_H     = 2.4 * cm           # Logo+başlık için daha geniş header
-        FOOTER_H     = 0.85 * cm
-        USABLE_H     = PH - HEADER_H - FOOTER_H - 0.7 * cm
-        COLS, ROWS   = 2, 2
-        PER_PAGE     = COLS * ROWS
-        GAP_X        = 0.42 * cm
-        GAP_Y        = 0.48 * cm
-        CAPTION_H    = 1.18 * cm
-        CELL_W       = (PW - 2 * MX - (COLS - 1) * GAP_X) / COLS
-        CELL_H       = (USABLE_H - (ROWS - 1) * GAP_Y) / ROWS - CAPTION_H
+        tutar    = float(row.get("Tutar", 0) or 0)
+        kategori = str(row.get("Kategori", "") or "")
+        kdv_f    = row.get("KDV", None)
+        net, kdv = _kdv_hesapla(tutar, kdv_f, kategori)
 
-        # ── Renk paleti ────────────────────────────────────────
-        G   = (0.067, 0.518, 0.357)   # Stinga yeşil
-        N   = (0.184, 0.235, 0.431)   # Stinga lacivert
-        W   = (1.0,   1.0,   1.0  )
-        BG  = (0.973, 0.988, 0.980)
-        BD  = (0.780, 0.862, 0.827)
-        MUT = (0.48,  0.59,  0.63 )
-        TXT = (0.059, 0.098, 0.137)
-        CAP = (0.945, 0.969, 0.957)
-        D_BG = (0.102, 0.188, 0.333)  # Header lacivert koyu
+        records.append({
+            "id":        str(row.get("ID",        "—")),
+            "firma":     str(row.get("Firma",     "—")),
+            "tarih":     str(row.get("Tarih",     "—")),
+            "tutar":     tutar,
+            "net":       net,
+            "kdv":       kdv,
+            "kategori":  kategori,
+            "kullanici": str(row.get("Kullanıcı", "—")),
+            "proje":     str(row.get("Proje",     "—")),
+            "notlar":    str(row.get("Notlar",    "") or ""),
+            "bytes":     img_bytes,
+        })
 
-        # ── Kayıtları hazırla ──────────────────────────────────
-        records = []
-        for _, row in df_raw.iterrows():
-            b64_uri  = str(row.get("Gorsel_B64", "") or "")
-            dosya    = str(row.get("Dosya_Yolu",  "") or "")
-            img_bytes = None
-            if dosya and _os.path.exists(dosya):
-                with open(dosya, "rb") as fh: img_bytes = fh.read()
-            elif len(b64_uri) > 80:
-                try:
-                    data = b64_uri.split(",", 1)[1] if "," in b64_uri else b64_uri
-                    img_bytes = _b64.b64decode(data)
-                except Exception: pass
-            records.append({
-                "id":    str(row.get("ID",    "")),
-                "firma": str(row.get("Firma", "—")),
-                "tarih": str(row.get("Tarih", "")),
-                "tutar": float(row.get("Tutar", 0) or 0),
-                "durum": str(row.get("Durum", "")),
-                "bytes": img_bytes,
-            })
+    # ── Sayfa boyutları ──────────────────────────────────────
+    PW, PH    = A4
+    MX        = 1.4 * cm         # sol/sağ kenar boşluğu
+    MY_TOP    = 0.5 * cm
+    HEADER_H  = 2.9 * cm
+    FOOTER_H  = 1.0 * cm
+    CONTENT_T = PH - HEADER_H - MY_TOP
+    CONTENT_B = FOOTER_H + 0.5*cm
+    CONTENT_H = CONTENT_T - CONTENT_B
 
-        buf = _io.BytesIO()
-        c   = _rc.Canvas(buf, pagesize=A4)
-        total_pages = max(1, (len(records) + PER_PAGE - 1) // PER_PAGE)
+    COLS, ROWS = 2, 2
+    PER_PAGE   = COLS * ROWS
+    H_GAP      = 0.5 * cm
+    V_GAP      = 0.5 * cm
 
-        # ── Header çiz (logo + başlık bloku) ──────────────────
-        def _header(pg, tot):
-            c.saveState()
+    CARD_W = (PW - 2*MX - (COLS-1)*H_GAP) / COLS
+    CARD_H = (CONTENT_H - (ROWS-1)*V_GAP) / ROWS
 
-            # Sol beyaz logo alanı
-            LOGO_W = 4.8 * cm
-            c.setFillColorRGB(1, 1, 1)
-            c.rect(0, PH - HEADER_H, LOGO_W, HEADER_H, stroke=0, fill=1)
+    # Kart içi bölüm oranları
+    IMG_H   = CARD_H * 0.52          # görsel alanı
+    META_H  = CARD_H - IMG_H         # alt bilgi alanı
 
-            # Logo çiz
-            if logo_img_buf:
-                try:
-                    logo_img_buf.seek(0)
-                    LSIZE = 1.85 * cm
-                    lx = (LOGO_W - LSIZE) / 2
-                    ly = PH - HEADER_H + (HEADER_H - LSIZE) / 2
-                    c.drawImage(_rc.ImageReader(logo_img_buf),
-                                lx, ly, LSIZE, LSIZE,
-                                preserveAspectRatio=True, mask="auto")
-                except Exception: pass
-            else:
-                # Emoji fallback
-                c.setFillColorRGB(*G)
-                c.setFont(_f(bold=True), 22)
-                c.drawCentredString(LOGO_W / 2, PH - HEADER_H + HEADER_H / 2 - 6, "⚡")
+    total_pages = max(1, (len(records) + PER_PAGE - 1) // PER_PAGE)
 
-            # Ayırıcı ince çizgi
-            c.setStrokeColorRGB(*BD)
-            c.setLineWidth(0.5)
-            c.line(LOGO_W, PH - HEADER_H + 6, LOGO_W, PH - 6)
+    buf = io.BytesIO()
+    c   = _rc.Canvas(buf, pagesize=A4)
+    c.setTitle(f"Stinga Enerji A.Ş. — Fiş Arşivi — {donem}")
+    c.setAuthor("Stinga Pro Finance v17.0")
 
-            # Sağ koyu header bandı
-            c.setFillColorRGB(*D_BG)
-            c.rect(LOGO_W, PH - HEADER_H, PW - LOGO_W, HEADER_H, stroke=0, fill=1)
+    # ════════════════════════════════════════════════════════
+    # HEADER
+    # ════════════════════════════════════════════════════════
+    def draw_header(pg, tot):
+        c.saveState()
 
-            # Sağ yarıda sağ köşede yeşil aksan
-            c.setFillColorRGB(*G)
-            c.rect(PW - 3.8 * cm, PH - HEADER_H, 3.8 * cm, HEADER_H, stroke=0, fill=1)
+        # Koyu lacivert zemin
+        c.setFillColorRGB(*ND)
+        c.rect(0, PH - HEADER_H, PW, HEADER_H, stroke=0, fill=1)
 
-            # Başlık metinleri
-            TITLE_X = LOGO_W + 0.5 * cm
-            c.setFillColorRGB(*W)
-            c.setFont(_f(bold=True), 11)
-            c.drawString(TITLE_X, PH - HEADER_H + HEADER_H * 0.62, "STİNGA ENERJİ A.Ş.")
-            c.setFont(_f(bold=False), 7.5)
-            c.setFillColorRGB(0.70, 0.82, 0.95)
-            c.drawString(TITLE_X, PH - HEADER_H + HEADER_H * 0.35,
-                         "ORİJİNAL FİŞ ARŞİVİ")
-            c.setFont(_f(), 6.5)
-            c.setFillColorRGB(0.55, 0.68, 0.80)
-            c.drawString(TITLE_X, PH - HEADER_H + HEADER_H * 0.13,
-                         f"Dönem: {donem}")
+        # Sol yeşil blok (logo alanı)
+        LGBW = 5.2 * cm
+        c.setFillColorRGB(*G)
+        c.rect(0, PH - HEADER_H, LGBW, HEADER_H, stroke=0, fill=1)
 
-            # Sayfa badge (yeşil köşe üstünde)
-            c.setFillColorRGB(*W)
-            c.setFont(_f(bold=True), 9)
-            c.drawRightString(PW - 0.55 * cm, PH - HEADER_H + HEADER_H * 0.55,
-                              f"{pg} / {tot}")
-            c.setFont(_f(), 6)
-            c.setFillColorRGB(0.80, 0.95, 0.87)
-            c.drawRightString(PW - 0.55 * cm, PH - HEADER_H + HEADER_H * 0.26, "Sayfa")
+        # Yeşil → lacivert geçiş üçgeni (sağ uç)
+        c.setFillColorRGB(*GD)
+        p = c.beginPath()
+        p.moveTo(LGBW,              PH - HEADER_H)
+        p.lineTo(LGBW + 1.4*cm,    PH - HEADER_H)
+        p.lineTo(LGBW,              PH)
+        p.close()
+        c.drawPath(p, fill=1, stroke=0)
 
-            # Alt ince çizgi header'ı ayır
-            c.setStrokeColorRGB(*G)
-            c.setLineWidth(1.2)
-            c.line(0, PH - HEADER_H, PW, PH - HEADER_H)
-
-            c.restoreState()
-
-        # ── Footer ────────────────────────────────────────────
-        def _footer():
-            c.saveState()
-            c.setStrokeColorRGB(*BD)
-            c.setLineWidth(0.3)
-            c.line(MX, FOOTER_H + 2.5 * mm, PW - MX, FOOTER_H + 2.5 * mm)
-            c.setFillColorRGB(*MUT)
-            c.setFont(_f(), 5.8)
-            c.drawCentredString(PW / 2, FOOTER_H - 1.5 * mm,
-                "Stinga Pro Finance v17.0  ·  Bu belge otomatik olarak üretilmiştir"
-                "  ·  Resmi muhasebe işlemleri için mali müşavirinize danışınız.")
-            c.restoreState()
-
-        # ── Kart çiz ──────────────────────────────────────────
-        def _card(cx, cy, rec):
-            CW, CH = CELL_W, CELL_H
-
-            # Gölge
-            c.saveState()
-            c.setFillColorRGB(0.65, 0.72, 0.70, 0.18)
-            c.roundRect(cx + 2.5, cy - CAPTION_H - 2.5, CW, CH + CAPTION_H, 8, stroke=0, fill=1)
-            c.restoreState()
-
-            # Kart zemin + kenarlık
-            c.saveState()
-            c.setFillColorRGB(*BG)
-            c.setStrokeColorRGB(*BD)
-            c.setLineWidth(0.8)
-            c.roundRect(cx, cy - CAPTION_H, CW, CH + CAPTION_H, 8, stroke=1, fill=1)
-            c.restoreState()
-
-            # Sol yeşil şerit
-            c.saveState()
-            c.setFillColorRGB(*G)
-            c.roundRect(cx, cy - CAPTION_H, 3.5, CH + CAPTION_H, 3, stroke=0, fill=1)
-            c.restoreState()
-
-            # Görsel
-            pad = 7
-            ix, iy = cx + pad + 3.5, cy + pad
-            iw, ih = CW - pad * 2 - 3.5, CH - pad * 2
-
-            if rec["bytes"]:
-                try:
-                    pil = _PIL.open(_io.BytesIO(rec["bytes"])).convert("RGB")
-                    pw2, ph2 = pil.size
-                    ratio = pw2 / ph2
-                    dw = iw; dh = dw / ratio
-                    if dh > ih: dh = ih; dw = dh * ratio
-                    dx = ix + (iw - dw) / 2
-                    dy = iy + (ih - dh) / 2
-                    tmp = _io.BytesIO()
-                    pil.save(tmp, format="JPEG", quality=88); tmp.seek(0)
-                    c.saveState()
-                    p = c.beginPath(); p.roundRect(ix, iy, iw, ih, 5)
-                    c.clipPath(p, stroke=0)
-                    c.drawImage(_rc.ImageReader(tmp), dx, dy, dw, dh,
-                                preserveAspectRatio=True, mask="auto")
-                    c.restoreState()
-                    c.saveState()
-                    c.setStrokeColorRGB(*BD); c.setLineWidth(0.4)
-                    c.roundRect(ix, iy, iw, ih, 5, stroke=1, fill=0)
-                    c.restoreState()
-                except Exception:
-                    _no_img(c, ix, iy, iw, ih)
-            else:
-                _no_img(c, ix, iy, iw, ih)
-
-            # Caption şeridi
-            c.saveState()
-            c.setFillColorRGB(*CAP)
-            c.roundRect(cx, cy - CAPTION_H, CW, CAPTION_H + 5, 8, stroke=0, fill=1)
-            c.rect(cx, cy - CAPTION_H + 5, CW, CAPTION_H - 5, stroke=0, fill=1)
-            c.setStrokeColorRGB(*G); c.setLineWidth(0.5)
-            c.line(cx + 5, cy, cx + CW - 5, cy)
-            c.restoreState()
-
-            # Durum badge
-            durum = rec.get("durum", "")
-            _BADGE = {
-                "Onaylandı":   ((0.067, 0.518, 0.357), "✓ ONAYLANDI"),
-                "Bekliyor":    ((0.855, 0.467, 0.016), "⏳ BEKLİYOR"),
-                "Reddedildi":  ((0.863, 0.149, 0.149), "✗ REDDEDİLDİ"),
-            }
-            if durum in _BADGE:
-                bd_col, bd_txt = _BADGE[durum]
-                c.saveState()
-                c.setFillColorRGB(*bd_col)
-                bw, bh = 1.85 * cm, 0.44 * cm
-                c.roundRect(cx + CW - bw - 5, cy - CAPTION_H + (CAPTION_H - bh) / 2,
-                            bw, bh, 3, stroke=0, fill=1)
-                c.setFillColorRGB(*W); c.setFont(_f(bold=True), 5.0)
-                c.drawCentredString(cx + CW - bw / 2 - 5,
-                                    cy - CAPTION_H + (CAPTION_H - bh) / 2 + 0.13 * cm, bd_txt)
-                c.restoreState()
-
-            # Metin satırları
-            c.saveState()
-            c.setFillColorRGB(*G); c.setFont(_f(mono=True), 6.2)
-            c.drawString(cx + 9, cy - 0.25 * cm, rec["id"][:22])
-            c.setFillColorRGB(*TXT); c.setFont(_f(bold=True), 7.5)
-            c.drawString(cx + 9, cy - 0.52 * cm, rec["firma"][:28])
-            c.setFillColorRGB(*MUT); c.setFont(_f(), 6.5)
-            c.drawString(cx + 9, cy - 0.78 * cm, rec["tarih"])
-            c.setFillColorRGB(*N); c.setFont(_f(bold=True), 9)
-            c.drawRightString(cx + CW - 2.2 * cm, cy - 0.78 * cm,
-                              f"\u20ba{rec['tutar']:,.0f}")
-            c.restoreState()
-
-        def _no_img(canv, ix, iy, iw, ih):
-            canv.saveState()
-            canv.setFillColorRGB(0.937, 0.953, 0.945)
-            canv.roundRect(ix, iy, iw, ih, 5, stroke=0, fill=1)
-            canv.setStrokeColorRGB(*BD); canv.setLineWidth(0.5)
-            canv.setDash(4, 3)
-            canv.roundRect(ix, iy, iw, ih, 5, stroke=1, fill=0)
-            canv.setFillColorRGB(*MUT); canv.setFont(_f(), 8)
-            canv.drawCentredString(ix + iw / 2, iy + ih / 2 + 5, "Görsel bulunamadı")
-            canv.restoreState()
-
-        # ── Sayfa döngüsü ─────────────────────────────────────
-        if not records:
-            _header(1, 1); _footer()
-            c.setFont(_f(), 10); c.setFillColorRGB(*MUT)
-            c.drawCentredString(PW / 2, PH / 2,
-                                "Seçili dönemde görsel içeren fiş bulunamadı.")
-            c.showPage()
+        # Logo
+        if logo_buf:
+            try:
+                logo_buf.seek(0)
+                LS = 2.65 * cm
+                lx = (LGBW - LS) / 2
+                ly = PH - HEADER_H + (HEADER_H - LS) / 2
+                c.drawImage(_rc.ImageReader(logo_buf),
+                            lx, ly, LS, LS,
+                            preserveAspectRatio=True, mask="auto")
+            except: pass
         else:
-            for pg in range(total_pages):
-                page_recs = records[pg * PER_PAGE: (pg + 1) * PER_PAGE]
-                _header(pg + 1, total_pages)
-                _footer()
-                for slot, rec in enumerate(page_recs):
-                    col_i   = slot % COLS
-                    row_i   = slot // COLS
-                    x = MX + col_i * (CELL_W + GAP_X)
-                    y = (PH - HEADER_H - 0.4 * cm
-                         - row_i * (CELL_H + CAPTION_H + GAP_Y)
-                         - CELL_H)
-                    _card(x, y, rec)
-                c.showPage()
+            # "S" harfi fallback
+            c.setFillColorRGB(*W)
+            c.setFont(_f(bold=True), 28)
+            c.drawCentredString(LGBW/2, PH - HEADER_H + HEADER_H/2 - 10, "S")
 
-        c.save()
-        return buf.getvalue()
+        # Şirket adı + başlık
+        TX = LGBW + 1.8*cm
+        c.setFillColorRGB(*W)
+        c.setFont(_f(bold=True), 12.5)
+        c.drawString(TX, PH - HEADER_H + HEADER_H*0.62, "STİNGA ENERJİ A.Ş.")
+        c.setFont(_f(), 7.5)
+        c.setFillColorRGB(0.60, 0.76, 0.92)
+        c.drawString(TX, PH - HEADER_H + HEADER_H*0.37, "ORİJİNAL FİŞ ARŞİVİ  —  HARCAMA DOKÜMANTASYONU")
+        c.setFont(_f(), 6.2)
+        c.setFillColorRGB(0.45, 0.60, 0.75)
+        c.drawString(TX, PH - HEADER_H + HEADER_H*0.14, f"Dönem: {donem}  ·  Toplam: {len(records)} Fiş")
 
-    except Exception:
-        import traceback
-        traceback.print_exc()
-        return b"%PDF-1.4\n"
+        # Sağ: sayfa numarası kutusu
+        BW, BH = 2.8*cm, HEADER_H - 0.7*cm
+        BX = PW - MX - BW
+        BY = PH - HEADER_H + 0.35*cm
+        # Kutu arka planı (hafif beyaz şeffaf)
+        c.setFillColorRGB(0.14, 0.20, 0.38)
+        c.roundRect(BX, BY, BW, BH, 6, stroke=0, fill=1)
+        # Üst yeşil çizgi
+        c.setStrokeColorRGB(*G)
+        c.setLineWidth(2)
+        c.line(BX+6, BY+BH, BX+BW-6, BY+BH)
+        # Sayfa metni
+        c.setFillColorRGB(*W)
+        c.setFont(_f(bold=True), 15)
+        c.drawCentredString(BX+BW/2, BY+BH*0.42, f"{pg} / {tot}")
+        c.setFont(_f(), 5.5)
+        c.setFillColorRGB(0.55, 0.70, 0.85)
+        c.drawCentredString(BX+BW/2, BY+0.18*cm, "SAYFA")
+
+        # Alt çizgi (yeşil)
+        c.setStrokeColorRGB(*G)
+        c.setLineWidth(1.8)
+        c.line(0, PH - HEADER_H, PW, PH - HEADER_H)
+
+        c.restoreState()
+
+    # ════════════════════════════════════════════════════════
+    # FOOTER
+    # ════════════════════════════════════════════════════════
+    def draw_footer():
+        c.saveState()
+        c.setFillColorRGB(*LG)
+        c.rect(0, 0, PW, FOOTER_H, stroke=0, fill=1)
+        c.setFillColorRGB(*G)
+        c.rect(0, 0, 0.3*cm, FOOTER_H, stroke=0, fill=1)
+        c.setStrokeColorRGB(*MG)
+        c.setLineWidth(0.3)
+        c.line(0.5*cm, FOOTER_H, PW-0.5*cm, FOOTER_H)
+        c.setFillColorRGB(*MG)
+        c.setFont(_f(), 5.5)
+        c.drawString(0.8*cm, FOOTER_H*0.38,
+            "Stinga Pro Finance v17.0  ·  Bu belge muhasebe amaçlı otomatik üretilmiştir  ·  Resmi işlemler için mali müşavirinize danışınız.")
+        c.restoreState()
+
+    # ════════════════════════════════════════════════════════
+    # FİŞ KARTI
+    # ════════════════════════════════════════════════════════
+    def draw_card(cx, cy, rec, idx):
+        CW, CH = CARD_W, CARD_H
+        kat_cfg = _kat_info(rec["kategori"])
+        KAT_COL = kat_cfg["color"]
+
+        c.saveState()
+
+        # Gölge
+        c.setFillColorRGB(0.70, 0.72, 0.76)
+        c.roundRect(cx+2.5, cy-2.5, CW, CH, 8, stroke=0, fill=1)
+
+        # Kart zemin
+        c.setFillColorRGB(*OF)
+        c.setStrokeColorRGB(0.86, 0.88, 0.91)
+        c.setLineWidth(0.5)
+        c.roundRect(cx, cy, CW, CH, 8, stroke=1, fill=1)
+
+        # Üst renk şerit (kategori rengi)
+        STRIPE_H = 4.0
+        c.setFillColorRGB(*KAT_COL)
+        c.roundRect(cx, cy+CH-STRIPE_H, CW, STRIPE_H+8, 8, stroke=0, fill=1)
+        c.rect(cx, cy+CH-STRIPE_H, CW, STRIPE_H, stroke=0, fill=1)
+
+        # ── GÖRSEL ALANI ─────────────────────────────────────
+        PAD = 7
+        img_x  = cx + PAD
+        img_y  = cy + META_H
+        img_w  = CW - PAD*2
+        img_h  = IMG_H - PAD
+
+        if rec["bytes"]:
+            try:
+                pil = _PIL.open(io.BytesIO(rec["bytes"])).convert("RGB")
+                pil = pil.filter(ImageFilter.SHARPEN)
+                pw2, ph2 = pil.size
+                ratio = pw2 / ph2
+                dw = img_w; dh = dw / ratio
+                if dh > img_h: dh = img_h; dw = dh * ratio
+                dx = img_x + (img_w - dw) / 2
+                dy = img_y + (img_h - dh) / 2
+                tmp = io.BytesIO()
+                pil.save(tmp, "JPEG", quality=90); tmp.seek(0)
+
+                # Yuvarlak clip
+                p = c.beginPath(); p.roundRect(img_x, img_y, img_w, img_h, 5)
+                c.clipPath(p, stroke=0)
+                c.drawImage(_rc.ImageReader(tmp), dx, dy, dw, dh,
+                            preserveAspectRatio=True, mask="auto")
+                c.restoreState(); c.saveState()
+                # Görsel kenarlık
+                c.setStrokeColorRGB(0.80, 0.84, 0.88)
+                c.setLineWidth(0.4)
+                c.roundRect(img_x, img_y, img_w, img_h, 5, stroke=1, fill=0)
+            except:
+                _no_img(c, img_x, img_y, img_w, img_h, kat_cfg)
+        else:
+            _no_img(c, img_x, img_y, img_w, img_h, kat_cfg)
+
+        # ── ALT META ALANI ───────────────────────────────────
+        c.restoreState(); c.saveState()
+
+        # Meta alan beyaz zemin
+        c.setFillColorRGB(*W)
+        c.roundRect(cx, cy, CW, META_H, 8, stroke=0, fill=1)
+        c.rect(cx, cy+META_H-8, CW, 8, stroke=0, fill=1)
+
+        # Meta-görsel ayırıcı
+        c.setStrokeColorRGB(0.88, 0.90, 0.93)
+        c.setLineWidth(0.4)
+        c.line(cx+PAD, cy+META_H, cx+CW-PAD, cy+META_H)
+
+        # KATEGORİ ROZET (sol üst meta)
+        RZ_W = 1.8*cm; RZ_H = 0.42*cm
+        RZ_X = cx + PAD
+        RZ_Y = cy + META_H - RZ_H - 0.22*cm
+        c.setFillColorRGB(*KAT_COL)
+        c.roundRect(RZ_X, RZ_Y, RZ_W, RZ_H, 3, stroke=0, fill=1)
+        c.setFillColorRGB(*W)
+        c.setFont(_f(bold=True), 5.0)
+        c.drawCentredString(RZ_X + RZ_W/2, RZ_Y + RZ_H*0.28,
+                            kat_cfg["label"][:10])
+
+        # Sıra numarası (sağ üst küçük)
+        c.setFillColorRGB(*MG)
+        c.setFont(_f(mono=True), 5.0)
+        c.drawRightString(cx+CW-PAD, cy+META_H-0.30*cm, f"#{idx+1:03d}")
+
+        # FİRMA ADI
+        FIRMA_Y = RZ_Y - 0.50*cm
+        c.setFillColorRGB(*DT)
+        c.setFont(_f(bold=True), 8.5)
+        firma = rec["firma"]
+        # Sığmazsa kes
+        max_chars = int(CW / (8.5 * 0.52))
+        if len(firma) > max_chars:
+            firma = firma[:max_chars-2] + ".."
+        c.drawString(cx+PAD, FIRMA_Y, firma)
+
+        # TARİH + PERSONEL
+        INFO_Y = FIRMA_Y - 0.36*cm
+        c.setFillColorRGB(*MG)
+        c.setFont(_f(), 5.8)
+        c.drawString(cx+PAD, INFO_Y,
+                     f"{rec['tarih']}  ·  {rec['kullanici'][:20]}")
+
+        # PROJE (varsa)
+        if rec["proje"] and rec["proje"] != "—":
+            PROJ_Y = INFO_Y - 0.30*cm
+            c.setFillColorRGB(*N)
+            c.setFont(_f(), 5.5)
+            c.drawString(cx+PAD, PROJ_Y, f"📁 {rec['proje'][:24]}")
+            DIVIDER_Y = PROJ_Y - 0.28*cm
+        else:
+            DIVIDER_Y = INFO_Y - 0.24*cm
+
+        # İnce ayırıcı
+        c.setStrokeColorRGB(0.90, 0.92, 0.94)
+        c.setLineWidth(0.3)
+        c.line(cx+PAD, DIVIDER_Y, cx+CW-PAD, DIVIDER_Y)
+
+        # KDV + TUTAR TABLOSU
+        KDV_Y = DIVIDER_Y - 0.32*cm
+        col_lbl_x = cx + PAD
+        col_val_x = cx + CW - PAD
+
+        # Satır 1: KDV Hariç Tutar
+        c.setFillColorRGB(*MG)
+        c.setFont(_f(), 5.5)
+        c.drawString(col_lbl_x, KDV_Y, "KDV Hariç:")
+        c.setFillColorRGB(*DT)
+        c.setFont(_f(), 6.0)
+        c.drawRightString(col_val_x, KDV_Y, f"₺{rec['net']:,.2f}")
+
+        # Satır 2: KDV
+        KDV2_Y = KDV_Y - 0.28*cm
+        c.setFillColorRGB(*MG)
+        c.setFont(_f(), 5.5)
+        # KDV oranı hesapla
+        oran_pct = round(rec['kdv'] / rec['net'] * 100) if rec['net'] > 0 else 20
+        c.drawString(col_lbl_x, KDV2_Y, f"KDV (%{oran_pct}):")
+        c.setFillColorRGB(*AMB)
+        c.setFont(_f(), 6.0)
+        c.drawRightString(col_val_x, KDV2_Y, f"₺{rec['kdv']:,.2f}")
+
+        # İnce çizgi (toplam üstü)
+        TOT_LINE_Y = KDV2_Y - 0.22*cm
+        c.setStrokeColorRGB(*KAT_COL)
+        c.setLineWidth(0.6)
+        c.line(cx+PAD, TOT_LINE_Y, cx+CW-PAD, TOT_LINE_Y)
+
+        # Satır 3: TOPLAM (büyük, bold, renkli)
+        TOT_Y = TOT_LINE_Y - 0.38*cm
+        c.setFillColorRGB(*DT)
+        c.setFont(_f(bold=True), 6.5)
+        c.drawString(col_lbl_x, TOT_Y, "TOPLAM:")
+        c.setFillColorRGB(*KAT_COL)
+        c.setFont(_f(bold=True), 10.5)
+        c.drawRightString(col_val_x, TOT_Y - 0.05*cm, f"₺{rec['tutar']:,.2f}")
+
+        # FİŞ ID (en alt, gri, küçük)
+        ID_Y = cy + 0.30*cm
+        c.setFillColorRGB(0.76, 0.80, 0.84)
+        c.setFont(_f(mono=True), 4.8)
+        c.drawString(cx+PAD, ID_Y, f"ID: {rec['id'][:28]}")
+
+        c.restoreState()
+
+    # ── No-image placeholder ─────────────────────────────────
+    def _no_img(canv, ix, iy, iw, ih, kat_cfg):
+        canv.saveState()
+        canv.setFillColorRGB(0.95, 0.96, 0.97)
+        canv.roundRect(ix, iy, iw, ih, 5, stroke=0, fill=1)
+        canv.setStrokeColorRGB(*kat_cfg["color"])
+        canv.setLineWidth(0.5)
+        canv.setDash(4, 4)
+        canv.roundRect(ix, iy, iw, ih, 5, stroke=1, fill=0)
+        canv.setDash()
+        canv.setFillColorRGB(*kat_cfg["color"])
+        canv.setFont(_f(), 22)
+        canv.drawCentredString(ix+iw/2, iy+ih/2+4, kat_cfg["icon"])
+        canv.setFont(_f(), 6.5)
+        canv.setFillColorRGB(*MG)
+        canv.drawCentredString(ix+iw/2, iy+ih/2-14, "Görsel mevcut değil")
+        canv.restoreState()
+
+    # ════════════════════════════════════════════════════════
+    # ÖZET SAYFASI
+    # ════════════════════════════════════════════════════════
+    def draw_summary():
+        draw_header(total_pages+1, total_pages+1)
+        draw_footer()
+
+        SY = PH - HEADER_H - 0.9*cm
+        c.setFillColorRGB(*ND)
+        c.setFont(_f(bold=True), 14)
+        c.drawString(MX, SY, "HARCAMA ÖZETİ")
+        c.setStrokeColorRGB(*G)
+        c.setLineWidth(2)
+        c.line(MX, SY-0.28*cm, MX+4.2*cm, SY-0.28*cm)
+
+        # Özet istatistikler
+        total_tutar = sum(r["tutar"] for r in records)
+        total_net   = sum(r["net"]   for r in records)
+        total_kdv   = sum(r["kdv"]   for r in records)
+
+        # Kategori bazlı grupla
+        from collections import defaultdict
+        kat_grp = defaultdict(lambda: {"count":0,"tutar":0.0})
+        for r in records:
+            ki = _kat_info(r["kategori"])
+            kat_grp[ki["label"]]["count"] += 1
+            kat_grp[ki["label"]]["tutar"] += r["tutar"]
+            kat_grp[ki["label"]]["color"]  = ki["color"]
+            kat_grp[ki["label"]]["icon"]   = ki["icon"]
+
+        # Üst 3 özet kart
+        STAT_CARDS = [
+            ("Toplam Fiş",      str(len(records)),        G),
+            ("KDV Hariç Tutar", f"₺{total_net:,.2f}",    N),
+            ("Toplam KDV",      f"₺{total_kdv:,.2f}",    AMB),
+            ("TOPLAM TUTAR",    f"₺{total_tutar:,.2f}",  GD),
+        ]
+        SCBW = (PW - 2*MX - 3*0.4*cm) / 4
+        SCBH = 2.5*cm
+        SCBY = SY - 1.3*cm - SCBH
+        for i, (lbl, val, col) in enumerate(STAT_CARDS):
+            BX = MX + i*(SCBW + 0.4*cm)
+            c.setFillColorRGB(*OF)
+            c.setStrokeColorRGB(0.86,0.88,0.91)
+            c.setLineWidth(0.5)
+            c.roundRect(BX, SCBY, SCBW, SCBH, 7, stroke=1, fill=1)
+            c.setFillColorRGB(*col)
+            c.roundRect(BX, SCBY+SCBH-5, SCBW, 5+7, 7, stroke=0, fill=1)
+            c.rect(BX, SCBY+SCBH-5, SCBW, 5, stroke=0, fill=1)
+            c.setFillColorRGB(*col)
+            font_sz = 11 if len(val) < 14 else 8
+            c.setFont(_f(bold=True), font_sz)
+            c.drawCentredString(BX+SCBW/2, SCBY+SCBH*0.42, val)
+            c.setFillColorRGB(*MG)
+            c.setFont(_f(), 6)
+            c.drawCentredString(BX+SCBW/2, SCBY+0.28*cm, lbl)
+
+        # Kategori tablosu
+        TBL_Y = SCBY - 0.8*cm
+        c.setFillColorRGB(*DT)
+        c.setFont(_f(bold=True), 10)
+        c.drawString(MX, TBL_Y, "KATEGORİ BAZLI DAĞILIM")
+        c.setStrokeColorRGB(*G); c.setLineWidth(1.5)
+        c.line(MX, TBL_Y-0.2*cm, MX+5.5*cm, TBL_Y-0.2*cm)
+
+        ROW_H = 0.72*cm
+        ROW_Y = TBL_Y - 0.6*cm
+        TW = PW - 2*MX
+
+        # Tablo başlık
+        c.setFillColorRGB(*ND)
+        c.rect(MX, ROW_Y, TW, ROW_H, stroke=0, fill=1)
+        c.setFillColorRGB(*W)
+        c.setFont(_f(bold=True), 6.5)
+        c.drawString(MX+0.4*cm,   ROW_Y+0.22*cm, "KATEGORİ")
+        c.drawString(MX+5.5*cm,   ROW_Y+0.22*cm, "FİŞ SAYISI")
+        c.drawRightString(MX+TW*0.68, ROW_Y+0.22*cm, "KDV HARİÇ")
+        c.drawRightString(MX+TW*0.84, ROW_Y+0.22*cm, "KDV")
+        c.drawRightString(MX+TW-0.2*cm, ROW_Y+0.22*cm, "TOPLAM")
+
+        ROW_Y -= ROW_H
+        sorted_cats = sorted(kat_grp.items(), key=lambda x: x[1]["tutar"], reverse=True)
+        for i, (kat_lbl, kd) in enumerate(sorted_cats):
+            if ROW_Y < FOOTER_H + 0.5*cm: break
+            bg = OF if i%2==0 else W
+            c.setFillColorRGB(*bg)
+            c.rect(MX, ROW_Y, TW, ROW_H, stroke=0, fill=1)
+            # Sol renk aksent
+            c.setFillColorRGB(*kd["color"])
+            c.rect(MX, ROW_Y, 3, ROW_H, stroke=0, fill=1)
+
+            # İkon + isim
+            c.setFont(_f(), 6.2)
+            c.setFillColorRGB(*kd["color"])
+            c.drawString(MX+0.4*cm, ROW_Y+0.22*cm, f"{kd['icon']}  {kat_lbl}")
+            # Sayı
+            c.setFillColorRGB(*DT)
+            c.drawString(MX+5.5*cm, ROW_Y+0.22*cm, str(kd["count"]))
+            # Hesapla
+            kat_net = sum(r["net"] for r in records if _kat_info(r["kategori"])["label"]==kat_lbl)
+            kat_kdv = sum(r["kdv"] for r in records if _kat_info(r["kategori"])["label"]==kat_lbl)
+            c.setFillColorRGB(*DT)
+            c.drawRightString(MX+TW*0.68, ROW_Y+0.22*cm, f"₺{kat_net:,.2f}")
+            c.setFillColorRGB(*AMB)
+            c.drawRightString(MX+TW*0.84, ROW_Y+0.22*cm, f"₺{kat_kdv:,.2f}")
+            c.setFillColorRGB(*kd["color"])
+            c.setFont(_f(bold=True), 6.2)
+            c.drawRightString(MX+TW-0.2*cm, ROW_Y+0.22*cm, f"₺{kd['tutar']:,.2f}")
+
+            # Alt çizgi
+            c.setStrokeColorRGB(0.88,0.90,0.93)
+            c.setLineWidth(0.2)
+            c.line(MX, ROW_Y, MX+TW, ROW_Y)
+            ROW_Y -= ROW_H
+
+        # TOPLAM satırı
+        if ROW_Y > FOOTER_H + 0.5*cm:
+            c.setFillColorRGB(*ND)
+            c.rect(MX, ROW_Y, TW, ROW_H, stroke=0, fill=1)
+            c.setFillColorRGB(*W)
+            c.setFont(_f(bold=True), 6.5)
+            c.drawString(MX+0.4*cm, ROW_Y+0.22*cm, "GENEL TOPLAM")
+            c.drawRightString(MX+TW*0.68, ROW_Y+0.22*cm, f"₺{total_net:,.2f}")
+            c.setFillColorRGB(*AMB)
+            c.drawRightString(MX+TW*0.84, ROW_Y+0.22*cm, f"₺{total_kdv:,.2f}")
+            c.setFillColorRGB(*G)
+            c.drawRightString(MX+TW-0.2*cm, ROW_Y+0.22*cm, f"₺{total_tutar:,.2f}")
+
+        c.showPage()
+
+    # ════════════════════════════════════════════════════════
+    # ANA RENDER
+    # ════════════════════════════════════════════════════════
+    if not records:
+        draw_header(1, 1); draw_footer()
+        c.setFont(_f(), 10); c.setFillColorRGB(*MG)
+        c.drawCentredString(PW/2, PH/2, "Seçili dönemde görsel içeren fiş bulunamadı.")
+        c.showPage()
+    else:
+        for pg in range(total_pages):
+            page_recs = records[pg*PER_PAGE:(pg+1)*PER_PAGE]
+            draw_header(pg+1, total_pages)
+            draw_footer()
+
+            for slot, rec in enumerate(page_recs):
+                col_i = slot % COLS
+                row_i = slot // COLS
+                cx = MX + col_i * (CARD_W + H_GAP)
+                cy = (CONTENT_T
+                      - (row_i+1) * CARD_H
+                      - row_i * V_GAP)
+                global_idx = pg*PER_PAGE + slot
+                draw_card(cx, cy, rec, global_idx)
+
+            c.showPage()
+
+        draw_summary()
+
+    c.save()
+    return buf.getvalue()
 
 
 def export_excel_muhasebe(df_raw, donem="Tüm Zamanlar", logo_path=None):
