@@ -30,46 +30,10 @@ import requests
 from flask import Flask, request, jsonify
 from google import genai
 from PIL import Image
+from twilio.twiml.messaging_response import MessagingResponse
+from twilio.rest import Client as TwilioClient
 
 app = Flask(__name__)
-
-# ── TWILIO — WhatsApp mesaj gönderici ──
-def send_whatsapp(to: str, body: str) -> bool:
-    """
-    Twilio API ile WhatsApp mesajı gönderir.
-    Gerekli env değişkenleri:
-      TWILIO_ACCOUNT_SID     → Twilio Account SID
-      TWILIO_AUTH_TOKEN      → Twilio Auth Token
-      TWILIO_WHATSAPP_NUMBER → Gönderen numara (örn: whatsapp:+14155238886)
-    """
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
-    from_number = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
-
-    if not account_sid or not auth_token:
-        print("❌ TWILIO_ACCOUNT_SID veya TWILIO_AUTH_TOKEN eksik!", flush=True)
-        return False
-
-    # "905xxxxxxxxx" → "whatsapp:+905xxxxxxxxx"
-    if not to.startswith("whatsapp:"):
-        to = "whatsapp:+" + to.lstrip("+")
-
-    url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
-    try:
-        r = requests.post(url, auth=(account_sid, auth_token), data={
-            "From": from_number,
-            "To": to,
-            "Body": body,
-        }, timeout=10)
-        if r.status_code in (200, 201):
-            print(f"✅ Twilio WA gönderildi → {to}", flush=True)
-            return True
-        else:
-            print(f"❌ Twilio WA hata {r.status_code}: {r.text}", flush=True)
-            return False
-    except Exception as e:
-        print(f"❌ Twilio WA exception: {e}", flush=True)
-        return False
 
 # ── STARTUP: DB_JSON env var'dan geri yükle (Railway restart sonrası) ──
 def _startup_restore():
@@ -97,11 +61,13 @@ def _startup_restore():
 client     = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODEL_NAME = "gemini-2.5-flash"
 
-# Debug: Meta credential kontrolü
-_META_PID   = os.getenv("META_PHONE_NUMBER_ID", "")
-_META_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
-print(f"META_PHONE_NUMBER_ID: {'SET (' + _META_PID[:6] + '...)' if _META_PID else 'YOK!'}", flush=True)
-print(f"META_ACCESS_TOKEN: {'SET (' + str(len(_META_TOKEN)) + ' chars)' if _META_TOKEN else 'YOK!'}", flush=True)
+TWILIO_SID   = os.getenv("TWILIO_SID")
+TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
+twilio_client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
+
+# Debug: credential kontrolü
+print(f"TWILIO_SID: {TWILIO_SID[:8]}...{TWILIO_SID[-4:] if TWILIO_SID else 'YOK'}", flush=True)
+print(f"TWILIO_TOKEN: {'set (' + str(len(TWILIO_TOKEN)) + ' chars)' if TWILIO_TOKEN else 'YOK!'}", flush=True)
 
 def _find_writable_dir():
     candidates = [
@@ -201,16 +167,12 @@ ODEME_BEKLE_FLAG = "odeme_bekle"
 ODEME_BEKLE_DATA = "odeme_data"
 
 KATEGORILER = {
-    "yemek":     ["restoran", "kafe", "lokanta", "manav", "kasap", "ekmek", "cafe", "burger", "pizza", "döner",
-                  "köfte", "balık", "kebap", "lahmacun", "pide", "çorba", "yemek", "mutfak", "bistro", "steak"],
-    "ulasim":    ["akaryakıt", "benzin", "motorin", "otopark", "taksi", "uber", "servis", "shell", "bp", "opet",
-                  "petrol", "total", "enerji akaryakıt", "lukoil", "po ", "aytemiz", "turkuaz", "alpet",
-                  "gas ", "yakıt", "mazot", "istasyon", "tüpraş", "moil"],
+    "yemek":     ["restoran", "kafe", "market", "manav", "kasap", "ekmek", "cafe", "burger", "pizza", "döner"],
+    "ulasim":    ["akaryakıt", "benzin", "otopark", "taksi", "uber", "servis", "shell", "bp", "opet", "petrol"],
     "ofis":      ["kırtasiye", "toner", "bilgisayar", "telefon", "ekipman", "teknosa", "mediamarkt"],
-    "konaklama": ["otel", "apart", "hostel", "hilton", "marriott", "pansiyon", "konaklama", "hotel"],
+    "konaklama": ["otel", "apart", "hostel", "hilton", "marriott"],
     "eglence":   ["sinema", "konser", "etkinlik", "cinemaximum"],
     "saglik":    ["eczane", "hastane", "klinik", "doktor", "ilaç"],
-    "market":    ["market", "migros", "bim", "a101", "şok", "carrefour", "metro", "makro", "file"],
 }
 
 ROZETLER = {
@@ -403,31 +365,10 @@ def add_header(response):
 def gorsel_hash(b: bytes) -> str:
     return hashlib.md5(b).hexdigest()
 
-def kategori_tespit(firma: str, fis_turu: str = "") -> str:
-    """Firma adı + AI fis_turu ile kategori belirle. Yakıt istasyonları öncelikli."""
+def kategori_tespit(firma: str) -> str:
     f = firma.lower()
-    ft = fis_turu.lower().strip() if fis_turu else ""
-
-    # 1) AI fis_turu güvenilir bir değer verdiyse önce onu kullan
-    _fis_turu_map = {
-        "akaryakıt": "ulasim", "akaryakit": "ulasim", "benzin": "ulasim", "yakıt": "ulasim",
-        "restoran": "yemek", "yemek": "yemek", "lokanta": "yemek", "cafe": "yemek", "kafe": "yemek",
-        "otel": "konaklama", "konaklama": "konaklama", "hotel": "konaklama",
-        "market": "market", "süpermarket": "market",
-    }
-    if ft in _fis_turu_map:
-        return _fis_turu_map[ft]
-
-    # 2) Yakıt istasyonları öncelikli kontrol (OPET market, Shell market vb. yakıttır)
-    _yakit_firma = ["opet", "shell", "bp ", "total", "petrol", "akaryakıt", "lukoil",
-                    "aytemiz", "turkuaz", "alpet", "po ", "tüpraş", "moil", "enerji akaryakıt"]
-    if any(k in f for k in _yakit_firma):
-        return "ulasim"
-
-    # 3) Standart kategori eşleştirme
     for kat, kelimeler in KATEGORILER.items():
-        if any(k in f for k in kelimeler):
-            return kat
+        if any(k in f for k in kelimeler): return kat
     return "diger"
 
 def seviye_hesapla(fis_sayisi: int) -> str:
@@ -507,357 +448,20 @@ def harcama_kehaneti(user_name, data):
     except: return f"🔮 Bu gidişle bütçen {bitis_tarihi}'de tükeniyor! ({asim_miktari:.0f} ₺ aşım)"
 
 def derin_sahtelik_analizi(fis_data, image):
-    """
-    ╔══════════════════════════════════════════════════════════════╗
-    ║   STINGA DERİN SAHTELİK ANALİZ MOTORU — 12 Katman          ║
-    ║   Her katman bağımsız çalışır, risk skoru birikmeli artar.  ║
-    ╚══════════════════════════════════════════════════════════════╝
-
-    KATMAN 1  — Tarih Anomalisi (çok eski / gelecek / hafta sonu)
-    KATMAN 2  — Para Birimi & Dönem Tutarsızlığı (YTL/TL karışımı)
-    KATMAN 3  — KDV Matematik Kontrolü
-    KATMAN 4  — Yuvarlak Tutar Şüphesi
-    KATMAN 5  — Görsel Piksel Entropi (bitmap font tespiti)
-    KATMAN 6  — Görsel Renk Homojenliği (beyaz kağıt / gri zemin)
-    KATMAN 7  — Görsel Kenar Geometrisi (eğiklik / kırpılmışlık)
-    KATMAN 8  — AI Sahtelik Skoru (Gemini'den gelen)
-    KATMAN 9  — Metin Yapısı Anomalisi (boşluk/hizalama kalıpları)
-    KATMAN 10 — Vergi Numarası Format Kontrolü
-    KATMAN 11 — Fiş Sıra No / Onay Kodu Format Kontrolü
-    KATMAN 12 — İşletme Adı Güvenilirlik Kontrolü
-    """
-    import re as _re
-    import statistics as _stats
-
-    sonuc = {
-        "sahte_mi": fis_data.get("sahte_mi", False),
-        "guvensizlik_skoru": int(fis_data.get("risk_skoru", 0)),
-        "bulgular": [],
-        "katman_sonuclari": {}
-    }
-
-    def _ekle(katman, mesaj, risk):
-        sonuc["bulgular"].append(mesaj)
-        sonuc["katman_sonuclari"][katman] = {"mesaj": mesaj, "risk": risk}
-        sonuc["guvensizlik_skoru"] = min(100, sonuc["guvensizlik_skoru"] + risk)
-
-    toplam  = float(fis_data.get("toplam_tutar", 0))
-    kdv     = float(fis_data.get("kdv_tutari", 0))
-    tarih   = str(fis_data.get("tarih", ""))
-    firma   = str(fis_data.get("firma", ""))
-    para    = str(fis_data.get("para_birimi", "TRY"))
-    audit   = str(fis_data.get("audit_notu", ""))
-
-    # ════════════════════════════════════════════
-    # KATMAN 1 — TARİH ANOMALİSİ
-    # ════════════════════════════════════════════
-    try:
-        fis_dt = datetime.strptime(tarih, "%Y-%m-%d")
-        bugun  = datetime.now()
-        yas_gun = (bugun - fis_dt).days
-
-        if yas_gun > 365 * 3:   # 3 yıldan eski
-            _ekle("K1", f"🚨 Fiş TARİHİ {fis_dt.year} yılına ait — {yas_gun // 365} yıl önce!", 40)
-        elif yas_gun > 365:     # 1-3 yıl arası
-            _ekle("K1", f"⚠️ Fiş tarihi {yas_gun // 365} yıl önce ({fis_dt.strftime('%d.%m.%Y')})", 25)
-        elif yas_gun > 60:
-            _ekle("K1", f"🔍 Fiş {yas_gun} gün öncesine ait ({fis_dt.strftime('%d.%m.%Y')})", 15)
-        elif fis_dt > bugun:
-            _ekle("K1", "🚨 Gelecek tarihli fiş — tarih manipülasyonu!", 35)
-
-        # Pazar günü harcama şüphesi (bazı iş yerleri kapalı)
-        if fis_dt.weekday() == 6:  # Pazar
-            _ekle("K1b", "🔍 Pazar günü fişi — iş yeri açık mıydı?", 5)
-
-        # Resmi tatil kontrolü (sabit tatiller)
-        _tatiller = ["01-01","23-04","01-05","19-05","15-07","30-08","29-10"]
-        ay_gun = fis_dt.strftime("%m-%d")
-        if ay_gun in _tatiller:
-            _ekle("K1c", f"🔍 Resmi tatil gününe ({ay_gun}) ait fiş", 8)
-
-    except ValueError:
-        _ekle("K1", "🚨 Geçersiz tarih formatı — okunamıyor", 20)
-
-    # ════════════════════════════════════════════
-    # KATMAN 2 — PARA BİRİMİ & DÖNEM TUTARSIZLIĞI
-    # ════════════════════════════════════════════
-    # YTL: 1 Ocak 2005 – 31 Aralık 2008 arasında kullanıldı
-    _ytl_ifadeler = ["ytl", "y.t.l", "yeni türk lirası", "yeni lira"]
-    _metin_birlesik = (firma + audit + str(fis_data.get("audit_notu",""))).lower()
-
-    ytl_bulundu = any(k in _metin_birlesik for k in _ytl_ifadeler)
-    if ytl_bulundu:
-        try:
-            fis_yil = int(tarih[:4])
-            if fis_yil < 2005 or fis_yil > 2008:
-                _ekle("K2", f"🚨 YTL para birimi ama fiş tarihi {fis_yil} — dönem UYUMSUZ!", 35)
-            else:
-                _ekle("K2", f"⚠️ YTL para birimi tespit edildi ({fis_yil}) — arşiv fişi olabilir", 20)
-        except:
-            _ekle("K2", "⚠️ YTL para birimi tespit edildi — eski fiş şüphesi", 20)
-
-    # TL/₺ ama tarih 2005-2008 arası ise de şüpheli
-    try:
-        fis_yil2 = int(tarih[:4])
-        if 2005 <= fis_yil2 <= 2008 and not ytl_bulundu and para == "TRY":
-            _ekle("K2b", f"🔍 {fis_yil2} yılı fişi TL gösteriyor — o dönemde YTL kullanılıyordu", 15)
-    except:
-        pass
-
-    # ════════════════════════════════════════════
-    # KATMAN 3 — KDV MATEMATİK KONTROLÜ
-    # ════════════════════════════════════════════
+    sonuc = {"sahte_mi": fis_data.get("sahte_mi", False), "guvensizlik_skoru": fis_data.get("risk_skoru", 0), "bulgular": []}
+    toplam = float(fis_data.get("toplam_tutar", 0))
+    kdv = float(fis_data.get("kdv_tutari", 0))
     if kdv > 0 and toplam > 0:
-        oran_20 = abs(kdv - toplam * 0.20 / 1.20)
-        oran_10 = abs(kdv - toplam * 0.10 / 1.10)
-        oran_08 = abs(kdv - toplam * 0.08 / 1.08)
-        oran_01 = abs(kdv - toplam * 0.01 / 1.01)
-        min_sapma = min(oran_20, oran_10, oran_08, oran_01)
-        if min_sapma > 2.0:
-            _ekle("K3", f"🚨 KDV tutarı ({kdv:.2f}₺) hiçbir orana uymuyor! (Min sapma: {min_sapma:.2f}₺)", 25)
-        elif min_sapma > 0.5:
-            _ekle("K3", f"⚠️ KDV tutarında küçük matematiksel sapma ({min_sapma:.2f}₺)", 10)
-
-    # ════════════════════════════════════════════
-    # KATMAN 4 — YUVARLAK TUTAR ŞÜPHESİ
-    # ════════════════════════════════════════════
-    if toplam > 0:
-        if toplam == int(toplam) and int(toplam) % 500 == 0:
-            _ekle("K4", f"🚨 Çok şüpheli yuvarlak tutar: {toplam:.0f}₺ (500'ün katı)", 20)
-        elif toplam == int(toplam) and int(toplam) % 100 == 0:
-            _ekle("K4", f"🔍 Yuvarlak tutar: {toplam:.0f}₺ (100'ün katı)", 10)
-        elif toplam == int(toplam) and int(toplam) % 50 == 0:
-            _ekle("K4", f"🔍 Yuvarlak tutar: {toplam:.0f}₺ (50'nin katı)", 5)
-        # Fiş türüne göre olası olmayan tutarlar
-        if fis_data.get("fis_turu","") in ("akaryakıt","akaryakit") and toplam > 5000:
-            _ekle("K4b", f"⚠️ Yakıt fişi için çok yüksek tutar: {toplam:.0f}₺", 15)
-        if fis_data.get("fis_turu","") == "restoran" and toplam > 10000:
-            _ekle("K4b", f"⚠️ Restoran fişi için çok yüksek tutar: {toplam:.0f}₺", 15)
-
-    # ════════════════════════════════════════════
-    # KATMAN 5 — GÖRSEL: PİKSEL ENTROPİ ANALİZİ
-    # Gerçek termal fiş → yüksek entropi (sıcaklık gradyanı)
-    # Bilgisayar çıktısı → düşük entropi (düzgün pikseller)
-    # ════════════════════════════════════════════
-    try:
-        import numpy as _np
-        img_gray = image.convert("L")  # Gri tonlama
-        img_arr  = list(img_gray.tobytes())
-        w, h     = img_gray.size
-
-        # Histogram entropi hesabı
-        _hist = [0] * 256
-        for px in img_arr:
-            _hist[px] += 1
-        _total = len(img_arr)
-        _entropi = 0.0
-        for c in _hist:
-            if c > 0:
-                p = c / _total
-                import math as _math
-                _entropi -= p * _math.log2(p)
-
-        sonuc["gorsel_entropi"] = round(_entropi, 3)
-
-        # Satır bazlı varyans — gerçek termal fişte satırlar arası varyans yüksek
-        satirlar = []
-        for y in range(0, h, max(1, h // 20)):
-            satir = img_arr[y * w: (y+1) * w]
-            if satir:
-                satirlar.append(sum(satir) / len(satir))
-
-        if len(satirlar) > 3:
-            satir_varyans = _stats.variance(satirlar)
-            sonuc["satir_varyans"] = round(satir_varyans, 1)
-            if satir_varyans < 50:
-                _ekle("K5", f"🚨 Çok düşük görsel varyans ({satir_varyans:.0f}) — bilgisayar çıktısı şüphesi", 25)
-            elif satir_varyans < 150:
-                _ekle("K5", f"🔍 Düşük görsel varyans ({satir_varyans:.0f}) — termal yazıcı değil olabilir", 12)
-
-        # Entropi değerlendirmesi
-        if _entropi < 3.5:
-            _ekle("K5b", f"🚨 Çok düşük piksel entropisi ({_entropi:.2f}) — gerçek fiş değil şüphesi", 20)
-        elif _entropi < 5.0:
-            _ekle("K5b", f"🔍 Düşük piksel entropisi ({_entropi:.2f}) — yazıcı kalitesi şüpheli", 8)
-
-    except Exception as _e:
-        print(f"K5 görsel analiz hatası: {_e}", flush=True)
-
-    # ════════════════════════════════════════════
-    # KATMAN 6 — GÖRSEL: RENK HOMOJENLİĞİ
-    # Gerçek termal fiş → beyaza yakın, gri bantlar var
-    # Taranmış sahte → çok düzgün beyaz veya çok gri
-    # ════════════════════════════════════════════
-    try:
-        img_rgb = image.convert("RGB")
-        w2, h2  = img_rgb.size
-        piksel_sayisi = w2 * h2
-        if piksel_sayisi > 0:
-            # Ortalama renk kanalları
-            r_sum = g_sum = b_sum = 0
-            pikseller = list(list(img_rgb.getpixel(x, y) for y in range(h2) for x in range(w2)))
-            for i in range(0, len(pikseller), 3):
-                r, g, b = pikseller[i], pikseller[i+1], pikseller[i+2]
-                r_sum += r; g_sum += g; b_sum += b
-            r_ort = r_sum / piksel_sayisi
-            g_ort = g_sum / piksel_sayisi
-            b_ort = b_sum / piksel_sayisi
-
-            # Gerçek termal fiş genellikle %85+ beyaz
-            beyazlik = (r_ort + g_ort + b_ort) / 3
-            sonuc["gorsel_beyazlik"] = round(beyazlik, 1)
-
-            if beyazlik > 245:
-                _ekle("K6", "🔍 Çok yüksek beyazlık — dijital olarak oluşturulmuş olabilir", 10)
-
-            # RGB kanalları arasındaki fark (gri ölçek = düşük fark, renkli baskı = yüksek)
-            kanal_fark = max(abs(r_ort - g_ort), abs(g_ort - b_ort), abs(r_ort - b_ort))
-            if kanal_fark < 5 and beyazlik < 200:
-                # Mükemmel gri tonlama — tarama değil, ekran görüntüsü olabilir
-                _ekle("K6b", "🔍 Mükemmel gri tonlama — ekran görüntüsü şüphesi", 8)
-
-    except Exception as _e:
-        print(f"K6 renk analizi hatası: {_e}", flush=True)
-
-    # ════════════════════════════════════════════
-    # KATMAN 7 — GÖRSEL: KENAR GEOMETRİSİ
-    # Gerçek fiş fotoğrafı → hafif eğik, gölge var
-    # Ekran görüntüsü/dijital → tam dikdörtgen, sınırlar keskin
-    # ════════════════════════════════════════════
-    try:
-        img_g2 = image.convert("L")
-        w3, h3 = img_g2.size
-        # En/boy oranı kontrolü — gerçek fiş genellikle dar ve uzun
-        oran = h3 / max(w3, 1)
-        sonuc["gorsel_en_boy"] = round(oran, 2)
-        if oran < 1.2:
-            _ekle("K7", f"🔍 En/boy oranı ({oran:.2f}) gerçek fiş için çok kısa — kırpılmış olabilir", 10)
-        elif oran > 6.0:
-            _ekle("K7", f"🔍 Olağandışı uzun görsel ({oran:.2f}) — birleştirilmiş fiş şüphesi", 8)
-
-        # Köşe pikselleri analizi — dijital görüntüde köşeler saf beyaz/siyah olur
-        _koseler = [
-            img_g2.getpixel((0, 0)),
-            img_g2.getpixel((w3-1, 0)),
-            img_g2.getpixel((0, h3-1)),
-            img_g2.getpixel((w3-1, h3-1))
-        ]
-        if all(k > 250 for k in _koseler):
-            _ekle("K7b", "🔍 Tüm köşeler saf beyaz — ekran görüntüsü veya dijital kırpma şüphesi", 7)
-
-    except Exception as _e:
-        print(f"K7 geometri analizi hatası: {_e}", flush=True)
-
-    # ════════════════════════════════════════════
-    # KATMAN 8 — AI SAHTELİK SKORU (Gemini'den)
-    # ════════════════════════════════════════════
-    ai_risk = int(fis_data.get("risk_skoru", 0))
-    ai_sahte = fis_data.get("sahte_mi", False)
-    if ai_sahte:
-        _ekle("K8", f"🚨 AI sahte fiş tespit etti: {fis_data.get('sahtelik_nedeni','')}", 30)
-        sonuc["sahte_mi"] = True
-    elif ai_risk >= 70:
-        _ekle("K8", f"⚠️ AI yüksek risk skoru verdi: {ai_risk}/100", 15)
-
+        beklenen_kdv_20 = toplam * 0.20 / 1.20
+        beklenen_kdv_10 = toplam * 0.10 / 1.10
+        if abs(kdv - beklenen_kdv_20) > 1 and abs(kdv - beklenen_kdv_10) > 1:
+            sonuc["bulgular"].append("⚠️ KDV matematiksel tutarsızlık")
+            sonuc["guvensizlik_skoru"] = min(100, sonuc["guvensizlik_skoru"] + 20)
+    if toplam > 0 and toplam == int(toplam) and toplam % 100 == 0:
+        sonuc["bulgular"].append("🔍 Şüpheli yuvarlak tutar")
+        sonuc["guvensizlik_skoru"] = min(100, sonuc["guvensizlik_skoru"] + 10)
     for neden in fis_data.get("risk_nedenleri", []):
-        if neden and neden not in ("...", "") and neden not in [b for b in sonuc["bulgular"]]:
-            sonuc["bulgular"].append(f"• {neden}")
-
-    # ════════════════════════════════════════════
-    # KATMAN 9 — METİN YAPISI ANOMALİSİ
-    # ════════════════════════════════════════════
-    # AI'ın audit notundan metin kalıplarını analiz et
-    _audit_lower = audit.lower()
-
-    # Şüpheli ifadeler — gerçek POS fişlerinde bulunmayan
-    _suphelikli_ifadeler = [
-        ("karşılığı mal ve hizmeti aldım", "🔍 'Karşılığı mal ve hizmeti aldım' — standart POS fişi ifadesi değil", 15),
-        ("teşekkür ederiz", "🔍 El yazısı teşekkür ifadesi — kurumsal fiş şüphesi", 5),
-        ("lütfen tekrar gelin", "🔍 El yazısı davet ifadesi — kurumsal fiş şüphesi", 5),
-    ]
-    for _ifade, _mesaj, _risk in _suphelikli_ifadeler:
-        if _ifade in _audit_lower or _ifade in firma.lower():
-            _ekle("K9", _mesaj, _risk)
-
-    # ════════════════════════════════════════════
-    # KATMAN 10 — VERGİ NUMARASI FORMAT KONTROLÜ
-    # Türkiye VKN: 10 hane | TCKN: 11 hane
-    # ════════════════════════════════════════════
-    _vkn_pattern = _re.compile(r'\b\d{10}\b')
-    _tckn_pattern = _re.compile(r'\b[1-9]\d{10}\b')
-    _audit_str = audit + firma
-
-    vkn_eslesmeler = _vkn_pattern.findall(_audit_str)
-    if not vkn_eslesmeler:
-        # VKN yok ama fiş vergi gerektiriyor
-        if toplam > 200:
-            _ekle("K10", "🔍 500₺ üzeri fişte vergi/işyeri numarası tespit edilemedi", 10)
-    else:
-        # VKN checksum (Türk VKN algoritması)
-        for _vkn in vkn_eslesmeler[:1]:
-            try:
-                _d = [int(c) for c in _vkn]
-                _kalan = [((_d[i] + (9 - i)) % 10) for i in range(9)]
-                _carpim = [(_kalan[i] * (2 ** (9 - i))) % 9 for i in range(9)]
-                _carpim = [9 if c == 0 and _kalan[i] != 0 else c for i, c in enumerate(_carpim)]
-                _kontrol = sum(_carpim) % 10
-                if _kontrol != _d[9]:
-                    _ekle("K10", f"🚨 Vergi numarası ({_vkn}) checksum geçersiz!", 25)
-            except:
-                pass
-
-    # ════════════════════════════════════════════
-    # KATMAN 11 — FİŞ SIRA NO / ONAY KODU
-    # ════════════════════════════════════════════
-    # Gerçek POS fişlerinde onay kodu 6 haneli rakam veya harf+rakam
-    _onay_pattern = _re.compile(r'[Kk]\d{5,8}|[Oo][Nn][Aa][Yy]\s*[:]\s*\w+', _re.IGNORECASE)
-    _onay_eslesmeler = _onay_pattern.findall(audit + firma)
-    # Onay kodu formatı kontrolü (K09767 gibi)
-    _onay_kod_raw = fis_data.get("ilginc_detay","") + audit
-    if "onay kodu" in _onay_kod_raw.lower() or "onay:" in _onay_kod_raw.lower():
-        pass  # Onay kodu var, iyi
-    # Taksitli satış kontrolü
-    if "taksitli" in (firma + audit).lower() or "taksit" in (firma + audit).lower():
-        _ekle("K11", "🔍 Taksitli satış fişi — birden fazla tutarın toplamı kontrol edilmeli", 5)
-
-    # ════════════════════════════════════════════
-    # KATMAN 12 — İŞLETME ADI GÜVENİLİRLİK
-    # ════════════════════════════════════════════
-    if firma:
-        _firma_lower = firma.lower().strip()
-        # Çok kısa veya genel firma adları
-        if len(_firma_lower) <= 2:
-            _ekle("K12", "🚨 Firma adı çok kısa — sahte veya eksik", 15)
-        elif len(_firma_lower) <= 4:
-            _ekle("K12", "🔍 Firma adı çok kısa — doğrulama gerekli", 8)
-
-        # Sadece rakam içeren firma adı
-        if _firma_lower.isdigit():
-            _ekle("K12", "🚨 Firma adı sadece rakamlardan oluşuyor", 20)
-
-        # Bilinen zincirlerin yazım kontrolü (yakın ama yanlış yazım)
-        _zincirler = {
-            "migroz": "migros", "migrros": "migros",
-            "bimm": "bim", "bi m": "bim",
-            "a 101": "a101", "a-101": "a101",
-            "şokk": "şok", "şok market": "şok",
-            "carrefurr": "carrefour",
-            "teknossa": "teknosa", "techno sa": "teknosa",
-        }
-        for _yanlis, _dogru in _zincirler.items():
-            if _yanlis in _firma_lower:
-                _ekle("K12", f"🚨 Firma adı yazım hatası: '{firma}' → muhtemelen '{_dogru}'?", 20)
-
-    # ════════════════════════════════════════════
-    # SONUÇ: Nihai karar
-    # ════════════════════════════════════════════
-    toplam_risk = sonuc["guvensizlik_skoru"]
-    if toplam_risk >= 70 and not sonuc["sahte_mi"]:
-        sonuc["sahte_mi"] = True
-        sonuc["bulgular"].insert(0, f"🚨 {len(sonuc['katman_sonuclari'])} katman analizi → Risk: {toplam_risk}/100 — SAHTE ŞÜPHESİ")
-    elif toplam_risk >= 40:
-        sonuc["bulgular"].insert(0, f"⚠️ {len(sonuc['katman_sonuclari'])} katman analizi → Risk: {toplam_risk}/100 — DİKKATLİ İNCELENMELİ")
-
+        if neden and neden != "...": sonuc["bulgular"].append(f"• {neden}")
     return sonuc
 
 def ekip_siralaması(data):
@@ -905,435 +509,6 @@ def butce_durumu_str(user_name, data):
     bar_dolu = min(10, int(oran / 10))
     bar = "█" * bar_dolu + "░" * (10 - bar_dolu)
     return f"[{bar}] %{oran:.1f} ({ay_top:.0f}/{butce:.0f} ₺)"
-
-# ─────────────────────────────────────────────────────────
-#  🏙️ ŞEHİR TESPİT MOTORU — modül seviyesi, her yerden kullanılabilir
-# ─────────────────────────────────────────────────────────
-_SEHIR_LISTESI = [
-    "adana","adiyaman","afyon","agri","aksaray","amasya","ankara","antalya",
-    "ardahan","artvin","aydin","balikesir","bartin","batman","bayburt",
-    "bilecik","bingol","bitlis","bolu","burdur","bursa","canakkale","cankiri",
-    "corum","denizli","diyarbakir","duzce","edirne","elazig","erzincan",
-    "erzurum","eskisehir","gaziantep","giresun","gumushane","hakkari","hatay",
-    "igdir","isparta","istanbul","izmir","kahramanmaras","karabuk","karaman",
-    "kars","kastamonu","kayseri","kilis","kirikkale","kirklareli","kirsehir",
-    "kocaeli","konya","kutahya","malatya","manisa","mardin","mersin","mugla",
-    "mus","nevsehir","nigde","ordu","osmaniye","rize","sakarya","samsun",
-    "siirt","sinop","sivas","sanliurfa","sirnak","tekirdag","tokat","trabzon",
-    "tunceli","usak","van","yalova","yozgat","zonguldak",
-    "yenimahalle","cankaya","kecoren","etimesgut","mamak","sincan",
-    "kadikoy","uskudar","besiktas","sisli","bakirkoy","bagcilar",
-    "esenyurt","basaksehir","pendik","maltepe","kartal","atasehir",
-    "bornova","buca","karsiyaka","konak","cigli","osmangazi","nilufer",
-    "muratpasa","kepez","mezitli","toroslar","izmit","adapazari",
-]
-_SEHIR_GERCEK = {
-    "adiyaman":"Adıyaman","agri":"Ağrı","aydin":"Aydın","balikesir":"Balıkesir",
-    "bartin":"Bartın","bingol":"Bingöl","canakkale":"Çanakkale","cankiri":"Çankırı",
-    "corum":"Çorum","duzce":"Düzce","elazig":"Elazığ","eskisehir":"Eskişehir",
-    "gumushane":"Gümüşhane","igdir":"Iğdır","kahramanmaras":"Kahramanmaraş",
-    "karabuk":"Karabük","kirikkale":"Kırıkkale","kirklareli":"Kırklareli",
-    "kirsehir":"Kırşehir","kutahya":"Kütahya","mugla":"Muğla","mus":"Muş",
-    "nevsehir":"Nevşehir","nigde":"Niğde","sanliurfa":"Şanlıurfa","sirnak":"Şırnak",
-    "tekirdag":"Tekirdağ","usak":"Uşak","ankara":"Ankara","istanbul":"İstanbul",
-    "izmir":"İzmir","bursa":"Bursa","antalya":"Antalya","adana":"Adana",
-    "konya":"Konya","mersin":"Mersin","gaziantep":"Gaziantep","kayseri":"Kayseri",
-    "eskisehir":"Eskişehir","denizli":"Denizli","trabzon":"Trabzon",
-    "samsun":"Samsun","sakarya":"Sakarya","kocaeli":"Kocaeli",
-    "yenimahalle":"Yenimahalle","cankaya":"Çankaya","kecoren":"Keçiören",
-    "esenyurt":"Esenyurt","kadikoy":"Kadıköy","uskudar":"Üsküdar",
-    "besiktas":"Beşiktaş","sisli":"Şişli","bakirkoy":"Bakırköy",
-    "bagcilar":"Bağcılar","basaksehir":"Başakşehir","karsiyaka":"Karşıyaka",
-    "cigli":"Çiğli","nilufer":"Nilüfer","muratpasa":"Muratpaşa",
-    "adapazari":"Adapazarı","osmangazi":"Osmangazi","izmit":"İzmit",
-}
-
-def _normalize_sehir(t: str) -> str:
-    return (t.lower()
-             .replace("ı","i").replace("ğ","g").replace("ş","s")
-             .replace("ç","c").replace("ö","o").replace("ü","u")
-             .replace("â","a").replace("î","i").replace("û","u"))
-
-def sehir_tespit(metin: str) -> str:
-    """Herhangi bir metinden Türkiye şehri/ilçesi bulur. Modül seviyesi — her yerden çağrılabilir."""
-    if not metin:
-        return ""
-    mn = _normalize_sehir(metin)
-    for _s in _SEHIR_LISTESI:
-        if _s in mn:
-            idx   = mn.find(_s)
-            once  = mn[idx-1] if idx > 0 else " "
-            sonra = mn[idx+len(_s)] if idx+len(_s) < len(mn) else " "
-            if not once.isalpha() and not sonra.isalpha():
-                return _SEHIR_GERCEK.get(_s, _s.title())
-    return ""
-
-# ─────────────────────────────────────────────
-#  📍 KONUM & ZAMAN ZEKASI — 3 YENİ ÖZELLİK
-# ─────────────────────────────────────────────
-
-def _koordinat_ara(sehir_adi: str) -> tuple:
-    """
-    Şehir adından koordinat döndürür.
-    Yerleşik Türkiye şehir tablosu kullanır — API bağımlılığı yok, anında çalışır.
-    Döner: (lat, lon) veya (None, None)
-    """
-    # Türkiye 81 il + büyük ilçe koordinat tablosu
-    SEHIR_KOORDINAT = {
-        "adana": (37.0000, 35.3213), "adıyaman": (37.7648, 38.2786),
-        "afyonkarahisar": (38.7637, 30.5406), "afyon": (38.7637, 30.5406),
-        "ağrı": (39.7191, 43.0503), "aksaray": (38.3687, 34.0370),
-        "amasya": (40.6499, 35.8353), "ankara": (39.9208, 32.8541),
-        "antalya": (36.8969, 30.7133), "ardahan": (41.1105, 42.7022),
-        "artvin": (41.1828, 41.8183), "aydın": (37.8444, 27.8458),
-        "balıkesir": (39.6484, 27.8826), "bartın": (41.6344, 32.3375),
-        "batman": (37.8812, 41.1351), "bayburt": (40.2552, 40.2249),
-        "bilecik": (40.1506, 29.9792), "bingöl": (38.8854, 40.4983),
-        "bitlis": (38.3938, 42.1232), "bolu": (40.7359, 31.6061),
-        "burdur": (37.7204, 30.2903), "bursa": (40.1885, 29.0610),
-        "çanakkale": (40.1553, 26.4142), "çankırı": (40.6013, 33.6134),
-        "çorum": (40.5506, 34.9556), "denizli": (37.7765, 29.0864),
-        "diyarbakır": (37.9144, 40.2306), "düzce": (40.8438, 31.1565),
-        "edirne": (41.6818, 26.5623), "elazığ": (38.6810, 39.2264),
-        "erzincan": (39.7500, 39.5000), "erzurum": (39.9043, 41.2679),
-        "eskişehir": (39.7767, 30.5206), "gaziantep": (37.0662, 37.3833),
-        "giresun": (40.9128, 38.3895), "gümüşhane": (40.4386, 39.4814),
-        "hakkari": (37.5744, 43.7408), "hatay": (36.4018, 36.3498),
-        "iğdır": (39.9167, 44.0333), "isparta": (37.7648, 30.5566),
-        "istanbul": (41.0082, 28.9784), "i̇stanbul": (41.0082, 28.9784),
-        "izmir": (38.4189, 27.1287), "i̇zmir": (38.4189, 27.1287),
-        "kahramanmaraş": (37.5858, 36.9371), "karabük": (41.2061, 32.6204),
-        "karaman": (37.1759, 33.2287), "kars": (40.6013, 43.0975),
-        "kastamonu": (41.3887, 33.7827), "kayseri": (38.7312, 35.4787),
-        "kilis": (36.7184, 37.1212), "kırıkkale": (39.8468, 33.5153),
-        "kırklareli": (41.7333, 27.2167), "kırşehir": (39.1425, 34.1709),
-        "kocaeli": (40.8533, 29.8815), "izmit": (40.7654, 29.9408),
-        "konya": (37.8746, 32.4932), "kütahya": (39.4167, 29.9833),
-        "malatya": (38.3552, 38.3095), "manisa": (38.6191, 27.4289),
-        "mardin": (37.3212, 40.7245), "mersin": (36.8000, 34.6333),
-        "muğla": (37.2154, 28.3636), "muş": (38.7432, 41.4914),
-        "nevşehir": (38.6939, 34.6857), "niğde": (37.9667, 34.6833),
-        "ordu": (40.9862, 37.8797), "osmaniye": (37.0742, 36.2464),
-        "rize": (41.0201, 40.5234), "sakarya": (40.7569, 30.3781),
-        "adapazarı": (40.7896, 30.4036), "samsun": (41.2867, 36.3300),
-        "siirt": (37.9333, 41.9500), "sinop": (42.0231, 35.1531),
-        "sivas": (39.7477, 37.0179), "şanlıurfa": (37.1591, 38.7969),
-        "urfa": (37.1591, 38.7969), "şırnak": (37.5164, 42.4611),
-        "tekirdağ": (40.9833, 27.5167), "tokat": (40.3167, 36.5500),
-        "trabzon": (41.0015, 39.7178), "tunceli": (39.1079, 39.5479),
-        "uşak": (38.6823, 29.4082), "van": (38.4891, 43.4089),
-        "yalova": (40.6500, 29.2667), "yozgat": (39.8181, 34.8147),
-        "zonguldak": (41.4564, 31.7987),
-        # Büyük ilçeler
-        "yenimahalle": (39.9667, 32.8167), "çankaya": (39.9032, 32.8597),
-        "keçiören": (39.9667, 32.8667), "etimesgut": (39.9500, 32.6667),
-        "mamak": (39.9333, 32.9333), "sincan": (39.9833, 32.5833),
-        "kadıköy": (40.9833, 29.0833), "üsküdar": (41.0333, 29.0167),
-        "beşiktaş": (41.0422, 29.0000), "şişli": (41.0614, 28.9869),
-        "bakırköy": (40.9833, 28.8667), "bağcılar": (41.0333, 28.8500),
-        "esenyurt": (41.0333, 28.6667), "başakşehir": (41.0833, 28.8000),
-        "pendik": (40.8667, 29.2333), "maltepe": (40.9167, 29.1500),
-        "kartal": (40.9000, 29.2000), "ataşehir": (40.9833, 29.1333),
-        "bornova": (38.4667, 27.2167), "buca": (38.3833, 27.1833),
-        "karşıyaka": (38.4667, 27.1167), "konak": (38.4167, 27.1333),
-        "çiğli": (38.4833, 27.0500), "osmangazi": (40.1833, 29.0500),
-        "nilüfer": (40.2167, 28.9833), "yıldırım": (40.2000, 29.1000),
-        "muratpaşa": (36.8833, 30.7000), "kepez": (36.9500, 30.7167),
-        "mezitli": (36.7833, 34.5833), "toroslar": (36.8000, 34.5167),
-    }
-
-    if not sehir_adi:
-        return None, None
-
-    temiz = sehir_adi.lower().strip()
-    # Türkçe karakter normalize
-    temiz = (temiz.replace("ı", "i").replace("ğ", "g").replace("ş", "s")
-             .replace("ç", "c").replace("ö", "o").replace("ü", "u"))
-
-    # Direkt eşleşme
-    for anahtar, koordinat in SEHIR_KOORDINAT.items():
-        anahtar_n = (anahtar.lower()
-                     .replace("ı", "i").replace("ğ", "g").replace("ş", "s")
-                     .replace("ç", "c").replace("ö", "o").replace("ü", "u"))
-        if temiz == anahtar_n or temiz in anahtar_n or anahtar_n in temiz:
-            return koordinat
-
-    return None, None
-
-def _mesafe_km(lat1, lon1, lat2, lon2) -> float:
-    """Haversine formülü ile iki koordinat arası mesafe (km)."""
-    import math
-    R = 6371
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-    return R * 2 * math.asin(math.sqrt(a))
-
-def _min_sure_saat(mesafe_km: float) -> float:
-    """
-    İki nokta arası minimum ulaşım süresi (saat) tahmini.
-    Türkiye'de şehirlerarası ortalama 80 km/s, şehir içi 40 km/s varsayımı.
-    """
-    if mesafe_km < 50:
-        return mesafe_km / 40
-    return mesafe_km / 80
-
-def konum_celiskisi_kontrol(fis_adresi: str, fis_sehri: str, user_name: str,
-                             mesaj_zamani: datetime, fis_tarihi: str, data: dict) -> dict:
-    """
-    ÖZELLİK 1: Fişin adresi ile kullanıcının son bilinen konumunu karşılaştırır.
-    
-    Döner: {
-        "celiski": bool,
-        "risk_artisi": int,
-        "uyari_mesaji": str,
-        "fis_sehri": str,
-        "son_konum_sehri": str,
-        "mesafe_km": float
-    }
-    """
-    sonuc = {"celiski": False, "risk_artisi": 0, "uyari_mesaji": "", 
-             "fis_sehri": "", "son_konum_sehri": "", "mesafe_km": 0}
-    
-    if not fis_adresi and not fis_sehri:
-        return sonuc
-    
-    # Kullanıcının son bilinen konumunu bul (son 3 fişten şehir bilgisi)
-    kullanici_fisler = [e for e in data.get("expenses", [])
-                        if e.get("Kullanıcı") == user_name and e.get("Sehir")]
-    
-    if not kullanici_fisler:
-        return sonuc  # İlk fiş, karşılaştırılacak geçmiş yok
-    
-    # Son fişin şehri
-    son_fis_sehri = kullanici_fisler[-1].get("Sehir", "").strip()
-    
-    # Yeni fişin şehrini tespit et
-    yeni_fis_sehri = ""
-    if fis_sehri:
-        yeni_fis_sehri = fis_sehri.strip()
-    elif fis_adresi:
-        # Adresten şehir adını çıkar (kaba yöntem — virgülden sonrası genellikle şehirdir)
-        parcalar = [p.strip() for p in fis_adresi.split(",")]
-        if len(parcalar) >= 2:
-            yeni_fis_sehri = parcalar[-1]
-    
-    if not yeni_fis_sehri or not son_fis_sehri:
-        return sonuc
-    
-    sonuc["fis_sehri"] = yeni_fis_sehri
-    sonuc["son_konum_sehri"] = son_fis_sehri
-    
-    # Aynı şehirse sorun yok
-    if yeni_fis_sehri.lower().replace("i̇", "i") == son_fis_sehri.lower().replace("i̇", "i"):
-        return sonuc
-    
-    # Farklı şehir — koordinat alıp mesafe hesapla
-    lat1, lon1 = _koordinat_ara(son_fis_sehri)
-    lat2, lon2 = _koordinat_ara(yeni_fis_sehri)
-    
-    if not lat1 or not lat2:
-        # Koordinat bulunamadı ama şehir adları farklı — orta seviye uyarı
-        sonuc["celiski"] = True
-        sonuc["risk_artisi"] = 15
-        sonuc["uyari_mesaji"] = (
-            f"📍 *Konum Çelişkisi Tespit Edildi*\n"
-            f"Bu fiş *{yeni_fis_sehri}*'dan — ama son bilinen konumun *{son_fis_sehri}*.\n"
-            f"Seyahatteysen sorun değil, açıklama yazmak ister misin?"
-        )
-        return sonuc
-    
-    mesafe = _mesafe_km(lat1, lon1, lat2, lon2)
-    sonuc["mesafe_km"] = round(mesafe, 0)
-    
-    if mesafe < 80:
-        return sonuc  # Yakın şehirler, normal
-    
-    # Uzak şehirler — risk artır ve uyar
-    sonuc["celiski"] = True
-    
-    if mesafe > 500:
-        sonuc["risk_artisi"] = 35
-        emoji = "🚨"
-        yorum = "Bu mesafe uçak gerektirir."
-    elif mesafe > 200:
-        sonuc["risk_artisi"] = 25
-        emoji = "⚠️"
-        yorum = "Bu mesafeye gelmek birkaç saat sürer."
-    else:
-        sonuc["risk_artisi"] = 15
-        emoji = "📍"
-        yorum = "Kısa bir yolculuk yapmış olabilirsin."
-    
-    sonuc["uyari_mesaji"] = (
-        f"{emoji} *Konum Çelişkisi Tespit Edildi!*\n"
-        f"Bu fiş *{yeni_fis_sehri}*'dan alınmış.\n"
-        f"Son bilinen konumun: *{son_fis_sehri}* (~{mesafe:.0f} km uzak)\n"
-        f"_{yorum}_\n"
-        f"Seyahat fişiyse 'seyahat' yazarak onaylayabilirsin — risk puanın düşer."
-    )
-    return sonuc
-
-
-def zaman_mekan_imkansizlik_kontrol(fis_adresi: str, fis_sehri: str, fis_tarihi: str,
-                                     fis_saati_tahmini: str, user_name: str, data: dict) -> dict:
-    """
-    ÖZELLİK 2: Aynı gün farklı şehirlerden fiş gelip gelemeyeceğini hesaplar.
-    Google Maps gerekmez — Haversine + ortalama hız yeterli.
-    
-    Döner: {"imkansiz": bool, "risk_artisi": int, "uyari_mesaji": str}
-    """
-    sonuc = {"imkansiz": False, "risk_artisi": 0, "uyari_mesaji": ""}
-    
-    if not fis_tarihi or not fis_sehri:
-        return sonuc
-    
-    # Aynı güne ait, farklı şehirden fişleri bul
-    ayni_gun_fisler = [
-        e for e in data.get("expenses", [])
-        if e.get("Kullanıcı") == user_name
-        and e.get("Tarih", "") == fis_tarihi
-        and e.get("Sehir", "").strip()
-        and e.get("Sehir", "").strip().lower() != fis_sehri.lower()
-    ]
-    
-    if not ayni_gun_fisler:
-        return sonuc
-    
-    # Her önceki fiş için imkansızlık kontrolü
-    for onceki_fis in ayni_gun_fisler[-3:]:  # Son 3 tanesine bak
-        onceki_sehir = onceki_fis.get("Sehir", "").strip()
-        onceki_zaman_str = onceki_fis.get("Yukleme_Zamani", "")
-        
-        if not onceki_sehir or not onceki_zaman_str:
-            continue
-        
-        lat1, lon1 = _koordinat_ara(onceki_sehir)
-        lat2, lon2 = _koordinat_ara(fis_sehri)
-        
-        if not lat1 or not lat2:
-            continue
-        
-        mesafe = _mesafe_km(lat1, lon1, lat2, lon2)
-        
-        if mesafe < 80:
-            continue  # Yakın, sorun değil
-        
-        min_sure = _min_sure_saat(mesafe)
-        
-        # İki fişin zamanları arasındaki fark
-        try:
-            t1 = datetime.strptime(onceki_zaman_str[:16], "%Y-%m-%d %H:%M")
-            # Yeni fişin yükleme zamanı = şu an (webhook'a geldiği an)
-            # Fonksiyon imzasına mesaj_zamani ekleyelim — şimdilik datetime.now() güvenli
-            t2 = datetime.now()
-            fark_saat = abs((t2 - t1).total_seconds()) / 3600
-        except:
-            fark_saat = 999
-        
-        if fark_saat < min_sure * 0.85:  # %15 tolerans
-            sonuc["imkansiz"] = True
-            sonuc["risk_artisi"] = 40
-            sonuc["uyari_mesaji"] = (
-                f"⏱️ *Zaman-Mekan Tutarsızlığı!*\n"
-                f"Bugün saat {t1.strftime('%H:%M')}'de *{onceki_sehir}*'daydın.\n"
-                f"Bu fiş ise *{fis_sehri}*'dan — arası {mesafe:.0f} km.\n"
-                f"Bu mesafeyi en az *{min_sure:.1f} saatte* alabilirsin, ama aradan yalnızca *{fark_saat:.1f} saat* geçmiş.\n"
-                f"🚨 Risk puanı donduruldu. Açıklama yazar mısın?"
-            )
-            break  # İlk imkansızlık yeter
-    
-    return sonuc
-
-
-def fis_yasi_kontrol(raw_bytes: bytes, mesaj_zamani: datetime, fis_tarihi: str = "") -> dict:
-    """
-    ÖZELLİK 3: Fişin TARIHINDEN yükleme zamanına kadar geçen süreyi hesaplar.
-    WhatsApp EXIF'i sildiği için fişin kendi tarihini kullanır — %100 güvenilir.
-    Ayrıca EXIF varsa bonus kontrol yapar.
-    """
-    sonuc = {"yasli": False, "gun_farki": 0, "risk_artisi": 0,
-             "uyari_mesaji": "", "cekme_zamani": ""}
-
-    # ── Birincil kaynak: Fişin üzerindeki tarih (AI tarafından okundu)
-    if fis_tarihi:
-        try:
-            fis_dt   = datetime.strptime(fis_tarihi, "%Y-%m-%d")
-            bugun_dt = mesaj_zamani.replace(hour=0, minute=0, second=0, microsecond=0)
-            gun_farki = (bugun_dt - fis_dt).days
-            sonuc["gun_farki"]   = gun_farki
-            sonuc["cekme_zamani"] = fis_dt.strftime("%d.%m.%Y")
-
-            if gun_farki < 0:
-                sonuc["yasli"]        = True
-                sonuc["risk_artisi"]  = 35
-                sonuc["uyari_mesaji"] = (
-                    f"🚨 *Gelecek Tarihli Fiş!*\n"
-                    f"Fiş tarihi *{fis_dt.strftime('%d.%m.%Y')}* — bu tarih henüz gelmedi.\n"
-                    f"Tarih manipülasyonu şüphesi. +35 risk."
-                )
-            elif gun_farki >= 365:
-                sonuc["yasli"]        = True
-                sonuc["risk_artisi"]  = 50
-                sonuc["uyari_mesaji"] = (
-                    f"🚨 *{gun_farki // 365} YILLIK FİŞ!*\n"
-                    f"Bu fiş *{fis_dt.strftime('%d.%m.%Y')}* tarihli — {gun_farki} gün önce!\n"
-                    f"Bu yaşta bir fiş şirket gideri olarak kabul edilemez. +50 risk."
-                )
-            elif gun_farki >= 60:
-                sonuc["yasli"]        = True
-                sonuc["risk_artisi"]  = 35
-                sonuc["uyari_mesaji"] = (
-                    f"🗓️ *Çok Eski Fiş — {gun_farki} Gün!*\n"
-                    f"Fiş tarihi {fis_dt.strftime('%d.%m.%Y')} — {gun_farki} gün önce.\n"
-                    f"2 aydan eski fiş neden şimdi geliyor? Yönetici onayı gerekiyor. +35 risk."
-                )
-            elif gun_farki >= 30:
-                sonuc["yasli"]        = True
-                sonuc["risk_artisi"]  = 25
-                sonuc["uyari_mesaji"] = (
-                    f"🗓️ *Geç Gelen Fiş — {gun_farki} Gün*\n"
-                    f"Fiş tarihi {fis_dt.strftime('%d.%m.%Y')} — 1 aydan eski.\n"
-                    f"Açıklama yazabilirsin, yönetici de görecek. +25 risk."
-                )
-            elif gun_farki >= 14:
-                sonuc["yasli"]        = True
-                sonuc["risk_artisi"]  = 15
-                sonuc["uyari_mesaji"] = (
-                    f"📅 *{gun_farki} Günlük Fiş*\n"
-                    f"Bu fiş {fis_dt.strftime('%d.%m.%Y')} tarihli, {gun_farki} gün gecikmeli yüklendi. +15 risk."
-                )
-            elif gun_farki >= 7:
-                sonuc["yasli"]        = True
-                sonuc["risk_artisi"]  = 10
-                sonuc["uyari_mesaji"] = (
-                    f"📅 Fiş {gun_farki} gün önce ({fis_dt.strftime('%d.%m.%Y')}) — geç yükleme. +10 risk."
-                )
-        except ValueError:
-            pass
-
-    # ── İkincil kaynak: EXIF (WhatsApp silmemişse bonus kontrol)
-    try:
-        from PIL.ExifTags import TAGS
-        img_e     = Image.open(BytesIO(raw_bytes))
-        exif_data = img_e._getexif()
-        if exif_data:
-            exif  = {TAGS.get(k, k): v for k, v in exif_data.items()}
-            dt_str = exif.get("DateTimeOriginal") or exif.get("DateTime")
-            if dt_str:
-                cekme_dt  = datetime.strptime(str(dt_str), "%Y:%m:%d %H:%M:%S")
-                exif_fark = (mesaj_zamani - cekme_dt).days
-                # EXIF tarihi fişin tarihinden çok farklıysa ekstra şüphe
-                if fis_tarihi and abs(exif_fark - sonuc.get("gun_farki", 0)) > 5:
-                    sonuc["bulgular_ekstra"] = (
-                        f"🔍 EXIF tarihi ({cekme_dt.strftime('%d.%m.%Y')}) fiş tarihiyle uyuşmuyor — dikkat."
-                    )
-                    sonuc["risk_artisi"] = min(100, sonuc.get("risk_artisi", 0) + 10)
-    except Exception:
-        pass  # WhatsApp EXIF silmişse sessizce geç
-
-    return sonuc
-
 
 def nl_sorgu(soru, user_name, data):
     harcamalar = [e for e in data["expenses"] if e["Kullanıcı"] == user_name]
@@ -1396,22 +571,42 @@ def konum_isle(lat, lon, user_name, data):
     tutar = son_fis.get("Tutar", 0)
     return f"📍 *Konum bağlandı!*\n🏢 {firma} — {tutar:,.0f} ₺\n📌 _{adres}_\n🗺️ https://maps.google.com/?q={lat},{lon}"
 
-def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, twilio_media_urls=None, meta_media_ids=None, mesaj_odeme_turu=None):
+def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, mesaj_odeme_turu=None):
     """Birden fazla medya: tüm görselleri sırayla işler. mesaj_odeme_turu varsa her fişe uygulanır."""
+    import re as _re_c
     sonuclar = []
-    media_urls = twilio_media_urls or []
-    for i, media_url_item in enumerate(media_urls[:5]):
+    for i in range(min(num_media, 5)):
+        media_url_raw = request.values.get(f'MediaUrl{i}')
+        if not media_url_raw: continue
+        # URL'deki Account SID'i kendi SID'imizle değiştir
+        media_url = _re_c.sub(r'/Accounts/AC[a-f0-9]+/', f'/Accounts/{TWILIO_SID}/', media_url_raw)
         try:
-            # Twilio URL'den görsel indir
+            # Birden fazla indirme stratejisi dene
             raw_bytes = None
+            # Strateji A: auth + redirect=False, sonra Location takip
             try:
-                account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-                auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
-                r_dl = requests.get(media_url_item, auth=(account_sid, auth_token), timeout=30)
-                r_dl.raise_for_status()
-                raw_bytes = r_dl.content
-            except Exception as _me:
-                print(f"Twilio media indirme hatası (çoklu {i}): {_me}", flush=True)
+                _r0 = requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=False, timeout=20)
+                if _r0.status_code in [301, 302, 303, 307, 308]:
+                    _loc = _r0.headers.get('Location', '')
+                    if _loc:
+                        _r0 = requests.get(_loc, timeout=20)
+                if len(_r0.content) > 500:
+                    _ct0 = _r0.headers.get('Content-Type','').lower()
+                    if 'xml' not in _ct0 and 'html' not in _ct0:
+                        raw_bytes = _r0.content
+            except: pass
+            # Strateji B: fallback'ler
+            if not raw_bytes:
+                for _strat in [
+                    lambda: requests.get(media_url, auth=(TWILIO_SID, TWILIO_TOKEN), allow_redirects=True, timeout=20),
+                    lambda: requests.get(media_url, allow_redirects=True, timeout=20),
+                ]:
+                    try:
+                        _r = _strat()
+                        _ct = _r.headers.get('Content-Type','').lower()
+                        if len(_r.content) > 500 and 'xml' not in _ct and 'html' not in _ct:
+                            raw_bytes = _r.content; break
+                    except: continue
             if not raw_bytes or len(raw_bytes) < 500:
                 sonuclar.append(f"⚠️ Fiş {i+1}: Görsel indirilemedi"); continue
             img_hash = gorsel_hash(raw_bytes)
@@ -1424,16 +619,10 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, twilio_m
             except:
                 sonuclar.append(f"❌ Fiş {i+1}: Geçersiz görsel"); continue
             bugun = datetime.now().strftime("%Y-%m-%d")
-            prompt = (
-                f"Fişi dikkatli analiz et. Sadece JSON döndür. Bugün: {bugun}\n"
-                'ÖNEMLİ: OPET, Shell, BP, Total gibi akaryakıt istasyonlari: fis_turu="akaryakit"\n'
-                "Sigara, çikolata, kola gibi kişisel ürünler varsa kisisel_giderler listesine ekle.\n"
-                '{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,'
-                '"odeme_yontemi":"nakit|kredi_karti|havale","para_birimi":"TRY",'
-                '"kisisel_giderler":[{"urun":"...","tutar":0.0}],'
-                '"risk_skoru":0,"sahte_mi":false,"fis_turu":"restoran|market|akaryakıt|otel|diger",'
-                '"audit_notu":"kısa özet, kişisel gider varsa belirt"}'
-            )
+            prompt = f"""Fişi analiz et. Sadece JSON döndür. Bugün: {bugun}
+{{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,
+"odeme_yontemi":"nakit|kredi_karti|havale","para_birimi":"TRY",
+"risk_skoru":0,"sahte_mi":false,"fis_turu":"diger","audit_notu":"kısa özet"}}"""
             ai_res = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
             raw_text = re.sub(r"```json?|```", "", ai_res.text).strip()
             _m = re.search(r'\{.*\}', raw_text, re.DOTALL)
@@ -1446,16 +635,9 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, twilio_m
                     kur = r["rates"].get(para_birimi)
                     if kur: tutar_try = tutar_try / kur
                 except: pass
-            kategori = kategori_tespit(fis.get("firma", ""), fis.get("fis_turu", ""))
+            kategori = kategori_tespit(fis.get("firma", ""))
             risk = int(fis.get("risk_skoru", 0))
-            # Kişisel gider risk artışı
-            _ckg = fis.get("kisisel_giderler", [])
-            if _ckg:
-                risk = min(100, risk + len(_ckg) * 15)
             durum = "Sahte Şüphesi" if risk >= 70 or fis.get("sahte_mi") else "Onay Bekliyor"
-            # Şenol Bey otomatik onay
-            if user_name in ("Şenol Özyaman", "Şenol Faik Özyaman") and durum == "Onay Bekliyor":
-                durum = "Onaylandı"
             final_odeme = mesaj_odeme_turu if mesaj_odeme_turu else fis.get("odeme_yontemi", "bilinmiyor")
             new_expense = {
                 "ID": datetime.now().strftime("%Y%m%d%H%M%S") + str(i),
@@ -1468,7 +650,6 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, twilio_m
                 "OdemeTipi": final_odeme, "Odeme_Turu": final_odeme,
                 "Kategori": kategori, "Durum": durum, "Risk_Skoru": risk,
                 "AI_Audit": re.sub(r'<[^>]+>', '', str(fis.get("audit_notu", ""))).strip(),
-                "Kisisel_Giderler": _ckg,
                 "Anomaliler": anomali_tespit(user_name, tutar_try, data),
                 "Hash": img_hash, "Proje": "Genel Merkez",
                 "Kaynak": "WhatsApp-Çoklu", "Gorsel_B64": "",
@@ -1488,119 +669,26 @@ def coklu_fis_isle(sender_phone, user_name, user_info, num_media, data, twilio_m
         if e.get("Kaynak") == "WhatsApp-Çoklu" and e.get("Yukleme_Zamani","").startswith(datetime.now().strftime("%Y-%m-%d")) and e["Kullanıcı"] == user_name)
     odeme_str = f"\n💳 Ödeme: *{odeme_turu_label(mesaj_odeme_turu)}*" if mesaj_odeme_turu else ""
     return (f"📦 *{num_media} Fiş İşlendi*\n{'─'*22}\n" + "\n".join(sonuclar) +
-            f"\n\n💰 Bugün eklenen: *{toplam_tutar:,.0f}₺*" + odeme_str + f"\n📨 Tümü yönetici onayına gönderildi. Harcaman Onay/Ret durumunda bilgilendirileceksin.")
-
+            f"\n\n💰 Bugün eklenen: *{toplam_tutar:,.0f}₺*" + odeme_str + f"\n📨 Tümü onay kuyruğuna gönderildi.")
 
 # ─────────────────────────────────────────────
 #  ANA WEBHOOK
 # ─────────────────────────────────────────────
-
-@app.route("/whatsapp", methods=['GET'])
-def whatsapp_verify():
-    """Meta, webhook URL'ini doğrulamak için bu endpoint'i çağırır."""
-    verify_token = os.getenv("META_VERIFY_TOKEN", "stinga_verify")
-    mode      = request.args.get("hub.mode")
-    token     = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
-    if mode == "subscribe" and token == verify_token:
-        print("✅ Meta webhook doğrulandı!", flush=True)
-        return challenge, 200
-    print(f"❌ Meta webhook doğrulama başarısız. token={token}", flush=True)
-    return "Forbidden", 403
-
-
-def _parse_meta_message(body: dict):
-    """Meta webhook payload'ından mesaj bilgilerini çıkarır."""
-    try:
-        entry   = body["entry"][0]
-        changes = entry["changes"][0]["value"]
-        msg_obj = changes["messages"][0]
-        sender_phone = "whatsapp:+" + msg_obj["from"]
-
-        msg_type = msg_obj.get("type", "text")
-        incoming_msg = ""
-        num_media    = 0
-        media_url    = None
-        media_mime   = None
-        wa_lat = wa_lon = ""
-
-        if msg_type == "text":
-            incoming_msg = msg_obj["text"]["body"]
-        elif msg_type in ("image", "document"):
-            num_media = 1
-            media_id  = msg_obj[msg_type]["id"]
-            # Görseli Media ID → URL → bayt olarak çekeceğiz
-            media_url = f"__meta_media_id__{media_id}"  # işaret değeri
-            media_mime = msg_obj[msg_type].get("mime_type", "image/jpeg")
-            # Bazen altyazı da gelir
-            incoming_msg = msg_obj[msg_type].get("caption", "")
-        elif msg_type == "location":
-            wa_lat = str(msg_obj["location"]["latitude"])
-            wa_lon = str(msg_obj["location"]["longitude"])
-
-        return sender_phone, incoming_msg, num_media, media_url, media_mime, wa_lat, wa_lon
-    except Exception as e:
-        print(f"Meta payload parse hatası: {e}", flush=True)
-        return None, "", 0, None, None, "", ""
-
-
-def _meta_download_media(media_id: str) -> bytes:
-    """Meta Media ID'den binary görsel indirir."""
-    token = os.getenv("META_ACCESS_TOKEN", "")
-    # Adım 1: media_id → gerçek URL al
-    r = requests.get(
-        f"https://graph.facebook.com/v20.0/{media_id}",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10,
-    )
-    r.raise_for_status()
-    dl_url = r.json()["url"]
-    # Adım 2: URL'den içeriği indir
-    r2 = requests.get(
-        dl_url,
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=30,
-    )
-    r2.raise_for_status()
-    return r2.content
-
-
-@app.route("/whatsapp", methods=['GET', 'POST'])
+@app.route("/whatsapp", methods=['POST'])
 def whatsapp_webhook():
-    if request.method == 'GET':
-        return jsonify({"status": "ok"}), 200
-    # ── Twilio payload parse ──────────────────────────────────────
-    sender_phone = request.form.get("From", "")        # "whatsapp:+905xxxxxxxx"
-    incoming_msg = request.form.get("Body", "").strip()
-    num_media    = int(request.form.get("NumMedia", 0))
-    media_url    = request.form.get("MediaUrl0", None)
-    media_mime   = request.form.get("MediaContentType0", "")
-    wa_lat       = request.form.get("Latitude", "")
-    wa_lon       = request.form.get("Longitude", "")
+    incoming_msg  = request.values.get('Body', '').strip()
+    sender_phone  = request.values.get('From', '')
+    num_media     = int(request.values.get('NumMedia', 0))
+    wa_lat        = request.values.get('Latitude', '')
+    wa_lon        = request.values.get('Longitude', '')
+    is_location   = bool(wa_lat and wa_lon)
 
-    if not sender_phone:
-        return jsonify({"status": "ignored"}), 200
+    user_info     = PHONE_DIRECTORY.get(sender_phone, {"ad": "Bilinmeyen", "rol": "—", "limit": 0, "emoji": "👤", "yetki": "user"})
+    user_name     = user_info["ad"]
+    is_admin      = user_info.get("yetki") == "admin"
 
-    print(f"📩 Gelen mesaj: {sender_phone} → {incoming_msg[:50] if incoming_msg else '[medya]'}", flush=True)
-
-    is_location = bool(wa_lat and wa_lon)
-
-    # ── Yanıt yardımcısı: msg.body() yerine send_whatsapp() ──
-    class _MsgProxy:
-        def __init__(self): self._text = ""
-        def body(self, t): self._text = t
-
-    msg = _MsgProxy()
-    def _reply(text=None):
-        t = text or msg._text
-        if t:
-            send_whatsapp(sender_phone, t)
-        return jsonify({"status": "ok"}), 200
-
-    user_info = PHONE_DIRECTORY.get(sender_phone, {"ad": "Bilinmeyen", "rol": "—", "limit": 0, "emoji": "👤", "yetki": "user"})
-    user_name = user_info["ad"]
-    is_admin  = user_info.get("yetki") == "admin"
-
+    resp = MessagingResponse()
+    msg  = resp.message()
     data = load_data()
     data.setdefault("user_states", {})
     us = data["user_states"].setdefault(user_name, {})
@@ -1637,24 +725,21 @@ def whatsapp_webhook():
                             f"📋 {user_name}: {bekleyen['Firma']} ₺{bekleyen['Tutar']:,.0f} ({odeme_turu_label(odeme_secim)})",
                             "info", data=data)
                 save_data(data)
-                # Bekleyen fişte kayıtlı konum/zaman uyarısı varsa gönder
-                _bekleyen_uyari = bekleyen.pop("_zaman_konum_uyari", "")
                 msg.body(
                     f"✅ *Fiş kaydedildi!*\n"
                     f"🏢 {bekleyen['Firma']} — {bekleyen['Tutar']:,.0f} ₺\n"
                     f"💳 Ödeme: *{odeme_turu_label(odeme_secim)}*\n"
                     f"{'💵 Harcırah kasanızdan düşülecek' if odeme_secim == 'harcirah' else '🏦 Genel merkezden düşülecek'}\n"
-                    + (_bekleyen_uyari + "\n" if _bekleyen_uyari else "")
-                    + f"📨 Yönetici onayına gönderildi.\n"
+                    f"📨 Onay kuyruğuna gönderildi.\n"
                     f"🔖 `{bekleyen['ID']}`"
                 )
             else:
                 save_data(data)
                 msg.body("⚠️ Bekleyen fiş verisi bulunamadı. Lütfen fişi tekrar gönderin.")
-            return _reply()
+            return str(resp)
         else:
             msg.body("⚠️ Lütfen ödeme türünü belirtin:\n\n*1* veya *harcırah* → Harcırahtan düşülsün\n*2* veya *şirket* → Şirket kartından düşülsün")
-            return _reply()
+            return str(resp)
 
     # ══════════════════════════════════════════
     # 📍 KONUM MESAJI
@@ -1666,8 +751,7 @@ def whatsapp_webhook():
             us.pop(KONUM_BEKLE_FLAG, None); save_data(data)
         except Exception as _ke:
             yanit = f"📍 Konum alındı ama işlenemedi: {_ke}"
-        msg.body(yanit)
-        return _reply()
+        msg.body(yanit); return str(resp)
 
     # ══════════════════════════════════════════
     # 🤖 KONUŞMALI AI MODU
@@ -1676,10 +760,9 @@ def whatsapp_webhook():
         if mesaj_lower in AI_CHAT_EXIT:
             us.pop(AI_CHAT_FLAG, None); us.pop(AI_CHAT_HISTORY, None); save_data(data)
             msg.body("👋 Sohbet modu kapatıldı. İstediğin zaman tekrar *sohbet* yaz!")
-            return _reply()
+            return str(resp)
         yanit = konusmali_ai_yanit(user_name, incoming_msg, data, us)
-        save_data(data); msg.body(f"🤖 {yanit}")
-        return _reply()
+        save_data(data); msg.body(f"🤖 {yanit}"); return str(resp)
 
     # ── KOMUTLAR ────────────────────────────────────────────────
 
@@ -1689,7 +772,7 @@ def whatsapp_webhook():
         rozet_str = " ".join([ROZETLER[r]["emoji"] for r in rozetler]) if rozetler else "henüz yok"
         yetki_str = "👑 Yönetici" if is_admin else "👤 Personel"
         msg.body(
-            f"🤖 *STINGA PRO v17*\n"
+            f"🤖 *STINGA PRO v14*\n"
             f"{user_info['emoji']} {user_name} | {yetki_str} | {seviye}\n"
             f"🏅 Rozetler: {rozet_str}\n{'─'*28}\n"
             f"📷 Fiş fotoğrafı gönder → AI analiz\n"
@@ -1705,7 +788,7 @@ def whatsapp_webhook():
             f"💱 *döviz [miktar] [KOD]* | 🏅 *rozetler*\n"
             f"🎭 *karakter [dedektif/koc/muhaseci/yoda]*"
         )
-        return _reply()
+        return str(resp)
 
     if mesaj_lower == "özet":
         bu_ay = datetime.now().strftime("%Y-%m")
@@ -1726,21 +809,20 @@ def whatsapp_webhook():
             f"💳 *Ödeme Dağılımı:*\n  💵 Harcırah: {harcirah_top:,.0f} ₺\n  🏦 Şirket Kartı: {sirket_top:,.0f} ₺\n\n"
             f"📉 Bütçe: {butce_durumu_str(user_name, data)}\n\n" + (kehane if kehane else "")
         )
-        return _reply()
+        return str(resp)
 
     if mesaj_lower == "sıralama":
-        msg.body(f"🏆 *Ekip Harcama Sıralaması*\n{'─'*28}\n{ekip_siralaması(data)}")
-        return _reply()
+        msg.body(f"🏆 *Ekip Harcama Sıralaması*\n{'─'*28}\n{ekip_siralaması(data)}"); return str(resp)
 
     if mesaj_lower in ["kehane", "kehanet", "tahmin"]:
         kehane = harcama_kehaneti(user_name, data)
         msg.body(f"🔮 *Harcama Kehaneti*\n{'─'*28}\n{kehane}" if kehane else "🔮 Bütçen güvende! 💚")
-        return _reply()
+        return str(resp)
 
     if mesaj_lower == "profil":
         profil = psikolojik_profil(user_name, data)
         msg.body(f"🧠 *Harcama Psikolojin*\n{'─'*28}\n{profil}" if profil else "🧠 Profil için en az 3 fiş gerekiyor!")
-        return _reply()
+        return str(resp)
 
     if mesaj_lower.startswith("karakter "):
         mod = incoming_msg[9:].strip().lower()
@@ -1750,7 +832,7 @@ def whatsapp_webhook():
             mod_emoji = {"dedektif": "🕵️", "koc": "💪", "muhaseci": "📒", "yoda": "🌟", "hemsire": "💚"}
             msg.body(f"{mod_emoji.get(mod,'🎭')} Karakter modu *{mod}* aktif!")
         else: msg.body(f"❌ Geçersiz mod. Seçenekler: dedektif / koc / muhaseci / yoda / hemsire")
-        return _reply()
+        return str(resp)
 
     if mesaj_lower == "rozetler":
         kazanilan = data["rozetler"].get(user_name, [])
@@ -1758,13 +840,12 @@ def whatsapp_webhook():
         else:
             satirlar = [f"{ROZETLER[r]['emoji']} *{ROZETLER[r]['ad']}*\n   {ROZETLER[r]['aciklama']}" for r in kazanilan if r in ROZETLER]
             msg.body(f"🏅 *Rozetlerin*\n{'─'*28}\n" + "\n".join(satirlar))
-        return _reply()
+        return str(resp)
 
     if mesaj_lower == "bakiye":
         bakiye = data["wallets"].get(user_name, 0)
         limit = data.get("user_limits", {}).get(user_name, user_info.get("limit", 0))
-        msg.body(f"💳 *Cüzdan*\nBakiye: *{bakiye:,.0f} ₺*\nLimit: {limit:,.0f} ₺")
-        return _reply()
+        msg.body(f"💳 *Cüzdan*\nBakiye: *{bakiye:,.0f} ₺*\nLimit: {limit:,.0f} ₺"); return str(resp)
 
     if mesaj_lower == "son5":
         son5 = [e for e in data["expenses"] if e["Kullanıcı"] == user_name][-5:]
@@ -1772,7 +853,7 @@ def whatsapp_webhook():
         else:
             satirlar = [f"🏢 {e['Firma']} — {e['Tutar']:,.0f} ₺ ({e['Tarih']}) [{e.get('Durum','?')}] {odeme_turu_label(e.get('Odeme_Turu',''))}" for e in reversed(son5)]
             msg.body("📋 *Son 5 Harcama:*\n" + "\n".join(satirlar))
-        return _reply()
+        return str(resp)
 
     doviz_match = re.match(r"döviz\s+([\d.,]+)\s+([a-zA-Z]{3})", incoming_msg, re.IGNORECASE)
     if doviz_match:
@@ -1782,16 +863,15 @@ def whatsapp_webhook():
             if kur: msg.body(f"💱 {miktar:,.2f} {kod} = *{miktar/kur:,.2f} ₺*\n(1 {kod} = {1/kur:.4f} ₺)")
             else: msg.body(f"❌ '{kod}' bulunamadı.")
         except Exception as e: msg.body(f"❌ Döviz hatası: {e}")
-        return _reply()
+        return str(resp)
 
     if mesaj_lower.startswith("soru "):
-        msg.body(f"🧠 *AI Yanıtı:*\n{nl_sorgu(incoming_msg[5:].strip(), user_name, data)}")
-        return _reply()
+        msg.body(f"🧠 *AI Yanıtı:*\n{nl_sorgu(incoming_msg[5:].strip(), user_name, data)}"); return str(resp)
 
     if mesaj_lower in AI_CHAT_TRIGGER:
         us[AI_CHAT_FLAG] = True; us[AI_CHAT_HISTORY] = []; save_data(data)
         msg.body(f"🤖 *Stinga AI Sohbet Modu Aktif!*\n{'─'*28}\nHarcamaların hakkında her şeyi sorabilirsin.\n_Çıkmak için: çıkış_")
-        return _reply()
+        return str(resp)
 
     if mesaj_lower in ["konum", "konum ekle", "📍"]:
         son_fisler = [e for e in data["expenses"] if e["Kullanıcı"] == user_name and not e.get("Konum")]
@@ -1799,7 +879,7 @@ def whatsapp_webhook():
         else:
             son = son_fisler[-1]; us[KONUM_BEKLE_FLAG] = True; save_data(data)
             msg.body(f"📍 *Konum Bağlama*\nSon fişin: *{son.get('Firma','?')}* — {son.get('Tutar',0):,.0f}₺\n\nWhatsApp'tan konum pini gönder!")
-        return _reply()
+        return str(resp)
 
     if mesaj_lower.startswith("ara "):
         kelime = incoming_msg[4:].strip().lower()
@@ -1810,59 +890,163 @@ def whatsapp_webhook():
             toplam = sum(e["Tutar"] for e in sonuclar)
             satirlar = [f"• {e['Firma']} — {e['Tutar']:,.0f} ₺ ({e['Tarih']})" for e in sonuclar[-10:]]
             msg.body(f"🔍 *'{kelime}'* → {len(sonuclar)} fiş | {toplam:,.0f} ₺\n\n" + "\n".join(satirlar))
-        return _reply()
+        return str(resp)
 
     # ── FİŞ ANALİZİ ─────────────────────────────────────────────
     if num_media > 0:
         # ── ÇOKLU FİŞ
         if num_media >= 2:
-            # Twilio'da birden fazla görsel MediaUrl0, MediaUrl1 ... şeklinde gelir
-            _twilio_urls = []
-            for _i in range(min(num_media, 5)):
-                _u = request.form.get(f"MediaUrl{_i}", "")
-                if _u: _twilio_urls.append(_u)
             def coklu_gonder():
                 _data = load_data()
                 _data.setdefault("user_states", {}).setdefault(user_name, {})
-                yanit = coklu_fis_isle(sender_phone, user_name, user_info, num_media, _data,
-                                       twilio_media_urls=_twilio_urls, mesaj_odeme_turu=mesaj_odeme_turu)
-                send_whatsapp(sender_phone, yanit)
+                yanit = coklu_fis_isle(sender_phone, user_name, user_info, num_media, _data, mesaj_odeme_turu)
+                twilio_client.messages.create(body=yanit, from_="whatsapp:+14155238886", to=sender_phone)
             import threading as _t2
             _t2.Thread(target=coklu_gonder, daemon=True).start()
             odeme_str = f"\n💳 Ödeme türü: *{odeme_turu_label(mesaj_odeme_turu)}*" if mesaj_odeme_turu else "\n⚠️ _Ödeme türü belirtilmedi — AI'dan tespit edilecek_"
-            send_whatsapp(sender_phone, f"📦 *{num_media} fiş fotoğrafı alındı!*\n⚙️ Tümü işleniyor...{odeme_str}\n⌛ Sonuçlar birkaç saniye içinde gelecek.")
-            return jsonify({"status": "ok"}), 200
+            msg.body(f"📦 *{num_media} fiş fotoğrafı alındı!*\n⚙️ Tümü işleniyor...{odeme_str}\n⌛ Sonuçlar birkaç saniye içinde gelecek.")
+            return str(resp)
 
         # ── TEKİL FİŞ ───────────────────────────────────────────────
-        # Twilio doğrudan MediaUrl0 ile gelir
-        print(f"📸 Twilio Media URL: {media_url}", flush=True)
+        media_url_raw = request.values.get('MediaUrl0')
+        media_content_type = request.values.get('MediaContentType0', '')
+        print(f"📸 Media URL (raw): {media_url_raw}", flush=True)
+        print(f"📸 Media ContentType: {media_content_type}", flush=True)
+
+        # ── URL'deki Account SID'i kendi SID'imizle değiştir
+        # (Twilio Sandbox bazen farklı/eski Account SID ile URL üretir)
+        import re as _re_url
+        media_url = _re_url.sub(
+            r'/Accounts/AC[a-f0-9]+/',
+            f'/Accounts/{TWILIO_SID}/',
+            media_url_raw
+        )
+        if media_url != media_url_raw:
+            print(f"📸 Media URL (SID düzeltildi): {media_url}", flush=True)
 
         def analiz_et_gonder():
             try:
                     data = load_data()
-                    # ── Twilio MediaUrl'den görsel indir ──
+                    # ── Görsel indirme ──
                     raw_bytes = None
+
+                    # ═══ YENİ: Twilio HTTP client kullan (mesaj gönderme ile aynı auth) ═══
+                    # twilio_client zaten mesaj atabiliyor → aynı session ile media indir
                     try:
-                        if media_url:
-                            account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-                            auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
-                            r = requests.get(media_url, auth=(account_sid, auth_token), timeout=30)
-                            r.raise_for_status()
-                            raw_bytes = r.content
-                            print(f"✅ Twilio media indirildi: {len(raw_bytes)} bytes", flush=True)
+                        print(f"Twilio HTTP client ile indirme...", flush=True)
+                        # Twilio Python SDK'nın internal HTTP client'ını kullan
+                        twilio_http = twilio_client.http_client
+                        tw_response = twilio_http.request(
+                            "GET", media_url,
+                            auth=(TWILIO_SID, TWILIO_TOKEN),
+                            allow_redirects=False,
+                            timeout=(10, 30)
+                        )
+                        print(f"  Twilio HTTP status: {tw_response.status_code}", flush=True)
+                        print(f"  Headers: {dict(list(tw_response.headers.items())[:5])}", flush=True)
+
+                        if tw_response.status_code in [301, 302, 303, 307, 308]:
+                            real_url = tw_response.headers.get('Location') or tw_response.headers.get('location', '')
+                            print(f"  Redirect → {real_url[:150]}", flush=True)
+                            if real_url:
+                                final_res = requests.get(real_url, timeout=30)
+                                if len(final_res.content) > 500:
+                                    raw_bytes = final_res.content
+                                    print(f"✅ Twilio HTTP redirect başarılı: {len(raw_bytes)} bytes", flush=True)
+                        elif tw_response.status_code == 200 and len(tw_response.content) > 500:
+                            raw_bytes = tw_response.content
+                            print(f"✅ Twilio HTTP direct başarılı: {len(raw_bytes)} bytes", flush=True)
+                        else:
+                            print(f"  Twilio HTTP başarısız: {tw_response.status_code}, {len(tw_response.content)} bytes", flush=True)
+                            # Yanıt içeriğini logla (hata mesajı görmek için)
+                            try:
+                                print(f"  Yanıt: {tw_response.content[:300]}", flush=True)
+                            except: pass
                     except Exception as _tw_err:
-                        print(f"Twilio media indirme hatası: {_tw_err}", flush=True)
+                        print(f"Twilio HTTP client hatası: {_tw_err}", flush=True)
+
+                    # ═══ FALLBACK 1: requests ile auth + redirect ═══
+                    if not raw_bytes:
+                        try:
+                            print(f"Fallback 1: requests auth+redirect...", flush=True)
+                            res = requests.get(media_url,
+                                               auth=(TWILIO_SID, TWILIO_TOKEN),
+                                               allow_redirects=False, timeout=20)
+                            print(f"  Status: {res.status_code}, Size: {len(res.content)}", flush=True)
+                            if res.status_code in [301, 302, 303, 307, 308]:
+                                loc = res.headers.get('Location', '')
+                                if loc:
+                                    res2 = requests.get(loc, timeout=20)
+                                    if len(res2.content) > 500:
+                                        raw_bytes = res2.content
+                                        print(f"✅ Fallback 1 başarılı: {len(raw_bytes)} bytes", flush=True)
+                            elif res.status_code == 200 and len(res.content) > 500:
+                                ct = res.headers.get('Content-Type', '').lower()
+                                if 'xml' not in ct:
+                                    raw_bytes = res.content
+                                    print(f"✅ Fallback 1 direct: {len(raw_bytes)} bytes", flush=True)
+                        except Exception as _f1:
+                            print(f"Fallback 1 hatası: {_f1}", flush=True)
+
+                    # ═══ FALLBACK 2: Auth'suz ═══
+                    if not raw_bytes:
+                        try:
+                            print(f"Fallback 2: auth'suz...", flush=True)
+                            res = requests.get(media_url, allow_redirects=True, timeout=20)
+                            if len(res.content) > 500:
+                                ct = res.headers.get('Content-Type', '').lower()
+                                if 'xml' not in ct and 'html' not in ct:
+                                    raw_bytes = res.content
+                                    print(f"✅ Fallback 2 başarılı: {len(raw_bytes)} bytes", flush=True)
+                        except Exception as _f2:
+                            print(f"Fallback 2 hatası: {_f2}", flush=True)
+
+                    # ═══ FALLBACK 3: Twilio REST API message media ═══
+                    if not raw_bytes:
+                        try:
+                            print(f"Fallback 3: Twilio REST API media fetch...", flush=True)
+                            import re as _re
+                            msg_match = _re.search(r'/Messages/(MM[a-f0-9]+)/Media/(ME[a-f0-9]+)', media_url)
+                            if msg_match:
+                                msg_sid = msg_match.group(1)
+                                media_sid = msg_match.group(2)
+                                print(f"  MSG={msg_sid}, MEDIA={media_sid}", flush=True)
+                                # Twilio SDK ile media'ya eriş
+                                try:
+                                    media_instance = twilio_client.api.accounts(TWILIO_SID).messages(msg_sid).media(media_sid).fetch()
+                                    media_uri = media_instance.uri.replace('.json', '')
+                                    full_url = f"https://api.twilio.com{media_uri}"
+                                    print(f"  SDK URI: {full_url}", flush=True)
+                                    r3 = requests.get(full_url, auth=(TWILIO_SID, TWILIO_TOKEN),
+                                                      allow_redirects=False, timeout=15)
+                                    if r3.status_code in [301, 302, 303, 307, 308]:
+                                        loc = r3.headers.get('Location', '')
+                                        if loc:
+                                            r3 = requests.get(loc, timeout=15)
+                                    if len(r3.content) > 500:
+                                        ct3 = r3.headers.get('Content-Type', '').lower()
+                                        if 'xml' not in ct3:
+                                            raw_bytes = r3.content
+                                            print(f"✅ Fallback 3 başarılı: {len(raw_bytes)} bytes", flush=True)
+                                except Exception as _sdk_err:
+                                    print(f"  SDK hatası: {_sdk_err}", flush=True)
+                        except Exception as _f3:
+                            print(f"Fallback 3 hatası: {_f3}", flush=True)
 
                     if not raw_bytes or len(raw_bytes) < 500:
-                        print(f"❌ Görsel indirilemedi! URL: {media_url}", flush=True)
-                        send_whatsapp(sender_phone, "❌ Fiş görseli indirilemedi. Lütfen tekrar deneyin veya farklı bir fotoğraf gönderin.")
+                        print(f"❌ TÜM STRATEJİLER BAŞARISIZ! URL: {media_url}", flush=True)
+                        twilio_client.messages.create(
+                            body="❌ Fiş görseli sunucudan indirilemedi. Lütfen tekrar deneyin veya farklı bir fotoğraf gönderin.",
+                            from_="whatsapp:+14155238886", to=sender_phone)
                         return
 
                     print(f"📸 İndirme başarılı: {len(raw_bytes)} bytes", flush=True)
 
                     img_hash = gorsel_hash(raw_bytes)
                     if img_hash in data["duplicate_hashes"]:
-                        send_whatsapp(sender_phone, "⚠️ *Mükerrer Fiş!* Bu fişi daha önce sisteme girdiniz.")
+                        twilio_client.messages.create(
+                            body="⚠️ *Mükerrer Fiş!* Bu fişi daha önce sisteme girdiniz.",
+                            from_="whatsapp:+14155238886", to=sender_phone)
                         return
 
                     # PIL ile aç — hata verirse kullanıcıya bildir
@@ -1872,45 +1056,19 @@ def whatsapp_webhook():
                         image = Image.open(BytesIO(raw_bytes))  # verify sonrası tekrar aç
                     except Exception as _img_err:
                         print(f"PIL görsel açma hatası: {_img_err}", flush=True)
-                        send_whatsapp(sender_phone, "❌ Gönderilen dosya geçerli bir görsel değil. Lütfen fiş *fotoğrafı* gönderin (PDF, video vb. desteklenmez).")
+                        twilio_client.messages.create(
+                            body="❌ Gönderilen dosya geçerli bir görsel değil. Lütfen fiş *fotoğrafı* gönderin (PDF, video vb. desteklenmez).",
+                            from_="whatsapp:+14155238886", to=sender_phone)
                         return
                     bugun = datetime.now().strftime("%Y-%m-%d")
-                    prompt = (
-                        f"Sen Stinga Enerji şirketinin mali denetçisisin. Fişi dikkatli analiz et ve SADECE JSON döndür.\n\n"
-                        f"ÖNEMLİ: Bugün {bugun}. Fişte yazan tarihi oku (DD-MM-YYYY formatini YYYY-MM-DD'ye çevir).\n\n"
-                        "=== KATEGORİ / FİŞ TÜRÜ BELİRLEME (ÇOK DİKKATLİ OL) ===\n"
-                        '- Benzin istasyonu, akaryakıt, OPET, Shell, BP, Total, motorin, benzin: fis_turu="akaryakıt"\n'
-                        '- Restoran, lokanta, kafe, yemek: fis_turu="restoran"\n'
-                        '- Market, süpermarket (Migros, BİM, A101): fis_turu="market"\n'
-                        '- Otel, konaklama: fis_turu="otel"\n'
-                        'DİKKAT: "OPET MARKET" bir AKARYAKIT istasyonudur, market DEĞİLDİR. Akaryakıt satan her yer fis_turu="akaryakıt" olmalıdır.\n\n'
-                        "=== KİŞİSEL GİDER TESPİTİ (ÇOK ÖNEMLİ) ===\n"
-                        "Fişte şu ürünler varsa bunları kisisel_giderler listesine ekle ve risk_skoru artır:\n"
-                        "- Sigara, tütün, elektronik sigara: +25 risk\n"
-                        "- Çikolata, şekerleme, cips, gofret: +10 risk\n"
-                        "- Kola, gazlı içecek, enerji içeceği, bira, alkol: +15 risk\n"
-                        "- Sakız, dondurma: +5 risk\n"
-                        "- Kişisel bakım (şampuan, deodorant, parfüm): +10 risk\n\n"
-                        "=== RİSK SKORU ===\n"
-                        "- Temel risk: yakıt/yemek fişi=2, diğer=5\n"
-                        "- Kişisel gider varsa: her biri için yukarıdaki risk eklensin\n"
-                        "- Fatura net okunmuyorsa: +15\n"
-                        "- Gece 22:00-06:00 arası fiş: +10\n"
-                        "- Gelecek tarihli fiş: +30\n\n"
-                        "=== ADRES & ŞEHİR (YENİ — ÇOK ÖNEMLİ) ===\n"
-                        "Fişte firma adresi, ilçe, il veya şehir bilgisi varsa mutlaka çıkar.\n"
-                        '- adres: fişte yazan tam adres (örn: "Atatürk Cad. No:5 Yenimahalle")\n'
-                        '- sehir: sadece il/şehir adı (örn: "Ankara", "İstanbul", "İzmir")\n'
-                        "Adres veya şehir bilgisi yoksa boş string bırak.\n\n"
-                        '{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,'
-                        '"odeme_yontemi":"nakit|kredi_karti|havale","kalemler":[{"aciklama":"...","tutar":0.0}],'
-                        '"kisisel_giderler":[{"urun":"sigara","tutar":25.0}],'
-                        '"adres":"","sehir":"",'
-                        '"para_birimi":"TRY","risk_skoru":0,"risk_nedenleri":["..."],'
-                        '"audit_notu":"1 cümle kısa mali özet, kişisel gider varsa mutlaka belirt",'
-                        '"sahte_mi":false,"sahtelik_nedeni":"","gorsel_kalitesi":"iyi|orta|kotu",'
-                        '"fis_turu":"restoran|market|akaryakıt|otel|diger","ilginc_detay":"dikkat çeken şey"}'
-                    )
+                    prompt = f"""Sen mali denetçi ve adli belge uzmanısın. Fişi analiz et ve SADECE JSON döndür.
+ÖNEMLİ: Bugün {bugun}. Fişte yazan tarihi oku (DD-MM-YYYY → YYYY-MM-DD).
+{{"firma":"?","tarih":"YYYY-MM-DD","toplam_tutar":0.0,"kdv_tutari":0.0,
+"odeme_yontemi":"nakit|kredi_karti|havale","kalemler":[{{"aciklama":"...","tutar":0.0}}],
+"para_birimi":"TRY","risk_skoru":0,"risk_nedenleri":["..."],
+"audit_notu":"1 cümle kısa mali özet — HTML TAG KULLANMA",
+"sahte_mi":false,"sahtelik_nedeni":"","gorsel_kalitesi":"iyi|orta|kotu",
+"fis_turu":"restoran|market|akaryakıt|otel|diger","ilginc_detay":"dikkat çeken şey"}}"""
 
                     ai_res = client.models.generate_content(model=MODEL_NAME, contents=[prompt, image])
                     raw_text = ai_res.text
@@ -1948,94 +1106,10 @@ def whatsapp_webhook():
 
                     sahtelik = derin_sahtelik_analizi(fis, image)
                     anomaliler = anomali_tespit(user_name, tutar_try, data)
-                    kategori = kategori_tespit(fis.get("firma", ""), fis.get("fis_turu", ""))
-
-                    # ══════════════════════════════════════════════════
-                    # 🧠 YENİ: KONUM & ZAMAN ZEKASI (3 Özellik)
-                    # ══════════════════════════════════════════════════
-
-                    mesaj_zamani = datetime.now()
-
-                    # ══════════════════════════════════════════════════
-                    # ── ŞEHİR TESPİTİ — modül seviyesi sehir_tespit() kullanır
-                    fis_sehri_ham = (
-                        fis.get("sehir","") or fis.get("il","") or
-                        sehir_tespit(fis.get("adres","") or "") or
-                        sehir_tespit(fis.get("firma","") or "") or
-                        sehir_tespit(fis.get("audit_notu","") or "")
-                    )
-                    fis_adresi_ham = fis.get("adres","") or ""
-                    print(f"[KONUM] '{fis.get('firma','')}' → şehir:'{fis_sehri_ham}'", flush=True)
-
-                    # ── ÖZELLİK 1: Konum Çelişkisi ──────────────────
-                    konum_celiski = konum_celiskisi_kontrol(
-                        fis_adresi=fis_adresi_ham,
-                        fis_sehri=fis_sehri_ham,
-                        user_name=user_name,
-                        mesaj_zamani=mesaj_zamani,
-                        fis_tarihi=fis.get("tarih", ""),
-                        data=data
-                    )
-
-                    # ── ÖZELLİK 2: Zaman-Mekan İmkansızlığı ─────────
-                    zaman_celiski = zaman_mekan_imkansizlik_kontrol(
-                        fis_adresi=fis_adresi_ham,
-                        fis_sehri=fis_sehri_ham,
-                        fis_tarihi=fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
-                        fis_saati_tahmini="",
-                        user_name=user_name,
-                        data=data
-                    )
-
-                    # ── ÖZELLİK 3: Fiş Yaşı Sensörü ─────────────────
-                    yas_kontrol = fis_yasi_kontrol(raw_bytes, mesaj_zamani, fis_tarihi=fis.get("tarih",""))
-
-                    # Risk puanına ekle
-                    _ek_risk = (
-                        konum_celiski.get("risk_artisi", 0) +
-                        zaman_celiski.get("risk_artisi", 0) +
-                        yas_kontrol.get("risk_artisi", 0)
-                    )
-                    if _ek_risk > 0:
-                        fis["risk_skoru"] = min(100, int(fis.get("risk_skoru", 0)) + _ek_risk)
-
-                    # Uyarı mesajlarını birleştir
-                    _zaman_konum_uyarilari = []
-                    if konum_celiski.get("celiski") and konum_celiski.get("uyari_mesaji"):
-                        _zaman_konum_uyarilari.append(konum_celiski["uyari_mesaji"])
-                    if zaman_celiski.get("imkansiz") and zaman_celiski.get("uyari_mesaji"):
-                        _zaman_konum_uyarilari.append(zaman_celiski["uyari_mesaji"])
-                    if yas_kontrol.get("yasli") and yas_kontrol.get("uyari_mesaji"):
-                        _zaman_konum_uyarilari.append(yas_kontrol["uyari_mesaji"])
-
-                    _zaman_konum_str = ("\n\n" + "\n\n".join(_zaman_konum_uyarilari)) if _zaman_konum_uyarilari else ""
-
-                    # Fişe metadata ekle (dashboard'da görünsün)
-                    if fis_sehri_ham:
-                        fis["_tespit_sehri"] = fis_sehri_ham
-                    if yas_kontrol.get("cekme_zamani"):
-                        fis["_cekme_zamani"] = yas_kontrol["cekme_zamani"]
-                        fis["_gun_farki"] = yas_kontrol.get("gun_farki", 0)
-                    # ══════════════════════════════════════════════════
+                    kategori = kategori_tespit(fis.get("firma", ""))
                     karakter = data.get("karakter_modu", {}).get(user_name, random.choice(["koc", "dedektif", "muhaseci"]))
                     fis["kategori"] = kategori
-
-                    # ── Kişisel gider tespiti ve risk artışı ──
-                    kisisel_giderler = fis.get("kisisel_giderler", [])
-                    kisisel_uyari = ""
-                    if kisisel_giderler:
-                        _kg_listesi = ", ".join([f"{kg.get('urun','?')} (₺{kg.get('tutar',0):.0f})" for kg in kisisel_giderler])
-                        kisisel_uyari = f"\n\n🚨 *KİŞİSEL GİDER TESPİTİ:*\n{_kg_listesi}\n⚠️ Bu ürünler şirket gideri olarak kabul edilmez!"
-                        # Risk skorunu artır
-                        _mevcut_risk = int(fis.get("risk_skoru", 0))
-                        _ek_risk = len(kisisel_giderler) * 15
-                        fis["risk_skoru"] = min(100, _mevcut_risk + _ek_risk)
-
                     yorum = yaratici_yorum(fis, user_name, karakter)
-
-                    # ── Şenol Bey otomatik onay + esprili mesaj ──
-                    _is_senol = user_name in ("Şenol Özyaman", "Şenol Faik Özyaman", "senol")
-                    _senol_mesaj = ""
 
                     data.setdefault("fis_sayaci", {})
                     data.setdefault("expenses", [])
@@ -2049,57 +1123,6 @@ def whatsapp_webhook():
                         durum = "Sahte Şüphesi"
                     else:
                         durum = "Onay Bekliyor"
-
-                    # ── Şenol Bey: Otomatik onay ──
-                    if _is_senol and durum == "Onay Bekliyor":
-                        durum = "Onaylandı"
-                        _senol_espri_listesi = [
-                            "Sizi sizden başka kim onaylayabilir Şenol Bey? 😄 Fişiniz direkt kaydedildi!",
-                            "Genel Müdür'ün fişi onay mı bekler? Tabii ki hayır! ✅ Otomatik onaylandı.",
-                            "Şenol Bey, fişiniz VIP muamelesi gördü — anında onay! 🎩",
-                            "Patron fişi yollamış, kim reddetmeye cesaret edebilir? 😎 Kayıt tamam!",
-                            "Şenol Bey bir fiş gönderdi, sistem saygıyla selam durdu ve onayladı! 🫡",
-                            "Bu fiş o kadar yetkiliydi ki kendini onayladı! 😁 Kayıtta Şenol Bey.",
-                            "Genel Müdür konuştu, sistem dinledi: ONAYLI! ✨",
-                            "Şenol Bey'in fişi geldi — kırmızı halı serildi, onay damgası basıldı! 🎖️",
-                        ]
-                        # Fiş kategorisine göre akıllı sağlık mesajları
-                        _fis_turu = fis.get("fis_turu", kategori).lower()
-                        if "restoran" in _fis_turu or "yemek" in _fis_turu or "market" in _fis_turu:
-                            _senol_saglik_listesi = [
-                                "🥗 Diyaliz hastalarının potasyum ve fosfor alımına dikkat etmesi gerekiyor — yemek seçimlerinize özen gösterin Şenol Bey!",
-                                "🍽️ Yemek fişi gördüm — diyaliz diyetinize uygun seçimler yaptığınızı umuyorum Şenol Bey!",
-                                "🧂 Tuz kısıtlaması önemli — bu restoranın yemeklerinin tuzu konusunda dikkatli olun Şenol Bey!",
-                                "💧 Yemek sonrası sıvı alımınıza dikkat etmeyi unutmayın Şenol Bey!",
-                            ]
-                        elif "akaryakıt" in _fis_turu or "akaryakit" in _fis_turu:
-                            _senol_saglik_listesi = [
-                                "🚗 Uzun yolculuklar yorucu olabiliyor — molalar vermeyi unutmayın Şenol Bey!",
-                                "⛽ Seyahatteyseniz, diyaliz randevularınızı aksatmamaya dikkat edin Şenol Bey!",
-                                "🛣️ Yolda kendinize iyi bakın, güvenli sürüşler Şenol Bey!",
-                            ]
-                        elif "otel" in _fis_turu or "konaklama" in _fis_turu:
-                            _senol_saglik_listesi = [
-                                "🏨 Seyahatte diyaliz merkezi ayarlamanız gerekiyorsa önceden planlama yapın Şenol Bey!",
-                                "🌙 İyi dinlenmeler Şenol Bey, uyku sağlığın temelidir!",
-                                "✈️ Seyahatte de düzeninizi bozmamaya çalışın Şenol Bey!",
-                            ]
-                        else:
-                            _senol_saglik_listesi = [
-                                "💚 Bugün nasılsınız Şenol Bey? Umarım enerjiniz yerindedir!",
-                                "🫀 Düzenli kan basıncı kontrolünüzü ihmal etmeyin Şenol Bey!",
-                                "😴 Kaliteli uyku diyaliz hastalarında iyileşmeyi destekler — iyi geceler Şenol Bey!",
-                                "🏃 Hafif yürüyüşler hem moral hem sağlık için çok iyi — fırsatınız olunca deneyin!",
-                                "💪 Ekibiniz size güveniyor — ama sağlığınız her şeyden önce gelir Şenol Bey!",
-                            ]
-                        _senol_mesaj = random.choice(_senol_espri_listesi)
-                        # Her zaman kategoriye uygun sağlık mesajı ekle
-                        _senol_mesaj += "\n\n💚 " + random.choice(_senol_saglik_listesi)
-                        # Diyaliz günü ise özel hatırlatma ekle
-                        _bugun_gun = datetime.now().weekday()
-                        _diyaliz_gunleri = {1: "Salı", 3: "Perşembe", 5: "Cumartesi"}
-                        if _bugun_gun in _diyaliz_gunleri:
-                            _senol_mesaj += f"\n💙 Bugün {_diyaliz_gunleri[_bugun_gun]} — diyaliz günün, umarım her şey yolunda Şenol Bey!" 
 
                     # Thumbnail
                     import base64 as _b64mod
@@ -2120,9 +1143,6 @@ def whatsapp_webhook():
                     # belirtilmemişse fiş verisini hazırla ve kullanıcıya sor
                     final_odeme = mesaj_odeme_turu if mesaj_odeme_turu else None
 
-                    # Şenol Bey için ödeme türü: harcırah (kasasından düşülür) + şirkete de işlenir
-                    _senol_odeme_turu = "harcirah" if _is_senol else (final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor"))
-
                     new_expense = {
                         "ID": datetime.now().strftime("%Y%m%d%H%M%S"),
                         "Tarih": fis.get("tarih", datetime.now().strftime("%Y-%m-%d")),
@@ -2131,28 +1151,20 @@ def whatsapp_webhook():
                         "Firma": fis.get("firma", "Bilinmiyor"),
                         "Tutar": tutar_try, "KDV": float(fis.get("kdv_tutari", 0)),
                         "ParaBirimi": para_birimi,
-                        "OdemeTipi": _senol_odeme_turu if _is_senol else (final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor")),
-                        "Odeme_Turu": _senol_odeme_turu if _is_senol else (final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor")),
-                        "Sirket_Gider": True,  # Her fiş şirkete de işlenir
+                        "OdemeTipi": final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor"),
+                        "Odeme_Turu": final_odeme if final_odeme else fis.get("odeme_yontemi", "bilinmiyor"),
                         "Kategori": kategori, "Durum": durum,
-                        "Risk_Skoru": max(int(fis.get("risk_skoru", 0)), sahtelik["guvensizlik_skoru"]),
+                        "Risk_Skoru": sahtelik["guvensizlik_skoru"],
                         "AI_Audit": re.sub(r'<[^>]+>', '', str(fis.get("audit_notu", ""))).strip(),
                         "AI_Anomali": fis.get("anomali", False),
                         "AI_Anomali_Aciklama": fis.get("anomali_aciklamasi", ""),
-                        "Kisisel_Giderler": kisisel_giderler,
                         "Anomaliler": anomaliler, "Hash": img_hash,
                         "Karakter": karakter,
                         "IlgincDetay": fis.get("ilginc_detay", ""),
                         "Proje": "Genel Merkez", "Oncelik": "Normal", "Notlar": "",
                         "Kaynak": "WhatsApp", "Dosya_Yolu": "",
                         "Gorsel_B64": gorsel_data_uri,
-                        "Konum": "", "Konum_Lat": None, "Konum_Lon": None, "Sehir": fis_sehri_ham,
-                        # Yeni alanlar — konum & zaman zekası
-                        "Fis_Sehri": fis_sehri_ham,
-                        "Cekme_Zamani": yas_kontrol.get("cekme_zamani", ""),
-                        "Gun_Farki": yas_kontrol.get("gun_farki", 0),
-                        "Konum_Celiski": konum_celiski.get("celiski", False),
-                        "Zaman_Celiski": zaman_celiski.get("imkansiz", False),
+                        "Konum": "", "Konum_Lat": None, "Konum_Lon": None, "Sehir": "",
                     }
 
                     # Mükerrer kontrolü (firma+tutar+tarih)
@@ -2166,7 +1178,9 @@ def whatsapp_webhook():
                                 str(e.get("Tarih","")) == tarih_yeni):
                             mukerrer_fis = e; break
                     if mukerrer_fis:
-                        send_whatsapp(sender_phone, f"⚠️ *Mükerrer Fiş!*\n{mukerrer_fis.get('Firma','?')} ₺{float(mukerrer_fis.get('Tutar',0)):,.2f} ({mukerrer_fis.get('Tarih','?')}) — {mukerrer_fis.get('Kullanıcı','?')} tarafından girilmiş.")
+                        twilio_client.messages.create(
+                            body=f"⚠️ *Mükerrer Fiş!*\n{mukerrer_fis.get('Firma','?')} ₺{float(mukerrer_fis.get('Tutar',0)):,.2f} ({mukerrer_fis.get('Tarih','?')}) — {mukerrer_fis.get('Kullanıcı','?')} tarafından girilmiş.",
+                            from_="whatsapp:+14155238886", to=sender_phone)
                         return
 
                     # ══ ÖDEME TÜRÜ BELİRTİLMEMİŞSE → KULLANICIYA SOR ══
@@ -2175,64 +1189,23 @@ def whatsapp_webhook():
                         data["duplicate_hashes"].append(img_hash)
                         data.setdefault("user_states", {}).setdefault(user_name, {})
                         data["user_states"][user_name][ODEME_BEKLE_FLAG] = True
-                        # Konum/zaman uyarısını bekleyen fişe ekle — ödeme seçilince gösterilsin
-                        new_expense["_zaman_konum_uyari"] = _zaman_konum_str
                         data["user_states"][user_name][ODEME_BEKLE_DATA] = new_expense
                         save_data(data)
-                        risk = max(int(fis.get("risk_skoru", 0)), sahtelik["guvensizlik_skoru"])
+                        risk = sahtelik["guvensizlik_skoru"]
                         risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
-
-                        # Şenol Bey ödeme türü sormadan devam etsin
-                        if _is_senol:
-                            # Şenol Bey için default: harcırah (kasasından düşülsün)
-                            new_expense["OdemeTipi"] = "harcirah"
-                            new_expense["Odeme_Turu"] = "harcirah"
-                            data["expenses"].append(new_expense)
-                            data["duplicate_hashes"].append(img_hash)
-                            data["fis_sayaci"][user_name] = data["fis_sayaci"].get(user_name, 0) + 1
-                            # Kasasından düş
-                            mevcut_kasa = data.get("wallets", {}).get(user_name, 0)
-                            data.setdefault("wallets", {})[user_name] = mevcut_kasa - tutar_try
-                            add_xp(user_name, 50, "WhatsApp fiş tarama", data=data)
-                            save_data(data)
-                            # Diyaliz günü kontrolü (Salı=1, Perşembe=3, Cumartesi=5)
-                            _bugun_gun = datetime.now().weekday()
-                            _diyaliz_gunleri = {1: "Salı", 3: "Perşembe", 5: "Cumartesi"}
-                            _diyaliz_uyari = ""
-                            if _bugun_gun in _diyaliz_gunleri:
-                                _diyaliz_uyari = f"\n\n💙 _Bugün {_diyaliz_gunleri[_bugun_gun]} — diyaliz günün, umarım iyi geçiyor Şenol Bey. Kendinize iyi bakın!_"
-                            _yeni_kasa = data.get("wallets", {}).get(user_name, 0)
-                            _senol_odeme_msg = (
-                                f"✅ *FİŞ KAYDEDİLDİ — OTOMATİK ONAYLI* 🎩\n{'─'*22}\n"
-                                f"🏢 {fis.get('firma','?')}\n"
-                                f"💰 {tutar_try:,.2f} ₺\n"
-                                f"📅 {fis.get('tarih','—')}\n"
-                                f"🏷️ {kategori}\n"
-                                f"{risk_emoji} Risk: {risk}/100\n"
-                                f"💵 Harcırah kasanızdan düşüldü\n"
-                                f"💳 Kasa: *{_yeni_kasa:,.0f} ₺*"
-                                + kisisel_uyari
-                                + _zaman_konum_str
-                                + f"\n\n🎩 _{random.choice(_senol_espri_listesi)}_"
-                                + f"\n💚 _{random.choice(_senol_saglik_listesi)}_"
-                                + _diyaliz_uyari
-                            )
-                            send_whatsapp(sender_phone, _senol_odeme_msg)
-                            return
-
-                        send_whatsapp(sender_phone,
+                        twilio_client.messages.create(
+                            body=(
                                 f"📸 *Fiş Okundu!*\n{'─'*22}\n"
                                 f"🏢 {fis.get('firma','?')}\n"
                                 f"💰 {tutar_try:,.2f} ₺\n"
                                 f"📅 {fis.get('tarih','—')}\n"
                                 f"🏷️ {kategori}\n"
-                                f"{risk_emoji} Risk: {risk}/100"
-                                + kisisel_uyari
-                                + _zaman_konum_str
-                                + f"\n\n💳 *Bu harcama nasıl ödendi?*\n\n"
+                                f"{risk_emoji} Risk: {risk}/100\n\n"
+                                f"💳 *Bu harcama nasıl ödendi?*\n\n"
                                 f"*1* veya *harcırah* yazın → 💵 Harcırahtan düşülsün\n"
                                 f"*2* veya *şirket* yazın → 🏦 Şirket kartından düşülsün"
-                            )
+                            ),
+                            from_="whatsapp:+14155238886", to=sender_phone)
                         return
 
                     # ══ ÖDEME TÜRÜ BELLİ — DOĞRUDAN KAYDET ══
@@ -2255,7 +1228,7 @@ def whatsapp_webhook():
                         bu_ay_fisler = [e for e in data["expenses"] if e["Kullanıcı"] == user_name and e.get("Tarih","").startswith(datetime.now().strftime("%Y-%m"))]
                         bu_ay_toplam = sum(e["Tutar"] for e in bu_ay_fisler)
                         risk = sahtelik["guvensizlik_skoru"]
-                        is_senol = user_name in ("Şenol Özyaman", "Şenol Faik Özyaman")
+                        is_senol = (user_name == "Şenol Özyaman")
                         if is_senol:
                             espri_prompt = f"""Sen STINGA yapay zekasısın. Şenol Faik Özyaman için hem mali hem kişisel bir not yazıyorsun.
 
@@ -2276,19 +1249,9 @@ Fiş bilgileri:
 Görev: 2 cümle yaz. İlk cümle fişle ilgili esprili/samimi bir yorum. İkinci cümle Şenol'a sağlığını, diyalizini, beslenmesini ya da günlük hayatını ince bir şekilde hatırlatan, asla tıbbi tavsiye vermeyen, içten ve sıcak bir hatırlatma — her seferinde farklı ve özgün olsun, klişe olmasın.
 STINGA yapay zekası olarak yaz, samimi ve kişisel ol. Türkçe. Sadece yorumu yaz."""
                         else:
-                            espri_prompt = (
-                                f"Sen STINGA yapay zekasısın — robotik değil, gerçekten orada olan biri gibi konuşursun.\n\n"
-                                f"Kullanıcı: {user_name}\n"
-                                f"Firma: {fis.get('firma','?')} | Tutar: {tutar_try:.0f} TL | Kategori: {kategori}\n"
-                                f"Risk: {risk}/100 | Bugün {len(bugun_fisler)}. fiş | Bu ay toplam: {bu_ay_toplam:.0f} TL\n\n"
-                                "Görev: 1-2 cümle yaz.\n"
-                                "- İsmiyle hitap et, ama sadece bir kez\n"
-                                "- O firmaya, o tutara, o kategoriye özel bir şey söyle — genel kalıplar yok\n"
-                                "- Samimi ve sıcak ol: bu kişi sahada çalışıyor, emek veriyor — bunu hissettir\n"
-                                "- İlham verici ama hafif bir kapanış: 'devam', 'yolda', 'ekip' gibi temalar kullanabilirsin\n"
-                                "- 1-2 emoji, doğal yere koy\n"
-                                "- Türkçe. Sadece yorumu yaz."
-                            )
+                            espri_prompt = f"""Sen STINGA yapay zekasısın. Kullanıcı: {user_name}
+Firma: {fis.get('firma','?')} - {tutar_try:.0f} TL - {kategori} - Risk: {risk}/100 - Bugün {len(bugun_fisler)} fiş - Bu ay {bu_ay_toplam:.0f} TL
+1-2 cümle Türkçe, eğlenceli, enerjik yorum. İsim kullan, klişe olma."""
                         ai_espri = ai_call(espri_prompt)
                     except:
                         ai_espri = "Fiş sisteme düştü, onay bekleniyor. 📋"
@@ -2301,8 +1264,7 @@ STINGA yapay zekası olarak yaz, samimi ve kişisel ol. Türkçe. Sadece yorumu 
                                 "info", data=data)
                     save_data(data)
 
-                    # Risk skoru: AI risk + sahtelik risk'inden büyüğünü al
-                    risk = max(int(fis.get("risk_skoru", 0)), sahtelik["guvensizlik_skoru"])
+                    risk = sahtelik["guvensizlik_skoru"]
                     risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
                     kalemler_str = ""
                     if fis.get("kalemler"):
@@ -2321,60 +1283,50 @@ STINGA yapay zekası olarak yaz, samimi ve kişisel ol. Türkçe. Sadece yorumu 
                     odeme_bilgi = odeme_turu_label(final_odeme)
                     odeme_aciklama = "💵 Harcırah kasanızdan düşülecek" if final_odeme == "harcirah" else "🏦 Genel merkezden düşülecek"
 
-                    # Şenol Bey için farklı başlık
-                    if _is_senol:
-                        _baslik = f"✅ *FİŞ KAYDEDİLDİ — OTOMATİK ONAYLI* 🎩\n{'─'*13}"
-                    else:
-                        _baslik = f"✅ *FİŞ KAYDEDİLDİ — ONAYA GÖNDERİLDİ*\n{'─'*13}"
-
-                    # Fiş yaşı uyarısı varsa risk_emoji'yi güncelle
-                    risk = max(risk, min(100, risk + yas_kontrol.get("risk_artisi", 0)))
-                    risk_emoji = "🟢" if risk < 30 else "🟡" if risk < 70 else "🔴"
-
                     yanit = (
-                        f"{_baslik}\n"
-                        f"🏢 *{fis.get('firma','?')}*\n"
-                        f"💰 {tutar_try:,.0f} ₺" + (f" ({fis['toplam_tutar']:.2f} {para_birimi})" if para_birimi != "TRY" else "") +
+                        f"✅ *FİŞ KAYDEDİLDİ — ONAYA GÖNDERİLDİ*\n{'─'*13}\n"
+                        f"🏢 {fis.get('firma','?')}\n"
+                        f"💰 {tutar_try:,.2f} ₺" + (f" ({fis['toplam_tutar']:.2f} {para_birimi})" if para_birimi != "TRY" else "") +
                         f"\n📅 {fis.get('tarih','—')}"
-                        f"\n💳 {odeme_bilgi}"
+                        f"\n💳 *{odeme_bilgi}*"
                         f"\n   _{odeme_aciklama}_"
                         f"\n🏷️ {kategori}"
                         f"\n{risk_emoji} Risk: {risk}/100"
-                        + kalemler_str
-                        + kisisel_uyari
-                        + _zaman_konum_str
-                        + (f"\n\n{yas_kontrol['uyari_mesaji']}" if yas_kontrol.get("yasli") and yas_kontrol.get("uyari_mesaji") else "")
+                        + kalemler_str + ilginc_str
                         + f"\n\n💬 _{ai_espri}_"
-                        + (f"\n\n🎩 _{_senol_mesaj}_" if _senol_mesaj else "")
-                        + f"\n💳 Kasa: *{kasa_bakiye:,.0f} ₺*"
-                        + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)}. fişin"
+                        + f"\n\n💳 Kasa: *{kasa_bakiye:,.0f} ₺*"
+                        + f"\n{seviye} • #{data['fis_sayaci'].get(user_name,0)} fiş"
                         + sahte_str + anomali_str
-                        + ("" if _is_senol else f"\n\n📨 Onay/ret durumunda bilgilendirileceksiniz.")
+                        + f"\n\n📨 Onay sonrası bildirim alacaksınız."
+                        + f"\n📍 Konum eklemek için konum pini gönder!"
                         + f"\n🔖 `{new_expense['ID']}`"
                     )
-                    send_whatsapp(sender_phone, yanit)
+                    twilio_client.messages.create(body=yanit, from_="whatsapp:+14155238886", to=sender_phone)
 
             except json.JSONDecodeError as e:
                 print(f"JSON HATA: {e}", flush=True)
-                send_whatsapp(sender_phone, "❌ Fiş okunamadı. Net fotoğraf çekip tekrar deneyin.")
+                twilio_client.messages.create(body="❌ Fiş okunamadı. Net fotoğraf çekip tekrar deneyin.",
+                    from_="whatsapp:+14155238886", to=sender_phone)
             except Exception as e:
                 import traceback; print(f"GENEL HATA: {traceback.format_exc()}", flush=True)
-                send_whatsapp(sender_phone, f"❌ Hata: {str(e)}")
+                twilio_client.messages.create(body=f"❌ Hata: {str(e)}", from_="whatsapp:+14155238886", to=sender_phone)
 
         import threading
         t = threading.Thread(target=analiz_et_gonder, daemon=True)
         t.start()
         beklemeler = [
-            "📡 **STİNGA YAPAY ZEKA** fişi analiz merkezine gönderdi. Lütfen bekleyin.⌛"                
+            "📡 **STİNGA YAPAY ZEKA** fişi analiz merkezine gönderdi. Lütfen bekleyin.⌛",
+            "🏢 **STINGA YAPAY ZEKA** fişinizi dijital dünyaya aktarıyor. ⌛",
+            "🛰️ **STINGA YAPAY ZEKA** fişi işliyor, sonuçlar yükleniyor. ⌛",
         ]
         msg.body(random.choice(beklemeler))
-        return _reply()
+        return str(resp)
 
     # ── VARSAYILAN
     fis_sayisi = data["fis_sayaci"].get(user_name, 0)
     seviye = seviye_hesapla(fis_sayisi)
     msg.body(f"{user_info['emoji']} Merhaba *{user_name}*!\n{seviye}\nFiş fotoğrafı gönder veya *yardım* yaz.\n\n💡 _Fişle birlikte *harcırah* veya *şirket* yazarak ödeme türünü belirtebilirsin!_")
-    return _reply()
+    return str(resp)
 
 # ─────────────────────────────────────────────
 #  ENDPOINTLER
@@ -2531,7 +1483,9 @@ def haftalik_ozet():
         butce = data.get("user_limits", {}).get(user, info.get("limit", 0))
         oran = (toplam / butce * 100) if butce > 0 else 0
         try:
-            send_whatsapp(phone, f"📊 *Haftalık Özet — {user}*\n{'─'*28}\n💰 Bu ay: {toplam:,.0f} ₺\n📉 Bütçe: %{oran:.1f}\n🧾 Fiş: {len(ay_fis)}\n{butce_durumu_str(user, data)}")
+            twilio_client.messages.create(
+                body=f"📊 *Haftalık Özet — {user}*\n{'─'*28}\n💰 Bu ay: {toplam:,.0f} ₺\n📉 Bütçe: %{oran:.1f}\n🧾 Fiş: {len(ay_fis)}\n{butce_durumu_str(user, data)}",
+                from_="whatsapp:+14155238886", to=phone)
         except Exception as e: print(f"Haftalık özet hatası ({user}): {e}", flush=True)
     return jsonify({"status": "ok", "gonderilen": len(PHONE_DIRECTORY)}), 200
 
@@ -2594,20 +1548,10 @@ Görev: 3-4 cümle yaz.
 3) Son cümle: sağlığını, diyalizini veya beslenmesini ince bir şekilde hatırlat (tıbbi tavsiye verme, sıcak ve samimi ol)
 Muhasebe kayıt no'yu 🔖 ile belirt. Türkçe. Sadece mesajı yaz."""
                         else:
-                            onay_prompt = (
-                                f"Sen STINGA yapay zekasısın — sıcak, samimi, insan gibi konuşan bir finans asistanı.\n\n"
-                                f"Kullanıcı: {kullanici}\n"
-                                f"Firma: {firma} | Tutar: {tutar:.0f} TL | Kategori: {fis_kategori}\n"
-                                f"Ödeme türü: {odeme_bilgi} | Bu kategoride daha önce {len(kat_fis)} onaylı fiş var | Kayıt no: {fis_id}\n\n"
-                                "Görev: Onay bildirimi yaz. Şu kurallara uy:\n"
-                                "1) İsmiyle samimice hitap et — sanki gerçekten tanıyorsun onu\n"
-                                "2) Harcamanın onaylandığını ve ödeme türünü (harcırah / şirket kartı) sade ve net belirt\n"
-                                "3) O kategoriye/firmaya/tutara özel içten bir yorum yap — klişe olmasın, o kişiyle o an konuşuyormuş gibi hissettir\n"
-                                "4) Kısa ama ilham verici kapanış: sahaya çıkmak, işi büyütmek, emeklerinin karşılığını almak temalarından birini seç — vaaz verme, sohbet et\n"
-                                "5) Mesajın sonuna kayıt numarasını 🔖 ile ekle\n"
-                                "6) 3-4 cümle, fazlası değil. Emoji kullan ama abartma — 2-3 yeterli.\n"
-                                "7) Türkçe. Sadece mesajı yaz, açıklama ekleme."
-                            )
+                            onay_prompt = f"""Sen esprili muhasebe asistanısın.
+Kullanıcı: {kullanici} | Firma: {firma} | Tutar: {tutar:.0f} TL | Kategori: {fis_kategori}
+Ödeme: {odeme_bilgi} | Bu kategoride {len(kat_fis)} onaylı fiş | Kayıt no: {fis_id}
+Onay bildirimi yaz: ismiyle hitap et, ödeme türünü belirt (harcırah mı şirket kartı mı), esprili, 3-4 cümle. Sadece mesajı yaz."""
                         mesaj = ai_call(onay_prompt)
                     except:
                         mesaj = f"✅ *{kullanici}*! {firma} ({tutar:,.0f} ₺) harcamanız onaylandı.\n💳 {odeme_bilgi}\n🔖 `{fis_id}`"
@@ -2617,7 +1561,7 @@ Muhasebe kayıt no'yu 🔖 ile belirt. Türkçe. Sadece mesajı yaz."""
                         mesaj = ai_call(red_prompt)
                     except:
                         mesaj = f"❌ *{kullanici}*, {firma} ({tutar:,.0f} ₺) reddedildi. {approver} ile iletişime geçin."
-                send_whatsapp(target_phone, mesaj)
+                twilio_client.messages.create(body=mesaj, from_="whatsapp:+14155238886", to=target_phone)
         except Exception as e: print(f"WhatsApp bildirimi hatası: {e}", flush=True)
 
         save_data(data)
@@ -2625,6 +1569,98 @@ Muhasebe kayıt no'yu 🔖 ile belirt. Türkçe. Sadece mesajı yaz."""
     except Exception as e:
         import traceback; print(f"/approve HATA: {traceback.format_exc()}", flush=True)
         return jsonify({"error": str(e)}), 500
+
+@app.route("/delete-expense", methods=['POST'])
+def delete_expense_endpoint():
+    """Fişi JSON'dan kalıcı olarak siler. Sadece admin yetkisiyle çağrılmalı."""
+    try:
+        body         = request.get_json(force=True) or {}
+        fis_id       = str(body.get("ID", "")).strip()
+        silen_admin  = body.get("silen_admin", "admin")
+        neden        = body.get("neden", "").strip()
+
+        if not fis_id:
+            return jsonify({"ok": False, "error": "ID gerekli"}), 400
+
+        data  = load_data()
+        onceki_sayac = len(data.get("expenses", []))
+
+        # Silinen fişin bilgilerini sakla (bildirim için)
+        silinen_fis = None
+        for e in data.get("expenses", []):
+            if str(e.get("ID", "")) == fis_id:
+                silinen_fis = e.copy()
+                break
+
+        if silinen_fis is None:
+            return jsonify({"ok": False, "error": "Fiş bulunamadı", "ID": fis_id}), 404
+
+        # Fişi listeden çıkar
+        data["expenses"] = [e for e in data["expenses"] if str(e.get("ID", "")) != fis_id]
+
+        if len(data["expenses"]) >= onceki_sayac:
+            return jsonify({"ok": False, "error": "Silme işlemi başarısız"}), 500
+
+        kullanici = silinen_fis.get("Kullanıcı", "")
+        firma     = silinen_fis.get("Firma", "?")
+        tutar     = float(silinen_fis.get("Tutar", 0))
+        tarih     = silinen_fis.get("Tarih", "?")
+        durum     = silinen_fis.get("Durum", "?")
+
+        # Silme log kaydı
+        data.setdefault("silme_log", []).append({
+            "Tarih"       : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Fis_ID"      : fis_id,
+            "Kullanici"   : kullanici,
+            "Firma"       : firma,
+            "Tutar"       : tutar,
+            "Fis_Tarih"   : tarih,
+            "Fis_Durum"   : durum,
+            "Silen_Admin" : silen_admin,
+            "Neden"       : neden or "Belirtilmedi",
+        })
+
+        # Uygulama içi bildirim (personele)
+        if kullanici:
+            add_notification(
+                kullanici,
+                f"🗑️ {firma} (₺{tutar:,.0f} · {tarih}) fişiniz yönetici tarafından sistemden kaldırıldı.",
+                "warning",
+                data=data
+            )
+
+        # WhatsApp bildirimi (personele)
+        try:
+            target_phone = None
+            for phone, info in PHONE_DIRECTORY.items():
+                if info.get("ad") == kullanici:
+                    target_phone = phone
+                    break
+            if target_phone and kullanici:
+                neden_satir = f"\n📋 *Neden:* {neden}" if neden else ""
+                mesaj = (
+                    f"🗑️ *{kullanici}*, {tarih} tarihli "
+                    f"*{firma}* (₺{tutar:,.0f}) fişiniz "
+                    f"yönetici *{silen_admin}* tarafından sistemden kaldırıldı.{neden_satir}\n"
+                    f"Sorularınız için yöneticinize başvurun. 🔖 `{fis_id}`"
+                )
+                twilio_client.messages.create(
+                    body=mesaj,
+                    from_="whatsapp:+14155238886",
+                    to=target_phone
+                )
+        except Exception as wp_err:
+            print(f"WhatsApp silme bildirimi hatası: {wp_err}", flush=True)
+
+        save_data(data)
+        print(f"[SİLME] ID={fis_id} | {kullanici} | {firma} | ₺{tutar} | Admin={silen_admin} | Neden={neden or '-'}", flush=True)
+        return jsonify({"ok": True, "ID": fis_id, "silindi": firma, "tutar": tutar}), 200
+
+    except Exception as e:
+        import traceback
+        print(f"/delete-expense HATA: {traceback.format_exc()}", flush=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 @app.route("/transfer", methods=['POST'])
 def transfer_endpoint():
