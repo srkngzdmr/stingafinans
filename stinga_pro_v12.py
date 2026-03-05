@@ -717,6 +717,21 @@ def api_add_expense(expense: dict) -> bool:
     return False
 
 
+def api_delete_expense(fis_id: str, silen_admin: str, silme_neden: str = "") -> bool:
+    """Fişi kalıcı olarak siler (JSON'dan dahil). Sadece admin kullanabilir."""
+    res = _api_post("/delete-expense", {
+        "ID": fis_id,
+        "silen_admin": silen_admin,
+        "neden": silme_neden
+    })
+    if res.get("ok"):
+        st.cache_data.clear()
+        return True
+    # Eğer Railway'de /delete-expense yoksa lokal fallback (geliştirme ortamı için)
+    st.error(f"❌ Silme API hatası: {res.get('error', 'Bilinmeyen hata')}")
+    return False
+
+
 def add_notify(target, message, notif_type="info", d=None):
     """Eski uyumluluk shim — artık API üzerinden çalışıyor."""
     pass
@@ -3057,6 +3072,7 @@ tick();setInterval(tick,1000);
                 "🤖 AI Asistan", "🏆 Leaderboard",
                 "🧠 AI Bütçe Koçu", "🔮 Gider Tahmincisi",
                 "📂 Gider Kategorileri", "🗄️ Arşiv & Rapor",
+                "🗑️ Yönetici Paneli",
             ]
         else:
             # Personel: Dashboard, Fiş Tarama + 2 yeni AI özellik
@@ -5478,3 +5494,151 @@ Somut rakamlar ve yüzdeler kullan. Profesyonel ama anlaşılır ol.
             else:
                 _sk_gk = pd.DataFrame()
             _render_gider_kategori_tab(_sk_gk, "Şirket Kredi Kartı")
+
+    # ══════════════════════════════════════════════════════════
+    # SAYFA: YÖNETİCİ PANELİ — Fiş Silme (sadece admin)
+    # ══════════════════════════════════════════════════════════
+    elif selected == "🗑️ Yönetici Paneli":
+        st.markdown('<div class="page-header"><div class="page-title">🗑️ YÖNETİCİ PANELİ</div></div>', unsafe_allow_html=True)
+
+        if role != "admin":
+            st.warning("⛔ Bu sayfaya erişim yetkiniz bulunmamaktadır.")
+        else:
+            st.markdown("""
+            <div style="background:#fff3cd; border:1px solid #ffc107; border-left:4px solid #dc2626;
+                        border-radius:10px; padding:14px 18px; margin-bottom:20px;">
+                <strong>⚠️ DİKKAT:</strong> Bu bölümden silinen fişler <strong>JSON dosyasından kalıcı olarak kaldırılır</strong>
+                ve sistemde bir daha görünmez. Bu işlem geri alınamaz.
+            </div>
+            """, unsafe_allow_html=True)
+
+            if df_full.empty:
+                st.info("Sistemde kayıtlı fiş bulunmamaktadır.")
+            else:
+                # ── Filtreler ──────────────────────────────────────────
+                st.markdown("#### 🔍 Fiş Ara & Filtrele")
+                fc1, fc2, fc3, fc4 = st.columns(4)
+
+                with fc1:
+                    _del_kullanici_list = ["Tümü"] + sorted(df_full["Kullanıcı"].dropna().unique().tolist())
+                    _del_kullanici = st.selectbox("👤 Kullanıcı", _del_kullanici_list, key="del_kul")
+                with fc2:
+                    _del_durum_list = ["Tümü"] + sorted(df_full["Durum"].dropna().unique().tolist())
+                    _del_durum = st.selectbox("📋 Durum", _del_durum_list, key="del_durum")
+                with fc3:
+                    _del_aylar = ["Tüm Zamanlar"] + sorted(
+                        pd.to_datetime(df_full["Tarih"], errors="coerce").dt.strftime("%Y-%m").dropna().unique().tolist(),
+                        reverse=True
+                    )
+                    _del_ay = st.selectbox("📅 Dönem", _del_aylar, key="del_ay")
+                with fc4:
+                    _del_arama = st.text_input("🔎 Firma/Notlar Ara", placeholder="örn: Market, Yakıt...", key="del_ara")
+
+                # ── Filtreleme ──────────────────────────────────────────
+                _del_df = df_full.copy()
+                if _del_kullanici != "Tümü":
+                    _del_df = _del_df[_del_df["Kullanıcı"] == _del_kullanici]
+                if _del_durum != "Tümü":
+                    _del_df = _del_df[_del_df["Durum"] == _del_durum]
+                if _del_ay != "Tüm Zamanlar":
+                    _del_df["_ay_tmp"] = pd.to_datetime(_del_df["Tarih"], errors="coerce").dt.strftime("%Y-%m")
+                    _del_df = _del_df[_del_df["_ay_tmp"] == _del_ay]
+                if _del_arama.strip():
+                    _kw = _del_arama.strip().lower()
+                    _del_df = _del_df[
+                        _del_df["Firma"].str.lower().str.contains(_kw, na=False) |
+                        _del_df.get("Notlar", pd.Series(dtype=str)).str.lower().str.contains(_kw, na=False)
+                    ]
+
+                st.markdown(f"**{len(_del_df)} fiş listeleniyor**", unsafe_allow_html=False)
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                if _del_df.empty:
+                    st.info("Filtreye uygun fiş bulunamadı.")
+                else:
+                    # ── Fiş listesi ──────────────────────────────────────
+                    for _didx, _drow in _del_df.sort_values("Tarih", ascending=False).iterrows():
+                        _fis_id   = str(_drow.get("ID", ""))
+                        _fis_kul  = _drow.get("Kullanıcı", "?")
+                        _fis_firm = _drow.get("Firma", "?")
+                        _fis_tut  = float(_drow.get("Tutar", 0))
+                        _fis_tar  = _drow.get("Tarih", "?")
+                        _fis_dur  = _drow.get("Durum", "?")
+                        _fis_prj  = _drow.get("Proje", "?")
+
+                        # Durum rengi
+                        _dur_renk = {"Onaylandı": "#11855B", "Onay Bekliyor": "#d97706",
+                                     "Reddedildi": "#dc2626", "Sahte Şüphesi": "#7c3aed"}.get(_fis_dur, "#64748b")
+
+                        with st.expander(
+                            f"🧾 {_fis_kul} · {_fis_firm} · ₺{_fis_tut:,.0f} · {_fis_tar} · [{_fis_dur}]",
+                            expanded=False
+                        ):
+                            _da, _db = st.columns([3, 1])
+                            with _da:
+                                st.markdown(f"""
+                                <div style="background:#fff; border:1px solid #e5e7eb; border-radius:10px;
+                                            padding:14px 18px; border-left:4px solid {_dur_renk};">
+                                    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                                        <div>
+                                            <div style="font-weight:700; font-size:1rem;">{_fis_firm}</div>
+                                            <div style="font-size:0.8rem; color:#7a96a4;">
+                                                👤 {_fis_kul} &nbsp;·&nbsp; 📅 {_fis_tar} &nbsp;·&nbsp;
+                                                📁 {_fis_prj} &nbsp;·&nbsp; 🆔 <code>{_fis_id}</code>
+                                            </div>
+                                        </div>
+                                        <div style="text-align:right;">
+                                            <div style="font-size:1.5rem; font-weight:900; color:#0f1923;">₺{_fis_tut:,.2f}</div>
+                                            <div style="font-size:0.75rem; font-weight:700; color:{_dur_renk};">{_fis_dur}</div>
+                                        </div>
+                                    </div>
+                                    {f'<div style="margin-top:8px; font-size:0.8rem; color:#3d5260;">📝 {_drow.get("Notlar","")}</div>' if _drow.get("Notlar") else ""}
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                            with _db:
+                                st.markdown("<br>", unsafe_allow_html=True)
+                                # Silme nedeni
+                                _neden_key = f"del_neden_{_fis_id}"
+                                _onay_key  = f"del_onay_{_fis_id}"
+                                _btn_key   = f"del_btn_{_fis_id}"
+
+                                _silme_neden = st.text_area(
+                                    "Silme Nedeni (isteğe bağlı)",
+                                    placeholder="örn: Sehven yüklendi, mükerrer fiş...",
+                                    key=_neden_key,
+                                    height=80
+                                )
+                                _onay_check = st.checkbox(
+                                    "✅ Bu fişi kalıcı silmek istediğimi onaylıyorum",
+                                    key=_onay_key
+                                )
+
+                                if _onay_check:
+                                    if st.button(
+                                        f"🗑️ Kalıcı Sil",
+                                        key=_btn_key,
+                                        type="primary",
+                                        use_container_width=True
+                                    ):
+                                        if not _fis_id:
+                                            st.error("Fiş ID bulunamadı, silme işlemi yapılamadı.")
+                                        else:
+                                            _silindi = api_delete_expense(
+                                                fis_id=_fis_id,
+                                                silen_admin=username,
+                                                silme_neden=_silme_neden.strip()
+                                            )
+                                            if _silindi:
+                                                st.success(f"✅ Fiş başarıyla silindi. (ID: {_fis_id})")
+                                                st.info("Sayfa yenileniyor...")
+                                                st.rerun()
+                                            # Hata mesajı api_delete_expense içinde gösteriliyor
+                                else:
+                                    st.button(
+                                        "🗑️ Kalıcı Sil",
+                                        key=_btn_key,
+                                        disabled=True,
+                                        use_container_width=True,
+                                        help="Silmek için önce onay kutusunu işaretleyin"
+                                    )
