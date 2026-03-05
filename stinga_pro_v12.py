@@ -1334,14 +1334,26 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
         "telefon":   {"icon":"📱","color":(0.031,0.573,0.694),"label":"TELEFON"},
         "kargo":     {"icon":"📦","color":(0.851,0.467,0.016),"label":"KARGO"},
         "temizlik":  {"icon":"🧹","color":(0.067,0.522,0.361),"label":"TEMİZLİK"},
+        "ekipman":   {"icon":"🔩","color":(0.851,0.467,0.016),"label":"EKİPMAN"},
+        "ofis":      {"icon":"🖥","color":(0.184,0.235,0.431),"label":"OFİS"},
+        "aidat":     {"icon":"📅","color":(0.486,0.361,0.784),"label":"AİDAT"},
+        "sigorta":   {"icon":"🛡","color":(0.031,0.573,0.694),"label":"SİGORTA"},
+        "diğer":     {"icon":"📋","color":(0.420,0.450,0.510),"label":"DİĞER"},
+        "diger":     {"icon":"📋","color":(0.420,0.450,0.510),"label":"DİĞER"},
+        "genel":     {"icon":"📋","color":(0.420,0.450,0.510),"label":"GENEL"},
     }
 
     def _kat_info(kategori):
-        k = str(kategori).lower()
+        k = str(kategori).lower().strip()
+        # Önce tam eşleşme
+        if k in _KAT: return _KAT[k]
+        # Sonra içerik kontrolü
         for key, cfg in _KAT.items():
             if key in k:
                 return cfg
-        return {"icon":"📋","color":(0.596,0.631,0.682),"label":str(kategori).upper()[:12]}
+        # Bilinmeyen → gri, orijinal isim
+        lbl = str(kategori).upper()[:10]
+        return {"icon":"📋","color":(0.420,0.450,0.510),"label":lbl}
     DT    = (0.086, 0.106, 0.149)   # koyu metin
     AMB   = (0.851, 0.467, 0.016)   # amber
 
