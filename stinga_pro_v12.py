@@ -1293,6 +1293,55 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
     OF    = (0.976, 0.980, 0.988)   # off-white zemin
     LG    = (0.941, 0.945, 0.953)   # açık gri
     MG    = (0.596, 0.631, 0.682)   # orta gri
+
+    # ── KDV oranları (fonksiyon içi) ────────────────────────
+    _KDV_ORL = {
+        "yakıt":0.20,"yakit":0.20,"yemek":0.10,"konaklama":0.20,
+        "ulaşım":0.20,"ulasim":0.20,"kırtasiye":0.20,"kirtasiye":0.20,
+        "hırdavat":0.20,"hirdavat":0.20,"eczane":0.10,"ilaç":0.10,
+        "patent":0.20,"sağlık":0.10,"saglik":0.10,
+    }
+
+    def _kdv_loc(tutar, kdv_field, kategori):
+        try:
+            kdv = float(kdv_field) if kdv_field and float(kdv_field) > 0 else None
+        except: kdv = None
+        if kdv and 0 < kdv < tutar:
+            return round(tutar - kdv, 2), round(kdv, 2)
+        k = str(kategori).lower()
+        oran = next((v for key, v in _KDV_ORL.items() if key in k), 0.20)
+        net = round(tutar / (1 + oran), 2)
+        return net, round(tutar - net, 2)
+
+    # ── Kategori ikon + renk (fonksiyon içi) ────────────────
+    _KAT = {
+        "yemek":     {"icon":"🍽","color":(0.067,0.522,0.361),"label":"YEMEK"},
+        "yakıt":     {"icon":"⛽","color":(0.031,0.573,0.694),"label":"YAKIT"},
+        "yakit":     {"icon":"⛽","color":(0.031,0.573,0.694),"label":"YAKIT"},
+        "konaklama": {"icon":"🏨","color":(0.184,0.235,0.431),"label":"KONAKLAMA"},
+        "ulaşım":    {"icon":"🚌","color":(0.490,0.188,0.682),"label":"ULAŞIM"},
+        "ulasim":    {"icon":"🚌","color":(0.490,0.188,0.682),"label":"ULAŞIM"},
+        "kırtasiye": {"icon":"📎","color":(0.184,0.235,0.431),"label":"KIRTASİYE"},
+        "kirtasiye": {"icon":"📎","color":(0.184,0.235,0.431),"label":"KIRTASİYE"},
+        "hırdavat":  {"icon":"🔧","color":(0.851,0.467,0.016),"label":"HIRDAVAT"},
+        "hirdavat":  {"icon":"🔧","color":(0.851,0.467,0.016),"label":"HIRDAVAT"},
+        "eczane":    {"icon":"💊","color":(0.863,0.149,0.149),"label":"ECZANE"},
+        "sağlık":    {"icon":"🏥","color":(0.863,0.149,0.149),"label":"SAĞLIK"},
+        "saglik":    {"icon":"🏥","color":(0.863,0.149,0.149),"label":"SAĞLIK"},
+        "patent":    {"icon":"📜","color":(0.486,0.361,0.784),"label":"PATENT"},
+        "market":    {"icon":"🛒","color":(0.067,0.522,0.361),"label":"MARKET"},
+        "elektrik":  {"icon":"⚡","color":(0.851,0.671,0.125),"label":"ELEKTRİK"},
+        "telefon":   {"icon":"📱","color":(0.031,0.573,0.694),"label":"TELEFON"},
+        "kargo":     {"icon":"📦","color":(0.851,0.467,0.016),"label":"KARGO"},
+        "temizlik":  {"icon":"🧹","color":(0.067,0.522,0.361),"label":"TEMİZLİK"},
+    }
+
+    def _kat_info(kategori):
+        k = str(kategori).lower()
+        for key, cfg in _KAT.items():
+            if key in k:
+                return cfg
+        return {"icon":"📋","color":(0.596,0.631,0.682),"label":str(kategori).upper()[:12]}
     DT    = (0.086, 0.106, 0.149)   # koyu metin
     AMB   = (0.851, 0.467, 0.016)   # amber
 
@@ -1300,7 +1349,7 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
     logo_buf = None
     _paths = [logo_path, "logo.png",
               "/mnt/user-data/uploads/logo.png",
-              os.path.join(os.path.dirname(__file__), "logo.png")]
+              os.path.join(os.path.dirname(os.path.abspath(__file__)) if "__file__" in dir() else ".", "logo.png")]
     for lp in _paths:
         if lp and os.path.exists(str(lp)):
             try:
@@ -1343,7 +1392,7 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
         tutar    = float(row.get("Tutar", 0) or 0)
         kategori = str(row.get("Kategori", "") or "")
         kdv_f    = row.get("KDV", None)
-        net, kdv = _kdv_hesapla(tutar, kdv_f, kategori)
+        net, kdv = _kdv_loc(tutar, kdv_f, kategori)
 
         records.append({
             "id":        str(row.get("ID",        "—")),
