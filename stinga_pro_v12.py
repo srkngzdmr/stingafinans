@@ -1365,33 +1365,13 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
     for lp in _paths:
         if lp and os.path.exists(str(lp)):
             try:
-                pil  = _PIL_local.open(lp).convert("RGBA")
-                arr  = _np_local.array(pil).copy()
-                H0, W0 = arr.shape[:2]
-                NAVY = _np_local.array([24, 31, 62, 255], dtype=_np_local.uint8)
-
-                # Dairenin gerçek sınırını bul
-                row_m = arr[H0//2, :, :3]
-                col_m = arr[:, W0//2, :3]
-                xl = next((i for i in range(W0)      if _np_local.any(row_m[i]>15)), 0)
-                xr = next((i for i in range(W0-1,0,-1) if _np_local.any(row_m[i]>15)), W0-1)
-                yt = next((i for i in range(H0)      if _np_local.any(col_m[i]>15)), 0)
-                yb = next((i for i in range(H0-1,0,-1) if _np_local.any(col_m[i]>15)), H0-1)
-                cx0=(xl+xr)//2; cy0=(yt+yb)//2
-                R0 = min(xr-xl, yb-yt)//2
-
-                # Daire DIŞI → Stinga yeşil (logo header'ın yeşil bloğunda duruyor)
-                Y0, X0 = _np_local.ogrid[:H0, :W0]
-                dist0  = _np_local.sqrt((X0-cx0)**2 + (Y0-cy0)**2)
-                GREEN  = _np_local.array([17, 133, 91, 255], dtype=_np_local.uint8)
-                arr[dist0 > R0] = GREEN
-                arr[:,:,3] = 255  # tüm alpha opak
-
-                # RGB'ye çevir SONRA resize — böylece kenar JPEG artifaktı gelmez
-                S        = 280
-                logo_rgb = _PIL_local.fromarray(arr, "RGBA").convert("RGB")
-                logo_rgb = logo_rgb.resize((S, S), _PIL_local.LANCZOS)
-
+                pil = _PIL_local.open(lp).convert("RGB")
+                arr = _np_local.array(pil).copy()
+                # Siyah arka planı (#11855B Stinga yeşili) ile değiştir
+                mask = (arr[:,:,0]<40) & (arr[:,:,1]<40) & (arr[:,:,2]<40)
+                arr[mask] = [17, 133, 91]
+                logo_rgb = _PIL_local.fromarray(arr, "RGB")
+                logo_rgb = logo_rgb.resize((240, 240), _PIL_local.LANCZOS)
                 logo_buf = io.BytesIO()
                 logo_rgb.save(logo_buf, "JPEG", quality=97)
                 logo_buf.seek(0)
@@ -1489,7 +1469,7 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
         if logo_buf:
             try:
                 logo_buf.seek(0)
-                LS = 2.65 * cm
+                LS = 2.2 * cm
                 lx = (LGBW - LS) / 2
                 ly = PH - HEADER_H + (HEADER_H - LS) / 2
                 c.drawImage(_rc.ImageReader(logo_buf),
