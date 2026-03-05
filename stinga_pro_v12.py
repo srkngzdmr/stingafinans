@@ -1219,10 +1219,10 @@ def export_pdf_muhasebe(df_raw, title="Mali Rapor", donem="Tüm Zamanlar", logo_
             return b"%PDF-1.4\n"
 
 
-def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
+def export_fisler_pdf(df_raw, donem="Tüm Zamanlar", logo_path=None):
     """
-    Seçili dönemdeki fiş görsellerini profesyonel A4 PDF'e dönüştürür.
-    Türkçe karakter desteği (DejaVu Sans), 2×2 grid, kart tasarımı.
+    Seçili dönemdeki fiş görsellerini profesyonel A4 PDF'e aktarır.
+    Logo, Türkçe font, 2×2 grid kart düzeni.
     """
     try:
         import io as _io, os as _os, base64 as _b64
@@ -1232,8 +1232,9 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
         from PIL import Image as _PIL
+        import numpy as _np
 
-        # ── Türkçe font kaydı ─────────────────────────────────
+        # ── Türkçe font ────────────────────────────────────────
         _FONTS = {
             "DJ":   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "DJ-B": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -1248,37 +1249,60 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
             reg = pdfmetrics.getRegisteredFontNames()
             if mono and "DJ-M" in reg: return "DJ-M"
             if bold and "DJ-B" in reg: return "DJ-B"
-            if "DJ" in reg:            return "DJ"
+            if "DJ"   in reg:          return "DJ"
             return "Helvetica-Bold" if bold else "Helvetica"
 
-        # ── Sayfa sabitleri ───────────────────────────────────
-        PW, PH    = A4
-        MX        = 1.4 * cm
-        HEADER_H  = 1.3 * cm
-        FOOTER_H  = 0.8 * cm
-        USABLE_H  = PH - HEADER_H - FOOTER_H - 0.6 * cm
-        COLS, ROWS = 2, 2
-        PER_PAGE   = COLS * ROWS
-        GAP_X, GAP_Y  = 0.4 * cm, 0.5 * cm
-        CAPTION_H = 1.15 * cm
-        CELL_W    = (PW - 2 * MX - (COLS - 1) * GAP_X) / COLS
-        CELL_H    = (USABLE_H - (ROWS - 1) * GAP_Y) / ROWS - CAPTION_H
+        # ── Logo yükle ─────────────────────────────────────────
+        logo_img_buf = None
+        _logo_paths = [logo_path, "logo.png", "/mnt/user-data/uploads/logo.png"]
+        for _lp in _logo_paths:
+            if _lp and _os.path.exists(str(_lp)):
+                try:
+                    _pil = _PIL.open(_lp).convert("RGBA")
+                    # Siyah arka planı şeffaf yap
+                    _arr = _np.array(_pil)
+                    _arr[(_arr[:,:,0]<50)&(_arr[:,:,1]<50)&(_arr[:,:,2]<50), 3] = 0
+                    _pil = _PIL.fromarray(_arr, "RGBA")
+                    _w, _h = _pil.size; _s = min(_w, _h)
+                    _pil = _pil.crop(((_w-_s)//2, (_h-_s)//2, (_w+_s)//2, (_h+_s)//2))
+                    _pil = _pil.resize((300, 300), _PIL.LANCZOS)
+                    logo_img_buf = _io.BytesIO()
+                    _pil.save(logo_img_buf, format="PNG")
+                    logo_img_buf.seek(0)
+                    break
+                except Exception:
+                    logo_img_buf = None
 
-        # ── Renk paleti ───────────────────────────────────────
-        G   = (0.067, 0.518, 0.357)
-        N   = (0.184, 0.235, 0.431)
+        # ── Sayfa boyutları ────────────────────────────────────
+        PW, PH       = A4
+        MX           = 1.4 * cm
+        HEADER_H     = 2.4 * cm           # Logo+başlık için daha geniş header
+        FOOTER_H     = 0.85 * cm
+        USABLE_H     = PH - HEADER_H - FOOTER_H - 0.7 * cm
+        COLS, ROWS   = 2, 2
+        PER_PAGE     = COLS * ROWS
+        GAP_X        = 0.42 * cm
+        GAP_Y        = 0.48 * cm
+        CAPTION_H    = 1.18 * cm
+        CELL_W       = (PW - 2 * MX - (COLS - 1) * GAP_X) / COLS
+        CELL_H       = (USABLE_H - (ROWS - 1) * GAP_Y) / ROWS - CAPTION_H
+
+        # ── Renk paleti ────────────────────────────────────────
+        G   = (0.067, 0.518, 0.357)   # Stinga yeşil
+        N   = (0.184, 0.235, 0.431)   # Stinga lacivert
         W   = (1.0,   1.0,   1.0  )
         BG  = (0.973, 0.988, 0.980)
         BD  = (0.780, 0.862, 0.827)
         MUT = (0.48,  0.59,  0.63 )
         TXT = (0.059, 0.098, 0.137)
         CAP = (0.945, 0.969, 0.957)
+        D_BG = (0.102, 0.188, 0.333)  # Header lacivert koyu
 
-        # ── Görselleri topla ──────────────────────────────────
+        # ── Kayıtları hazırla ──────────────────────────────────
         records = []
         for _, row in df_raw.iterrows():
-            b64_uri = str(row.get("Gorsel_B64", "") or "")
-            dosya   = str(row.get("Dosya_Yolu",  "") or "")
+            b64_uri  = str(row.get("Gorsel_B64", "") or "")
+            dosya    = str(row.get("Dosya_Yolu",  "") or "")
             img_bytes = None
             if dosya and _os.path.exists(dosya):
                 with open(dosya, "rb") as fh: img_bytes = fh.read()
@@ -1297,69 +1321,116 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
             })
 
         buf = _io.BytesIO()
-        c = _rc.Canvas(buf, pagesize=A4)
+        c   = _rc.Canvas(buf, pagesize=A4)
         total_pages = max(1, (len(records) + PER_PAGE - 1) // PER_PAGE)
 
+        # ── Header çiz (logo + başlık bloku) ──────────────────
         def _header(pg, tot):
             c.saveState()
-            # Gradient bandı yeşilden lacivert tonuna
-            c.setFillColorRGB(*G)
-            c.rect(0, PH - HEADER_H, PW, HEADER_H, stroke=0, fill=1)
-            # Sağ yarı koyu aksanı
-            c.setFillColorRGB(*N)
-            c.rect(PW * 0.62, PH - HEADER_H, PW * 0.38, HEADER_H, stroke=0, fill=1)
-            # Başlık sol
-            c.setFillColorRGB(*W)
-            c.setFont(_f(bold=True), 9.5)
-            c.drawString(MX, PH - HEADER_H + 0.48 * cm, "STİNGA ENERJİ A.Ş.")
-            c.setFont(_f(), 7)
-            c.setFillColorRGB(0.75, 0.95, 0.85)
-            c.drawString(MX, PH - HEADER_H + 0.16 * cm, f"ORİJİNAL FİŞ ARŞİVİ  ·  Dönem: {donem}")
-            # Ayırıcı dikey çizgi
-            c.setStrokeColorRGB(1, 1, 1, 0.25)
+
+            # Sol beyaz logo alanı
+            LOGO_W = 4.8 * cm
+            c.setFillColorRGB(1, 1, 1)
+            c.rect(0, PH - HEADER_H, LOGO_W, HEADER_H, stroke=0, fill=1)
+
+            # Logo çiz
+            if logo_img_buf:
+                try:
+                    logo_img_buf.seek(0)
+                    LSIZE = 1.85 * cm
+                    lx = (LOGO_W - LSIZE) / 2
+                    ly = PH - HEADER_H + (HEADER_H - LSIZE) / 2
+                    c.drawImage(_rc.ImageReader(logo_img_buf),
+                                lx, ly, LSIZE, LSIZE,
+                                preserveAspectRatio=True, mask="auto")
+                except Exception: pass
+            else:
+                # Emoji fallback
+                c.setFillColorRGB(*G)
+                c.setFont(_f(bold=True), 22)
+                c.drawCentredString(LOGO_W / 2, PH - HEADER_H + HEADER_H / 2 - 6, "⚡")
+
+            # Ayırıcı ince çizgi
+            c.setStrokeColorRGB(*BD)
             c.setLineWidth(0.5)
-            c.line(PW * 0.62 - 1, PH - HEADER_H + 4, PW * 0.62 - 1, PH - 3)
-            # Sayfa numarası sağ
+            c.line(LOGO_W, PH - HEADER_H + 6, LOGO_W, PH - 6)
+
+            # Sağ koyu header bandı
+            c.setFillColorRGB(*D_BG)
+            c.rect(LOGO_W, PH - HEADER_H, PW - LOGO_W, HEADER_H, stroke=0, fill=1)
+
+            # Sağ yarıda sağ köşede yeşil aksan
+            c.setFillColorRGB(*G)
+            c.rect(PW - 3.8 * cm, PH - HEADER_H, 3.8 * cm, HEADER_H, stroke=0, fill=1)
+
+            # Başlık metinleri
+            TITLE_X = LOGO_W + 0.5 * cm
             c.setFillColorRGB(*W)
-            c.setFont(_f(bold=True), 8.5)
-            c.drawRightString(PW - MX, PH - HEADER_H + 0.46 * cm, f"{pg} / {tot}")
+            c.setFont(_f(bold=True), 11)
+            c.drawString(TITLE_X, PH - HEADER_H + HEADER_H * 0.62, "STİNGA ENERJİ A.Ş.")
+            c.setFont(_f(bold=False), 7.5)
+            c.setFillColorRGB(0.70, 0.82, 0.95)
+            c.drawString(TITLE_X, PH - HEADER_H + HEADER_H * 0.35,
+                         "ORİJİNAL FİŞ ARŞİVİ")
             c.setFont(_f(), 6.5)
-            c.setFillColorRGB(0.75, 0.82, 0.92)
-            c.drawRightString(PW - MX, PH - HEADER_H + 0.16 * cm, "Sayfa")
+            c.setFillColorRGB(0.55, 0.68, 0.80)
+            c.drawString(TITLE_X, PH - HEADER_H + HEADER_H * 0.13,
+                         f"Dönem: {donem}")
+
+            # Sayfa badge (yeşil köşe üstünde)
+            c.setFillColorRGB(*W)
+            c.setFont(_f(bold=True), 9)
+            c.drawRightString(PW - 0.55 * cm, PH - HEADER_H + HEADER_H * 0.55,
+                              f"{pg} / {tot}")
+            c.setFont(_f(), 6)
+            c.setFillColorRGB(0.80, 0.95, 0.87)
+            c.drawRightString(PW - 0.55 * cm, PH - HEADER_H + HEADER_H * 0.26, "Sayfa")
+
+            # Alt ince çizgi header'ı ayır
+            c.setStrokeColorRGB(*G)
+            c.setLineWidth(1.2)
+            c.line(0, PH - HEADER_H, PW, PH - HEADER_H)
+
             c.restoreState()
 
+        # ── Footer ────────────────────────────────────────────
         def _footer():
             c.saveState()
             c.setStrokeColorRGB(*BD)
             c.setLineWidth(0.3)
-            c.line(MX, FOOTER_H + 1 * mm, PW - MX, FOOTER_H + 1 * mm)
+            c.line(MX, FOOTER_H + 2.5 * mm, PW - MX, FOOTER_H + 2.5 * mm)
             c.setFillColorRGB(*MUT)
-            c.setFont(_f(), 6)
-            c.drawCentredString(PW / 2, FOOTER_H - 2 * mm,
-                "Stinga Pro Finance v17.0  ·  Bu belge otomatik olarak üretilmiştir  ·  Resmi muhasebe işlemleri için mali müşavirinize danışınız.")
+            c.setFont(_f(), 5.8)
+            c.drawCentredString(PW / 2, FOOTER_H - 1.5 * mm,
+                "Stinga Pro Finance v17.0  ·  Bu belge otomatik olarak üretilmiştir"
+                "  ·  Resmi muhasebe işlemleri için mali müşavirinize danışınız.")
             c.restoreState()
 
+        # ── Kart çiz ──────────────────────────────────────────
         def _card(cx, cy, rec):
             CW, CH = CELL_W, CELL_H
+
             # Gölge
             c.saveState()
-            c.setFillColorRGB(0.70, 0.76, 0.72, 0.20)
+            c.setFillColorRGB(0.65, 0.72, 0.70, 0.18)
             c.roundRect(cx + 2.5, cy - CAPTION_H - 2.5, CW, CH + CAPTION_H, 8, stroke=0, fill=1)
             c.restoreState()
-            # Kart zemin
+
+            # Kart zemin + kenarlık
             c.saveState()
             c.setFillColorRGB(*BG)
             c.setStrokeColorRGB(*BD)
             c.setLineWidth(0.8)
             c.roundRect(cx, cy - CAPTION_H, CW, CH + CAPTION_H, 8, stroke=1, fill=1)
             c.restoreState()
+
             # Sol yeşil şerit
             c.saveState()
             c.setFillColorRGB(*G)
             c.roundRect(cx, cy - CAPTION_H, 3.5, CH + CAPTION_H, 3, stroke=0, fill=1)
             c.restoreState()
 
-            # ── Görsel ──
+            # Görsel
             pad = 7
             ix, iy = cx + pad + 3.5, cy + pad
             iw, ih = CW - pad * 2 - 3.5, CH - pad * 2
@@ -1369,23 +1440,18 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
                     pil = _PIL.open(_io.BytesIO(rec["bytes"])).convert("RGB")
                     pw2, ph2 = pil.size
                     ratio = pw2 / ph2
-                    dw = iw
-                    dh = dw / ratio
-                    if dh > ih:
-                        dh = ih; dw = dh * ratio
+                    dw = iw; dh = dw / ratio
+                    if dh > ih: dh = ih; dw = dh * ratio
                     dx = ix + (iw - dw) / 2
                     dy = iy + (ih - dh) / 2
                     tmp = _io.BytesIO()
-                    pil.save(tmp, format="JPEG", quality=88)
-                    tmp.seek(0)
-                    # Clip
+                    pil.save(tmp, format="JPEG", quality=88); tmp.seek(0)
                     c.saveState()
                     p = c.beginPath(); p.roundRect(ix, iy, iw, ih, 5)
                     c.clipPath(p, stroke=0)
                     c.drawImage(_rc.ImageReader(tmp), dx, dy, dw, dh,
                                 preserveAspectRatio=True, mask="auto")
                     c.restoreState()
-                    # Görsel kenarlık
                     c.saveState()
                     c.setStrokeColorRGB(*BD); c.setLineWidth(0.4)
                     c.roundRect(ix, iy, iw, ih, 5, stroke=1, fill=0)
@@ -1395,26 +1461,24 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
             else:
                 _no_img(c, ix, iy, iw, ih)
 
-            # ── Caption şeridi ──
+            # Caption şeridi
             c.saveState()
             c.setFillColorRGB(*CAP)
-            # Alt yuvarlak köşeler için üst kısmı dikdörtgen, alt kısmı yuvarlak
             c.roundRect(cx, cy - CAPTION_H, CW, CAPTION_H + 5, 8, stroke=0, fill=1)
             c.rect(cx, cy - CAPTION_H + 5, CW, CAPTION_H - 5, stroke=0, fill=1)
-            # Üst çizgi ayırıcı
             c.setStrokeColorRGB(*G); c.setLineWidth(0.5)
             c.line(cx + 5, cy, cx + CW - 5, cy)
             c.restoreState()
 
             # Durum badge
             durum = rec.get("durum", "")
-            _badge_colors = {
+            _BADGE = {
                 "Onaylandı":   ((0.067, 0.518, 0.357), "✓ ONAYLANDI"),
                 "Bekliyor":    ((0.855, 0.467, 0.016), "⏳ BEKLİYOR"),
                 "Reddedildi":  ((0.863, 0.149, 0.149), "✗ REDDEDİLDİ"),
             }
-            if durum in _badge_colors:
-                bd_col, bd_txt = _badge_colors[durum]
+            if durum in _BADGE:
+                bd_col, bd_txt = _BADGE[durum]
                 c.saveState()
                 c.setFillColorRGB(*bd_col)
                 bw, bh = 1.85 * cm, 0.44 * cm
@@ -1425,19 +1489,17 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
                                     cy - CAPTION_H + (CAPTION_H - bh) / 2 + 0.13 * cm, bd_txt)
                 c.restoreState()
 
-            # Caption metin
+            # Metin satırları
             c.saveState()
-            line1_y = cy - 0.25 * cm
-            line2_y = cy - 0.52 * cm
-            line3_y = cy - 0.78 * cm
             c.setFillColorRGB(*G); c.setFont(_f(mono=True), 6.2)
-            c.drawString(cx + 9, line1_y, rec["id"][:22])
+            c.drawString(cx + 9, cy - 0.25 * cm, rec["id"][:22])
             c.setFillColorRGB(*TXT); c.setFont(_f(bold=True), 7.5)
-            c.drawString(cx + 9, line2_y, rec["firma"][:28])
+            c.drawString(cx + 9, cy - 0.52 * cm, rec["firma"][:28])
             c.setFillColorRGB(*MUT); c.setFont(_f(), 6.5)
-            c.drawString(cx + 9, line3_y, rec["tarih"])
+            c.drawString(cx + 9, cy - 0.78 * cm, rec["tarih"])
             c.setFillColorRGB(*N); c.setFont(_f(bold=True), 9)
-            c.drawRightString(cx + CW - 2.2 * cm, line3_y, f"₺{rec['tutar']:,.0f}")
+            c.drawRightString(cx + CW - 2.2 * cm, cy - 0.78 * cm,
+                              f"\u20ba{rec['tutar']:,.0f}")
             c.restoreState()
 
         def _no_img(canv, ix, iy, iw, ih):
@@ -1455,7 +1517,8 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
         if not records:
             _header(1, 1); _footer()
             c.setFont(_f(), 10); c.setFillColorRGB(*MUT)
-            c.drawCentredString(PW / 2, PH / 2, "Seçili dönemde görsel içeren fiş bulunamadı.")
+            c.drawCentredString(PW / 2, PH / 2,
+                                "Seçili dönemde görsel içeren fiş bulunamadı.")
             c.showPage()
         else:
             for pg in range(total_pages):
@@ -1463,11 +1526,11 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
                 _header(pg + 1, total_pages)
                 _footer()
                 for slot, rec in enumerate(page_recs):
-                    col     = slot % COLS
-                    row_idx = slot // COLS
-                    x = MX + col * (CELL_W + GAP_X)
+                    col_i   = slot % COLS
+                    row_i   = slot // COLS
+                    x = MX + col_i * (CELL_W + GAP_X)
                     y = (PH - HEADER_H - 0.4 * cm
-                         - row_idx * (CELL_H + CAPTION_H + GAP_Y)
+                         - row_i * (CELL_H + CAPTION_H + GAP_Y)
                          - CELL_H)
                     _card(x, y, rec)
                 c.showPage()
@@ -1476,7 +1539,7 @@ def export_fisler_pdf(df_raw, donem="Tüm Zamanlar"):
         return buf.getvalue()
 
     except Exception:
-        import traceback, io as _io2
+        import traceback
         traceback.print_exc()
         return b"%PDF-1.4\n"
 
@@ -4476,7 +4539,7 @@ Kısa ve net ol (max 300 kelime)."""
 
                 if gorsel_sayisi > 0:
                     with st.spinner("Fiş görselleri hazırlanıyor..."):
-                        fisler_pdf_bytes = export_fisler_pdf(filtered, secilen_ay)
+                        fisler_pdf_bytes = export_fisler_pdf(filtered, secilen_ay, logo_path="logo.png")
                     st.download_button(
                         label=f"📥 Orijinal Fişleri PDF İndir  ({gorsel_sayisi} fiş  ·  {len(fisler_pdf_bytes)//1024} KB)",
                         data=fisler_pdf_bytes,
