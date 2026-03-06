@@ -1,0 +1,75 @@
+{% extends "admin/base_admin.html" %}
+{% block page_title %}Galeri Yönetimi{% endblock %}
+{% block admin_content %}
+
+<!-- Upload Panel -->
+<div class="panel" style="margin-bottom:20px">
+  <div class="panel-head"><h3>Yeni Görsel Yükle</h3></div>
+  <div class="panel-body">
+    <form method="POST" action="{{ url_for('admin_gallery_upload') }}" enctype="multipart/form-data">
+      <div class="grid-2" style="gap:16px;align-items:end">
+        <div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label class="form-label">Açıklama (Opsiyonel)</label>
+            <input type="text" name="caption" class="form-input" placeholder="Görsel açıklaması...">
+          </div>
+          <label class="upload-zone" id="gal-zone">
+            <input type="file" name="files" accept="image/*" multiple onchange="showFileNames(this)">
+            <div id="gal-prev">
+              <div style="font-size:2rem;margin-bottom:8px">📁</div>
+              <div style="font-size:.85rem;font-weight:500">Birden fazla görsel seçebilirsiniz</div>
+              <div style="font-size:.76rem;color:rgba(255,255,255,.35);margin-top:4px">PNG, JPG, WEBP, GIF</div>
+            </div>
+          </label>
+        </div>
+        <div>
+          <div id="preview-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px"></div>
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">🚀 Yükle</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Gallery Grid -->
+<div class="panel">
+  <div class="panel-head"><h3>Mevcut Görseller ({{ items|length }})</h3></div>
+  <div class="panel-body">
+    {% if items %}
+    <div class="img-grid">
+      {% for item in items %}
+      <div class="img-item">
+        <img src="{{ media_url(item.filename) }}" alt="{{ item.caption }}">
+        <form method="POST" action="{{ url_for('admin_gallery_delete', gid=item.id) }}" style="display:inline" onsubmit="return confirm('Silinsin mi?')">
+          <button type="submit" class="img-item-del">✕</button>
+        </form>
+        {% if item.caption %}<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:4px 6px;font-size:.68rem;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">{{ item.caption }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:48px;color:rgba(255,255,255,.3)">
+      <div style="font-size:3rem;margin-bottom:12px">🖼️</div>
+      Henüz görsel yüklenmedi.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+{% block admin_js %}
+<script>
+function showFileNames(input) {
+  const grid = document.getElementById('preview-grid');
+  grid.innerHTML = '';
+  Array.from(input.files).slice(0, 8).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      grid.innerHTML += `<img src="${e.target.result}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px">`;
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById('gal-prev').innerHTML = `<div style="font-size:.9rem;font-weight:500;color:var(--g-l)">${input.files.length} dosya seçildi</div>`;
+}
+</script>
+{% endblock %}

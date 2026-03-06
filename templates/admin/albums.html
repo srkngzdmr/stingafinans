@@ -1,0 +1,41 @@
+{% extends "admin/base_admin.html" %}
+{% block page_title %}Albümler{% endblock %}
+{% block admin_content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <p style="color:rgba(255,255,255,.45);font-size:.85rem">Fotoğraf albümlerini yönetin. Zaman çizelgesi görünümü için yıl bilgisi giriniz.</p>
+  <a href="{{ url_for('admin_album_new') }}" class="btn btn-primary">+ Yeni Albüm</a>
+</div>
+<div class="panel">
+  <div class="panel-body" style="padding:0">
+    <table>
+      <thead><tr><th>Kapak</th><th>Başlık</th><th>Yıl/Ay</th><th>Fotoğraf</th><th>Durum</th><th>İşlem</th></tr></thead>
+      <tbody>
+        {% for a in albums %}
+        <tr>
+          <td style="width:60px">
+            {% if a.cover %}<img src="{{ media_url(a.cover) }}" style="width:52px;height:40px;object-fit:cover;border-radius:7px">
+            {% else %}<div style="width:52px;height:40px;background:rgba(255,255,255,.05);border-radius:7px;display:flex;align-items:center;justify-content:center">📷</div>{% endif %}
+          </td>
+          <td style="font-weight:500">{{ a.title }}</td>
+          <td style="color:var(--g-l);font-size:.83rem">{{ a.year or '-' }}{% if a.month %} / {{ a.month }}{% endif %}</td>
+          <td><span class="badge badge-y">{{ a.photo_count }} fotoğraf</span></td>
+          <td><span class="badge {{ 'badge-g' if a.published else 'badge-r' }}">{{ 'Yayında' if a.published else 'Taslak' }}</span></td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <a href="{{ url_for('admin_album_edit', aid=a.id) }}" class="btn btn-secondary btn-sm">✏️ Düzenle</a>
+              <form method="POST" action="{{ url_for('admin_album_delete', aid=a.id) }}" onsubmit="return confirm('Albüm ve tüm fotoğrafları silinsin mi?')">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;padding:36px;color:rgba(255,255,255,.3)">
+          Henüz albüm yok. <a href="{{ url_for('admin_album_new') }}" style="color:var(--g-l)">İlk albümü oluştur →</a>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

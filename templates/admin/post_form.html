@@ -1,0 +1,124 @@
+{% extends "admin/base_admin.html" %}
+{% block page_title %}{{ 'Düzenle' if post else 'Yeni İçerik Ekle' }}{% endblock %}
+{% block admin_content %}
+
+<div style="margin-bottom:16px">
+  <a href="{{ url_for('admin_posts', ptype=ptype) }}" class="btn btn-secondary btn-sm">← Listeye Dön</a>
+</div>
+
+<form method="POST" enctype="multipart/form-data">
+  <input type="hidden" name="ptype" value="{{ ptype }}">
+  <div class="grid-2" style="gap:20px;align-items:start">
+
+    <!-- Sol: Ana İçerik -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="panel">
+        <div class="panel-head"><h3>İçerik Bilgileri</h3></div>
+        <div class="panel-body">
+          <div class="form-group">
+            <label class="form-label">Başlık *</label>
+            <input type="text" name="title" class="form-input" value="{{ post.title if post else '' }}" placeholder="İçerik başlığı" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Özet (Liste görünümünde gösterilir)</label>
+            <textarea name="excerpt" class="form-textarea" rows="3" placeholder="Kısa açıklama...">{{ post.excerpt if post else '' }}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">İçerik (Tam metin)</label>
+            <textarea name="body" class="form-textarea" rows="10" placeholder="Makale / haber içeriği buraya...">{{ post.body if post else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sağ: Medya & Ayarlar -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- Yayın Durumu -->
+      <div class="panel">
+        <div class="panel-head"><h3>Yayın Durumu</h3></div>
+        <div class="panel-body">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" name="published" value="1" {{ 'checked' if (not post or post.published) else '' }} style="width:18px;height:18px;accent-color:var(--g)">
+            <span style="font-size:.88rem">Yayında (Sitede görünsün)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Kapak Görseli -->
+      <div class="panel">
+        <div class="panel-head"><h3>Kapak Görseli</h3></div>
+        <div class="panel-body">
+          {% if post and post.image %}
+          <div style="margin-bottom:12px;border-radius:10px;overflow:hidden">
+            <img src="{{ media_url(post.image) }}" style="width:100%;max-height:160px;object-fit:cover">
+          </div>
+          <p style="font-size:.77rem;color:rgba(255,255,255,.35);margin-bottom:10px">Yeni görsel yüklerseniz mevcut değiştirilir.</p>
+          {% endif %}
+          <label class="upload-zone" id="img-zone">
+            <input type="file" name="image" accept="image/*" onchange="previewImg(this,'img-prev')">
+            <div id="img-prev">
+              <div style="font-size:2rem;margin-bottom:8px">🖼️</div>
+              <div style="font-size:.85rem;font-weight:500">Görsel Seç veya Sürükle Bırak</div>
+              <div style="font-size:.76rem;color:rgba(255,255,255,.35);margin-top:4px">PNG, JPG, WEBP — max 10MB</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Video -->
+      <div class="panel">
+        <div class="panel-head"><h3>Video (Opsiyonel)</h3></div>
+        <div class="panel-body">
+          {% if post and post.video %}
+          <div style="margin-bottom:10px">
+            <video controls style="width:100%;border-radius:8px;max-height:140px">
+              <source src="{{ media_url(post.video) }}">
+            </video>
+          </div>
+          {% endif %}
+          <label class="upload-zone">
+            <input type="file" name="video" accept="video/*">
+            <div>
+              <div style="font-size:2rem;margin-bottom:8px">🎥</div>
+              <div style="font-size:.85rem;font-weight:500">Video Yükle</div>
+              <div style="font-size:.76rem;color:rgba(255,255,255,.35);margin-top:4px">MP4, WEBM, MOV</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Kaydet -->
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:14px">
+        💾 {{ 'Güncelle' if post else 'Kaydet ve Yayınla' }}
+      </button>
+    </div>
+  </div>
+</form>
+
+{% endblock %}
+{% block admin_js %}
+<script>
+function previewImg(input, previewId) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById(previewId);
+    prev.innerHTML = `<img src="${e.target.result}" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Drag & drop
+const zone = document.getElementById('img-zone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', e => {
+  e.preventDefault(); zone.classList.remove('drag');
+  const input = zone.querySelector('input[type=file]');
+  input.files = e.dataTransfer.files;
+  previewImg(input, 'img-prev');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "admin/base_admin.html" %}
+{% block page_title %}Dashboard{% endblock %}
+{% block admin_content %}
+
+<div class="grid-4" style="margin-bottom:18px">
+  <div class="stat-box"><div class="stat-box-ico">📰</div><div class="stat-box-n">{{ stats.haberler }}</div><div class="stat-box-l">Haber</div></div>
+  <div class="stat-box"><div class="stat-box-ico">🖼️</div><div class="stat-box-n">{{ stats.albumler }}</div><div class="stat-box-l">Fotoğraf Albümü</div></div>
+  <div class="stat-box"><div class="stat-box-ico">🎬</div><div class="stat-box-n">{{ stats.videolar }}</div><div class="stat-box-l">Video</div></div>
+  <div class="stat-box" style="position:relative">
+    <div class="stat-box-ico">✉️</div>
+    <div class="stat-box-n">{{ stats.mesajlar }}</div>
+    <div class="stat-box-l">Yeni Mesaj</div>
+    {% if stats.mesajlar > 0 %}<div style="position:absolute;top:12px;right:12px;width:9px;height:9px;background:#ef4444;border-radius:50%;animation:pulse2 1.5s infinite"></div>{% endif %}
+  </div>
+</div>
+<style>@keyframes pulse2{0%,100%{transform:scale(1)}50%{transform:scale(1.5);opacity:.6}}</style>
+
+<div class="grid-2" style="margin-bottom:16px">
+  <div class="panel">
+    <div class="panel-head"><h3>Son İçerikler</h3><a href="{{ url_for('admin_post_new') }}" class="btn btn-primary btn-sm">+ Ekle</a></div>
+    <div class="panel-body" style="padding:0">
+      <table>
+        <thead><tr><th>Başlık</th><th>Tür</th><th>Tarih</th></tr></thead>
+        <tbody>
+          {% for p in recent %}
+          <tr>
+            <td style="font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.title }}</td>
+            <td><span class="badge badge-y">{{ p.type }}</span></td>
+            <td style="color:rgba(255,255,255,.4);font-size:.78rem">{{ p.created[:10] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.3);padding:20px">Henüz içerik yok</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>Yeni Mesajlar</h3><a href="{{ url_for('admin_messages') }}" class="btn btn-secondary btn-sm">Tümü</a></div>
+    <div class="panel-body" style="padding:0">
+      <table>
+        <thead><tr><th>Gönderen</th><th>Konu</th><th>Tarih</th></tr></thead>
+        <tbody>
+          {% for m in messages %}
+          <tr>
+            <td style="font-weight:500">{{ m.name or 'Anonim' }}</td>
+            <td style="color:rgba(255,255,255,.45);font-size:.82rem">{{ m.subject or '-' }}</td>
+            <td style="color:rgba(255,255,255,.4);font-size:.78rem">{{ m.created[:10] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.3);padding:20px">Yeni mesaj yok</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>Hızlı İşlemler</h3></div>
+  <div class="panel-body" style="display:flex;gap:10px;flex-wrap:wrap">
+    <a href="{{ url_for('admin_post_new', ptype='haber') }}" class="btn btn-primary">📰 Haber Ekle</a>
+    <a href="{{ url_for('admin_post_new', ptype='proje') }}" class="btn btn-secondary">🏗️ Proje Ekle</a>
+    <a href="{{ url_for('admin_album_new') }}" class="btn btn-secondary">🖼️ Yeni Albüm</a>
+    <a href="{{ url_for('admin_video_new') }}" class="btn btn-secondary">🎬 Video Ekle</a>
+    <a href="{{ url_for('admin_settings') }}" class="btn btn-secondary">⚙️ Hero Videosu Yükle</a>
+    <a href="{{ url_for('admin_faqs') }}" class="btn btn-secondary">❓ SSS Düzenle</a>
+  </div>
+</div>
+{% endblock %}

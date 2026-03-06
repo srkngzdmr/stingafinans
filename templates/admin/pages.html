@@ -1,0 +1,40 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Sayfalar{% endblock %}
+{% block page_title %}Özel Sayfalar{% endblock %}
+
+{% block admin_content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+  <p style="font-size:.83rem;color:var(--muted)">/sayfa/&lt;slug&gt; adresinde yayınlanır</p>
+  <a href="{{ url_for('admin_page_new') }}" class="btn btn-primary btn-sm">+ Yeni Sayfa</a>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h3>Tüm Sayfalar ({{ pages | length }})</h3></div>
+  <table>
+    <thead>
+      <tr><th>Başlık</th><th>URL</th><th>Tür</th><th>Durum</th><th>Tarih</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for p in pages %}
+      <tr>
+        <td style="font-weight:500">{{ p.title }}</td>
+        <td><a href="/sayfa/{{ p.slug }}" target="_blank" style="color:var(--g-l);font-size:.79rem">/sayfa/{{ p.slug }} ↗</a></td>
+        <td><span class="badge badge-y">{{ p.page_type }}</span></td>
+        <td>{% if p.published %}<span class="badge badge-g">Yayında</span>{% else %}<span class="badge badge-r">Taslak</span>{% endif %}</td>
+        <td style="color:var(--muted);font-size:.79rem">{{ p.created[:10] }}</td>
+        <td style="display:flex;gap:6px;justify-content:flex-end">
+          <a href="{{ url_for('admin_page_edit', pid=p.id) }}" class="btn btn-secondary btn-sm">Düzenle</a>
+          <form method="POST" action="{{ url_for('admin_page_delete', pid=p.id) }}" style="display:inline" onsubmit="return confirm('Sayfayı sil?')">
+            <button type="submit" class="btn btn-danger btn-sm">Sil</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--muted)">
+        Henüz sayfa eklenmemiş. <a href="{{ url_for('admin_page_new') }}" style="color:var(--g-l)">İlk sayfayı ekle →</a>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,121 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}{{ 'Sayfa Düzenle' if page else 'Yeni Sayfa' }}{% endblock %}
+{% block page_title %}{{ 'Sayfa Düzenle' if page else 'Yeni Sayfa' }}{% endblock %}
+
+{% block admin_content %}
+<form method="POST" enctype="multipart/form-data">
+  <div class="grid-2" style="align-items:start;gap:16px">
+
+    <!-- Sol: içerik -->
+    <div>
+      <div class="panel" style="margin-bottom:16px">
+        <div class="panel-head"><h3>İçerik</h3></div>
+        <div class="panel-body">
+          <div class="form-group">
+            <label class="form-label">Başlık *</label>
+            <input type="text" name="title" class="form-input" required value="{{ page.title if page else '' }}"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Özet (hero altında görünür)</label>
+            <textarea name="excerpt" class="form-textarea" style="min-height:68px">{{ page.excerpt if page else '' }}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Sayfa İçeriği (HTML destekli)</label>
+            <textarea name="body" class="form-textarea" style="min-height:300px;font-family:monospace;font-size:.82rem">{{ page.body if page else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+
+      {% if media %}
+      <div class="panel" style="margin-bottom:16px">
+        <div class="panel-head"><h3>Mevcut Medya ({{ media | length }})</h3></div>
+        <div class="panel-body">
+          <div class="img-grid">
+            {% for m in media %}
+            <div class="img-item">
+              {% if m.media_type == 'image' %}
+              <img src="{{ '/static/'+m.filename if not m.filename.startswith('http') else m.filename }}" alt=""/>
+              {% else %}
+              <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--s2);font-size:1.75rem">🎬</div>
+              {% endif %}
+              <form method="POST" action="{{ url_for('admin_page_media_delete', mid=m.id) }}">
+                <input type="hidden" name="page_id" value="{{ page.id }}"/>
+                <button type="submit" class="img-item-del" onclick="return confirm('Sil?')">✕</button>
+              </form>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="panel">
+        <div class="panel-head"><h3>Medya Ekle</h3></div>
+        <div class="panel-body">
+          <label class="upload-zone">
+            <input type="file" name="media_files" multiple accept="image/*,video/*"/>
+            <div style="font-size:2rem;margin-bottom:8px">📎</div>
+            <div style="font-size:.87rem;font-weight:500">Dosya seç veya sürükle bırak</div>
+            <div class="form-hint" style="margin-top:6px">Resim ve video yükleyebilirsiniz (çoklu seçim)</div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sağ: ayarlar -->
+    <div>
+      <div class="panel" style="margin-bottom:16px">
+        <div class="panel-head"><h3>Ayarlar</h3></div>
+        <div class="panel-body">
+          <div class="form-group">
+            <label class="form-label">Sayfa Türü</label>
+            <select name="page_type" class="form-select">
+              {% for v,l in [('genel','Genel'),('endustri','Endüstri'),('kurucu','Kurucu'),('hizmet','Hizmet'),('teknoloji','Teknoloji')] %}
+              <option value="{{ v }}" {{ 'selected' if page and page.page_type==v else '' }}>{{ l }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Sıralama</label>
+            <input type="number" name="sort_order" class="form-input" value="{{ page.sort_order if page else 0 }}"/>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.84rem;color:var(--muted)">
+            <input type="checkbox" name="published" {{ 'checked' if not page or page.published else '' }} style="accent-color:var(--g-l);width:15px;height:15px"/>
+            Yayında
+          </label>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:16px">
+        <div class="panel-head"><h3>Kapak Görseli</h3></div>
+        <div class="panel-body">
+          {% if page and page.image %}
+          <img src="{{ '/static/'+page.image if not page.image.startswith('http') else page.image }}"
+               style="width:100%;border-radius:10px;margin-bottom:10px;max-height:130px;object-fit:cover;border:1px solid var(--bdr)"/>
+          {% endif %}
+          <input type="file" name="image" class="form-input" accept="image/*" style="padding:6px"/>
+        </div>
+      </div>
+
+      {% if page %}
+      <div class="panel" style="margin-bottom:16px">
+        <div class="panel-head"><h3>Yayın Adresi</h3></div>
+        <div class="panel-body">
+          <a href="/sayfa/{{ page.slug }}" target="_blank" style="color:var(--g-l);font-size:.82rem;word-break:break-all">
+            /sayfa/{{ page.slug }} ↗
+          </a>
+        </div>
+      </div>
+      {% endif %}
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button type="submit" class="btn btn-primary" style="justify-content:center">
+          {{ '💾 Güncelle' if page else '✨ Oluştur' }}
+        </button>
+        <a href="{{ url_for('admin_pages') }}" class="btn btn-secondary" style="justify-content:center">İptal</a>
+      </div>
+    </div>
+
+  </div>
+</form>
+{% endblock %}

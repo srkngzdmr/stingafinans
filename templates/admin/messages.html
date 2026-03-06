@@ -1,0 +1,30 @@
+{% extends "admin/base_admin.html" %}
+{% block page_title %}Mesajlar{% endblock %}
+{% block admin_content %}
+<div class="panel">
+  <div class="panel-head"><h3>Gelen Mesajlar ({{ msgs|length }})</h3></div>
+  <div class="panel-body" style="padding:0">
+    <table>
+      <thead><tr><th>Ad Soyad</th><th>E-posta</th><th>Konu</th><th>Mesaj</th><th>Tarih</th><th>İşlem</th></tr></thead>
+      <tbody>
+        {% for m in msgs %}
+        <tr>
+          <td style="font-weight:500">{{ m.name or '-' }}</td>
+          <td style="font-size:.82rem;color:rgba(255,255,255,.5)">{{ m.email or '-' }}</td>
+          <td style="font-size:.82rem">{{ m.subject or '-' }}</td>
+          <td style="font-size:.82rem;color:rgba(255,255,255,.5);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.message or '' }}</td>
+          <td style="font-size:.79rem;color:rgba(255,255,255,.4)">{{ m.created[:16] }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('admin_message_delete', mid=m.id) }}" onsubmit="return confirm('Sil?')">
+              <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;padding:36px;color:rgba(255,255,255,.3)">Henüz mesaj yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
